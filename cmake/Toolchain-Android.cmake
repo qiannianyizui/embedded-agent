@@ -1,0 +1,10 @@
+set(ANDROID_NDK "$ENV{ANDROID_NDK_HOME}" CACHE PATH "Android NDK path")
+if(NOT ANDROID_NDK)
+    message(FATAL_ERROR "Set ANDROID_NDK_HOME environment variable")
+endif()
+
+set(CMAKE_SYSTEM_NAME Android)
+set(CMAKE_SYSTEM_VERSION 21)
+set(CMAKE_ANDROID_ARCH_ABI arm64-v8a)
+set(CMAKE_ANDROID_NDK ${ANDROID_NDK})
+set(CMAKE_ANDROID_STL_TYPE c++_static)

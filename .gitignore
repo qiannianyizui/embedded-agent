@@ -1,0 +1,11 @@
+build/
+third_party/
+.cache/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+.idea/
+.vscode/
+cmake-build-*/
