@@ -37,6 +37,18 @@ FetchContent_Declare(mbedtls
 
 FetchContent_MakeAvailable(json toml11 spdlog cli11 httplib mbedtls)
 
+add_subdirectory(src/common)
+
+option(ENABLE_TESTS "Build tests" OFF)
+if(ENABLE_TESTS)
+    FetchContent_Declare(catch2
+        URL https://github.com/catchorg/Catch2/archive/v3.7.1.tar.gz
+    )
+    FetchContent_MakeAvailable(catch2)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
 # --- SQLite amalgamation ---
 set(SQLITE3_DIR "${CMAKE_SOURCE_DIR}/third_party/sqlite3")
 set(SQLITE3_SRC "${SQLITE3_DIR}/sqlite3.c")
