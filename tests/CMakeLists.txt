@@ -2,6 +2,7 @@ add_executable(ea-tests
     test_common_result.cpp
     test_common_string.cpp
     test_common_json.cpp
+    test_common_sse.cpp
 )
 target_link_libraries(ea-tests PRIVATE
     ea-common
