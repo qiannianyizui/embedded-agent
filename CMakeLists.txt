@@ -38,6 +38,8 @@ FetchContent_Declare(mbedtls
 FetchContent_MakeAvailable(json toml11 spdlog cli11 httplib mbedtls)
 
 add_subdirectory(src/common)
+add_subdirectory(src/core)
+add_subdirectory(src/platform)
 
 option(ENABLE_TESTS "Build tests" OFF)
 if(ENABLE_TESTS)
