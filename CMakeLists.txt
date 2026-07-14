@@ -45,6 +45,7 @@ add_subdirectory(src/security)
 add_subdirectory(src/memory)
 add_subdirectory(src/provider)
 add_subdirectory(src/tool)
+add_subdirectory(src/agent)
 
 option(ENABLE_TESTS "Build tests" OFF)
 if(ENABLE_TESTS)

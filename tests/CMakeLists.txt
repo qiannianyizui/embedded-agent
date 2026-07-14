@@ -9,6 +9,7 @@ add_executable(ea-tests
     test_tool_registry.cpp
     test_tool_shell.cpp
     test_tool_file.cpp
+    test_agent_loop.cpp
 )
 target_link_libraries(ea-tests PRIVATE
     ea-common
@@ -16,6 +17,8 @@ target_link_libraries(ea-tests PRIVATE
     ea-memory
     ea-provider
     ea-tool
+    ea-agent
+    ea-platform
     nlohmann_json::nlohmann_json
     Catch2::Catch2WithMain
 )
