@@ -85,3 +85,32 @@ target_compile_definitions(sqlite3 PUBLIC
     SQLITE_OMIT_LOAD_EXTENSION
     SQLITE_DEFAULT_JOURNAL_MODE_WAL
 )
+
+# --- final targets ---
+add_library(embedded-agent-core STATIC
+    $<TARGET_OBJECTS:ea-common>
+    $<TARGET_OBJECTS:ea-provider>
+    $<TARGET_OBJECTS:ea-tool>
+    $<TARGET_OBJECTS:ea-memory>
+    $<TARGET_OBJECTS:ea-agent>
+    $<TARGET_OBJECTS:ea-platform>
+    $<TARGET_OBJECTS:ea-config>
+    $<TARGET_OBJECTS:ea-security>
+)
+target_link_libraries(embedded-agent-core PUBLIC
+    ea-core
+    nlohmann_json::nlohmann_json
+    spdlog::spdlog
+    httplib::httplib
+    mbedtls
+    mbedx509
+    mbedcrypto
+    sqlite3
+)
+target_include_directories(embedded-agent-core PUBLIC
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+add_executable(embedded-agent src/main.cpp)
+target_link_libraries(embedded-agent PRIVATE embedded-agent-core CLI11::CLI11)

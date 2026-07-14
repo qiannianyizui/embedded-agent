@@ -31,16 +31,18 @@ Result<ToolResult> WebTool::execute(const json& args) {
         }
 
         std::string url = args["url"].get<std::string>();
-        net::HttpClient client;
         net::RequestOptions opts;
         opts.timeout = std::chrono::seconds(30);
 
-        auto result = client.get(url, opts);
-        if (!result.ok()) {
-            return ToolResult{"", result.error().message, true};
+        auto get_result = client_
+            ? client_->get(url, opts)
+            : net::HttpClient().get(url, opts);
+
+        if (!get_result.ok()) {
+            return ToolResult{"", get_result.error().message, true};
         }
 
-        const auto& response = result.value();
+        const auto& response = get_result.value();
         if (response.status >= 400) {
             return ToolResult{"",
                 "HTTP error " + std::to_string(response.status) + ": " + response.body,
