@@ -37,7 +37,9 @@ struct LLMResponse {
     std::vector<ToolCall> tool_calls;
     Usage usage;
     std::string stop_reason;
-    bool is_tool_use() const { return stop_reason == "tool_use"; }
+    bool is_tool_use() const {
+        return stop_reason == "tool_use" || stop_reason == "tool_calls";
+    }
 };
 
 struct StreamChunk {

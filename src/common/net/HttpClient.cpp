@@ -5,8 +5,28 @@
 
 namespace ea::net {
 
-static std::unique_ptr<httplib::Client> make_client(const std::string& url, const RequestOptions& opts) {
-    auto client = std::make_unique<httplib::Client>(url);
+// Split a full URL into scheme+host and path for cpp-httplib
+// e.g. "https://api.example.com/v1/chat/completions"
+//   -> host = "https://api.example.com", path = "/v1/chat/completions"
+static bool split_url(const std::string& url, std::string& host, std::string& path) {
+    // Find scheme end (://)
+    auto scheme_end = url.find("://");
+    if (scheme_end == std::string::npos) return false;
+
+    // Find path start after host
+    auto path_start = url.find('/', scheme_end + 3);
+    if (path_start == std::string::npos) {
+        host = url;
+        path = "/";
+    } else {
+        host = url.substr(0, path_start);
+        path = url.substr(path_start);
+    }
+    return true;
+}
+
+static std::unique_ptr<httplib::Client> make_client(const std::string& host, const RequestOptions& opts) {
+    auto client = std::make_unique<httplib::Client>(host);
 
     client->set_connection_timeout(opts.timeout);
     client->set_read_timeout(opts.timeout);
@@ -21,7 +41,11 @@ static std::unique_ptr<httplib::Client> make_client(const std::string& url, cons
 }
 
 Result<HttpResponse> HttpClient::get(const std::string& url, const RequestOptions& opts) {
-    auto client = make_client(url, opts);
+    std::string host, path;
+    if (!split_url(url, host, path)) {
+        return Error::net("invalid URL: " + url);
+    }
+    auto client = make_client(host, opts);
 
     httplib::Headers headers;
     for (auto& [k, v] : opts.headers) {
@@ -29,7 +53,7 @@ Result<HttpResponse> HttpClient::get(const std::string& url, const RequestOption
     }
 
     for (int attempt = 0; attempt <= opts.retry.max_retries; ++attempt) {
-        auto res = client->Get("/", headers);
+        auto res = client->Get(path, headers);
         if (!res) {
             return Error::net("HTTP GET failed: " + httplib::to_string(res.error()));
         }
@@ -52,7 +76,11 @@ Result<HttpResponse> HttpClient::get(const std::string& url, const RequestOption
 }
 
 Result<HttpResponse> HttpClient::post(const std::string& url, const RequestOptions& opts) {
-    auto client = make_client(url, opts);
+    std::string host, path;
+    if (!split_url(url, host, path)) {
+        return Error::net("invalid URL: " + url);
+    }
+    auto client = make_client(host, opts);
 
     httplib::Headers headers;
     for (auto& [k, v] : opts.headers) {
@@ -60,7 +88,7 @@ Result<HttpResponse> HttpClient::post(const std::string& url, const RequestOptio
     }
 
     for (int attempt = 0; attempt <= opts.retry.max_retries; ++attempt) {
-        auto res = client->Post("/", headers, opts.body, "application/json");
+        auto res = client->Post(path, headers, opts.body, "application/json");
         if (!res) {
             return Error::net("HTTP POST failed: " + httplib::to_string(res.error()));
         }
@@ -85,14 +113,18 @@ Result<HttpResponse> HttpClient::post(const std::string& url, const RequestOptio
 Result<void> HttpClient::stream_get(const std::string& url,
                                      std::function<void(const std::string&)> on_chunk,
                                      const RequestOptions& opts) {
-    auto client = make_client(url, opts);
+    std::string host, path;
+    if (!split_url(url, host, path)) {
+        return Error::net("invalid URL: " + url);
+    }
+    auto client = make_client(host, opts);
 
     httplib::Headers headers;
     for (auto& [k, v] : opts.headers) {
         headers.emplace(k, v);
     }
 
-    auto res = client->Get("/", headers,
+    auto res = client->Get(path, headers,
         [&](const char* data, size_t len) -> bool {
             on_chunk(std::string(data, len));
             return true;
@@ -110,11 +142,15 @@ Result<void> HttpClient::stream_get(const std::string& url,
 Result<void> HttpClient::stream_post(const std::string& url,
                                       std::function<void(const std::string&)> on_chunk,
                                       const RequestOptions& opts) {
-    auto client = make_client(url, opts);
+    std::string host, path;
+    if (!split_url(url, host, path)) {
+        return Error::net("invalid URL: " + url);
+    }
+    auto client = make_client(host, opts);
 
     httplib::Request req;
     req.method = "POST";
-    req.path = "/";
+    req.path = path;
     for (auto& [k, v] : opts.headers) {
         req.headers.emplace(k, v);
     }
