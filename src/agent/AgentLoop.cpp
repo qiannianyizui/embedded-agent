@@ -108,13 +108,22 @@ std::vector<Message> AgentLoop::build_messages() const {
         ctx.tool_guidance = tool_guide;
 
         // Auto-inject relevant memories
-        if (memory_ && config_.auto_memory && !history_.empty()) {
+        if (memory_ && config_.auto_memory) {
             // Use the last user message as query for memory
             for (auto it = history_.rbegin(); it != history_.rend(); ++it) {
                 if (it->role == Role::User) {
+                    EA_DEBUG("Querying memory with: {}", it->content);
                     auto mem_result = memory_->recall(it->content, 5);
-                    if (mem_result.ok()) {
+                    if (mem_result.ok() && !mem_result.value().empty()) {
+                        EA_DEBUG("Memory recall returned {} results", mem_result.value().size());
                         ctx.relevant_memories = std::move(mem_result.value());
+                    } else {
+                        // Fallback: fetch recent high-importance memories
+                        EA_DEBUG("Memory recall returned 0, falling back to recent memories");
+                        auto recent = memory_->list(5, 0);
+                        if (recent.ok()) {
+                            ctx.relevant_memories = std::move(recent.value());
+                        }
                     }
                     break;
                 }

@@ -1,5 +1,6 @@
 add_library(ea-provider OBJECT
     OpenAIProvider.cpp
+    AnthropicProvider.cpp
     OllamaProvider.cpp
     ProviderFactory.cpp
 )

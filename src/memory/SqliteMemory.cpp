@@ -40,6 +40,8 @@ SqliteMemory::~SqliteMemory() {
 Result<void> SqliteMemory::open() {
     if (opened_) return {};
 
+    EA_DEBUG("SqliteMemory::open() path={}", config_.path);
+
     // Ensure parent directory exists for file-based databases
     if (config_.path != ":memory:") {
         auto dir = config_.path.substr(0, config_.path.rfind('/'));

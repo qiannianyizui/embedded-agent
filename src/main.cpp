@@ -11,6 +11,7 @@
 #include "platform/Platform.h"
 #include "security/SecurityPolicy.h"
 #include "common/io/Logger.h"
+#include "common/io/FileSystem.h"
 #include "common/net/HttpClient.h"
 #include <CLI/CLI.hpp>
 #include <iostream>
@@ -51,8 +52,18 @@ int main(int argc, char* argv[]) {
     }
 
     // 4. Create memory
+    std::string memory_path = cfg.memory.path;
+    if (memory_path.empty()) {
+        auto data_dir = ea::fs::config_dir();
+        if (data_dir.ok()) {
+            ea::fs::mkdir_p(data_dir.value());
+            memory_path = data_dir.value() + "/memory.db";
+        } else {
+            memory_path = home + "/.embedded-agent/memory.db";
+        }
+    }
     auto memory = std::make_unique<ea::memory::SqliteMemory>(
-        ea::memory::SqliteMemory::Config{cfg.memory.path, cfg.memory.enable_fts5});
+        ea::memory::SqliteMemory::Config{memory_path, cfg.memory.enable_fts5});
 
     // 5. Create security policy
     auto security = std::make_unique<ea::security::SecurityPolicy>();
