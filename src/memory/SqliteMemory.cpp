@@ -189,26 +189,47 @@ Result<std::vector<MemoryEntry>> SqliteMemory::recall(const std::string& query,
         )";
         sqlite3_stmt* stmt = nullptr;
         int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
-        if (rc != SQLITE_OK) {
-            return Error::db(std::string("prepare failed: ") + sqlite3_errmsg(db_));
-        }
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, query.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_int(stmt, 2, limit);
 
-        sqlite3_bind_text(stmt, 1, query.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(stmt, 2, limit);
-
-        while (sqlite3_step(stmt) == SQLITE_ROW) {
-            MemoryEntry entry;
-            entry.id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-            entry.content = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-            entry.category = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
-            entry.importance = sqlite3_column_int(stmt, 3);
-            entry.created_at = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
-            if (sqlite3_column_type(stmt, 5) != SQLITE_NULL) {
-                entry.agent_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+            while (sqlite3_step(stmt) == SQLITE_ROW) {
+                MemoryEntry entry;
+                entry.id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+                entry.content = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+                entry.category = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+                entry.importance = sqlite3_column_int(stmt, 3);
+                entry.created_at = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+                if (sqlite3_column_type(stmt, 5) != SQLITE_NULL) {
+                    entry.agent_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+                }
+                results.push_back(std::move(entry));
             }
-            results.push_back(std::move(entry));
+            sqlite3_finalize(stmt);
         }
-        sqlite3_finalize(stmt);
+        // Fallback to LIKE if FTS5 returns no results (e.g. special chars in query)
+        if (results.empty()) {
+            const char* like_sql = "SELECT id, content, category, importance, created_at, agent_id FROM memories WHERE content LIKE ? LIMIT ?";
+            sqlite3_stmt* like_stmt = nullptr;
+            sqlite3_prepare_v2(db_, like_sql, -1, &like_stmt, nullptr);
+            std::string pattern = "%" + query + "%";
+            sqlite3_bind_text(like_stmt, 1, pattern.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_int(like_stmt, 2, limit);
+
+            while (sqlite3_step(like_stmt) == SQLITE_ROW) {
+                MemoryEntry entry;
+                entry.id = reinterpret_cast<const char*>(sqlite3_column_text(like_stmt, 0));
+                entry.content = reinterpret_cast<const char*>(sqlite3_column_text(like_stmt, 1));
+                entry.category = reinterpret_cast<const char*>(sqlite3_column_text(like_stmt, 2));
+                entry.importance = sqlite3_column_int(like_stmt, 3);
+                entry.created_at = reinterpret_cast<const char*>(sqlite3_column_text(like_stmt, 4));
+                if (sqlite3_column_type(like_stmt, 5) != SQLITE_NULL) {
+                    entry.agent_id = reinterpret_cast<const char*>(sqlite3_column_text(like_stmt, 5));
+                }
+                results.push_back(std::move(entry));
+            }
+            sqlite3_finalize(like_stmt);
+        }
     } else {
         // Fallback: LIKE search
         const char* sql = "SELECT id, content, category, importance, created_at, agent_id FROM memories WHERE content LIKE ? LIMIT ?";
