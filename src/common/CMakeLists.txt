@@ -8,4 +8,4 @@ add_library(ea-common OBJECT
     net/RetryPolicy.cpp
 )
 target_include_directories(ea-common PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(ea-common PRIVATE spdlog::spdlog httplib::httplib)
+target_link_libraries(ea-common PUBLIC spdlog::spdlog PRIVATE httplib::httplib)

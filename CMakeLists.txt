@@ -42,6 +42,7 @@ add_subdirectory(src/config)
 add_subdirectory(src/core)
 add_subdirectory(src/platform)
 add_subdirectory(src/security)
+add_subdirectory(src/memory)
 
 option(ENABLE_TESTS "Build tests" OFF)
 if(ENABLE_TESTS)
