@@ -320,4 +320,39 @@ Result<int> SqliteMemory::count() {
     return count;
 }
 
+std::string SqliteMemory::system_prompt_block() const {
+    if (!db_) return {};
+
+    // Query recent high-importance memories
+    sqlite3_stmt* stmt;
+    const char* sql = "SELECT category, content FROM memories "
+                       "WHERE importance >= 6 "
+                       "ORDER BY created_at DESC LIMIT 5";
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return {};
+    }
+
+    std::ostringstream ss;
+    ss << "# Relevant Memories\n";
+    bool has_any = false;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        has_any = true;
+        ss << "- [" << sqlite3_column_text(stmt, 0) << "] "
+           << sqlite3_column_text(stmt, 1) << "\n";
+    }
+    sqlite3_finalize(stmt);
+
+    return has_any ? ss.str() : std::string{};
+}
+
+void SqliteMemory::on_turn_end(const std::string& /*assistant_output*/) {
+    // Auto-store could be implemented here when auto_memory is enabled
+    // For now, this is a no-op placeholder
+}
+
+void SqliteMemory::on_pre_compress() {
+    // Before context compression, could store a summary
+    // For now, this is a no-op placeholder
+}
+
 }  // namespace ea::memory
