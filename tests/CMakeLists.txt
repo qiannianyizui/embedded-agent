@@ -34,6 +34,9 @@ add_executable(ea-tests
     test_turn_context.cpp
     test_loop_detector.cpp
     test_turn_steps.cpp
+    test_integration_agent_memory.cpp
+    test_integration_provider_tool.cpp
+    test_integration_full_pipeline.cpp
 )
 target_link_libraries(ea-tests PRIVATE
     ea-common
