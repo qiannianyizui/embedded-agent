@@ -37,6 +37,9 @@ third_party/
 .cache/
 cmake-build-*/
 
+# CodeGraph
+.codegraph/
+
 # IDE
 .idea/
 .vscode/
