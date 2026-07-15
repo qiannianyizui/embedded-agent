@@ -1,0 +1,89 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Build & Test Commands
+
+```bash
+# Configure (from repo root)
+mkdir -p build && cd build
+cmake ..
+
+# Build
+cmake --build . -j$(nproc)
+
+# Run all tests
+./tests/ea-tests
+
+# Run single test case by name
+./tests/ea-tests "test name"
+
+# Run tests by tag
+./tests/ea-tests "[memory]"
+./tests/ea-tests "[agent]"
+./tests/ea-tests "[loopdetect]"
+
+# Verbose test output
+./tests/ea-tests --reporter console
+
+# Clean rebuild
+cd build && cmake --build . --clean-first -j$(nproc)
+```
+
+## Architecture
+
+**Layered Microkernel** — core interfaces define contracts; pluggable strategies and decorators provide behavior. Compile-time mode switching (CLI/Embedded/Server) via CMake `configure_file`.
+
+### Core Interfaces (`src/core/`)
+
+- `IProvider` — LLM provider contract: `chat()`, `stream_chat()`, `capabilities()`
+- `ITool` — Tool contract: `execute()`, `is_mutating()`, `is_dangerous()`
+- `IMemory` — Memory contract: CRUD + lifecycle hooks (`open/close`, `on_turn_start/end`, `system_prompt_block`)
+- `Types.h` — `Message`, `ToolCall`, `ToolResult`, `LLMResponse`, `ToolSpec`, `MemoryEntry`, `ChatOptions`
+
+### Agent Loop (`src/agent/`)
+
+The loop is decomposed into an `ITurnStep` chain. `TurnContext` holds per-iteration state (messages, pending calls, results). Steps execute in order:
+
+```
+HistoryPrune → BuildToolSpecs → CallProvider → ParseResponse → ExecuteTools → LoopDetect → CollectResults
+```
+
+`LoopDetector` checks three patterns: exact repeat (→Block), ping-pong (→Warn), no-progress (→Break). Steps are customizable via `AgentLoop::add_step()` / `set_steps()`.
+
+### Provider Decorators (`src/provider/`)
+
+- `ReliableProvider` — wraps a primary provider with exponential backoff retry + fallback chain
+- `RouterProvider` — routes via `ChatOptions::route_hint` to different providers/models
+- `CredentialPool` — round-robin key rotation with health tracking (3 consecutive errors → unhealthy)
+- `ErrorClassifier` — classifies errors as Retryable/NonRetryable/RateLimit for retry decisions
+- `PromptGuidedTools` — injects tool descriptions as Markdown for providers without native tool calling
+- `ProviderFactory` — creates providers; optionally wraps with `ReliableProvider`
+
+### Tool System (`src/tool/`)
+
+- `Toolset` — groups tools with optional `CheckFn` for conditional availability
+- `ToolRegistry` — manages named Toolsets with `activate()`/`deactivate()`; `register_tool()` creates a "default" Toolset for backward compatibility
+- `ToolOutputConfig` — global + per-tool output truncation limits
+
+### Memory System (`src/memory/`)
+
+- `SqliteMemory` — FTS5 full-text search, WAL mode, lifecycle hooks
+- `InMemoryBackend` — substring-match backend for testing
+- `NullMemory` — header-only no-op backend
+- `ScopedMemory` — decorator: prefixes category with `agent_id:`, filters reads by agent scope + `read_allowlist`
+- `MemoryManager` — orchestration: `prefetch()` → `on_turn_start` + recall, `sync_turn()` → `on_turn_end` + clear cache
+
+### Build Config (`include/ea/build_config.h.in`)
+
+CMake generates `build_config.h` with `#cmakedefine` macros. Source code uses `#if EA_ENABLE_*` for compile-time feature gating.
+
+## Key Conventions
+
+- **Error construction**: `Error` is an aggregate struct. Always initialize all fields: `Error{ErrorCode::X, "message", 0, {}}` or use factory methods (`Error::net()`, `Error::timeout()`, `Error::db()`, etc.)
+- **Compile flags**: Use `ea_target_compile_options(target)` for project targets — it applies `-fno-rtti` only in release builds. Never add `-fno-exceptions` (spdlog requires exceptions). Never add `-fno-rtti` globally (breaks mbedtls C compilation).
+- **Object libraries**: Each module (`ea-memory`, `ea-provider`, etc.) is a CMake `OBJECT` library. The final executable links all of them.
+- **Test tags**: Use Catch2 tag `[module]` patterns: `[memory]`, `[agent]`, `[loopdetect]`, `[provider]`, `[tool]`, `[security]`, `[config]`, `[result]`.
+- **Namespace**: `ea::agent`, `ea::provider`, `ea::memory`, `ea::tool`, `ea::security`, `ea::config`, `ea::net`, `ea::log`, `ea::fs`. Core types are in `ea` (no sub-namespace).
+- **Header-only steps**: TurnStep implementations in `src/agent/steps/` are header-only unless they depend on `Logger.h` or other .cpp-only includes (CallProviderStep, ExecuteToolsStep, LoopDetectStep have .cpp files).
+- **Design docs**: Architecture specs live in `docs/superpowers/specs/`, implementation plans in `docs/superpowers/plans/`.
