@@ -1,6 +1,7 @@
 #pragma once
 #include "Types.h"
 #include "common/base/Result.h"
+#include "provider/ProviderCapabilities.h"
 #include <functional>
 
 namespace ea {
@@ -21,6 +22,7 @@ public:
         const std::string& model,
         std::function<void(const StreamChunk&)> on_chunk,
         const ChatOptions& opts = {}) = 0;
+    virtual provider::ProviderCapabilities capabilities() const = 0;
 };
 
 }  // namespace ea

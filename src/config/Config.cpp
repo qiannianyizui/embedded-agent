@@ -72,9 +72,9 @@ Result<AppConfig> load(const std::string& config_path) {
         }
 
     } catch (const toml::syntax_error& e) {
-        return Error{ErrorCode::ParseError, std::string("TOML parse error: ") + e.what()};
+        return Error::parse(std::string("TOML parse error: ") + e.what());
     } catch (const std::exception& e) {
-        return Error{ErrorCode::ParseError, std::string("Config error: ") + e.what()};
+        return Error::parse(std::string("Config error: ") + e.what());
     }
 
     const char* api_key = getenv("EMBEDDED_AGENT_API_KEY");

@@ -6,10 +6,34 @@ add_executable(ea-tests
     test_config.cpp
     test_memory_sqlite.cpp
     test_provider_openai.cpp
+    test_provider_anthropic.cpp
     test_tool_registry.cpp
+    test_toolset.cpp
     test_tool_shell.cpp
     test_tool_file.cpp
+    test_tool_memory.cpp
+    test_tool_web.cpp
+    test_tool_search.cpp
+    test_tool_output_config.cpp
     test_agent_loop.cpp
+    test_system_prompt.cpp
+    test_security_policy.cpp
+    test_retry_policy.cpp
+    test_core_types.cpp
+    test_filesystem.cpp
+    test_build_config.cpp
+    test_error_classifier.cpp
+    test_credential_pool.cpp
+    test_prompt_guided_tools.cpp
+    test_reliable_provider.cpp
+    test_router_provider.cpp
+    test_in_memory_backend.cpp
+    test_memory_factory.cpp
+    test_scoped_memory.cpp
+    test_memory_manager.cpp
+    test_turn_context.cpp
+    test_loop_detector.cpp
+    test_turn_steps.cpp
 )
 target_link_libraries(ea-tests PRIVATE
     ea-common
@@ -19,10 +43,14 @@ target_link_libraries(ea-tests PRIVATE
     ea-tool
     ea-agent
     ea-platform
+    ea-security
     nlohmann_json::nlohmann_json
     Catch2::Catch2WithMain
 )
-target_include_directories(ea-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(ea-tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_BINARY_DIR}/include
+)
 
 include(CTest)
 add_test(NAME ea-tests COMMAND ea-tests)

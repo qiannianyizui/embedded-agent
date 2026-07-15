@@ -20,6 +20,9 @@ public:
 
     std::string name() const override { return "anthropic"; }
     std::vector<std::string> list_models() const override;
+    ProviderCapabilities capabilities() const override {
+        return {true, true, true, true, true};
+    }
 
     Result<LLMResponse> chat(
         const std::vector<Message>& messages,

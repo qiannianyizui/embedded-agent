@@ -14,6 +14,9 @@ public:
 
     std::string name() const override { return "ollama"; }
     std::vector<std::string> list_models() const override;
+    ProviderCapabilities capabilities() const override {
+        return {false, true, false, false, false};
+    }
 
     Result<LLMResponse> chat(
         const std::vector<Message>& messages,

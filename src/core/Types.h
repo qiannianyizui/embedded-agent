@@ -77,6 +77,7 @@ struct ChatOptions {
     std::optional<std::string> stop;
     int top_p = 1;
     bool stream = false;
+    std::optional<std::string> route_hint;  // "code", "fast", "vision", "cheap"
 };
 
 }  // namespace ea
