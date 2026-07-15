@@ -1,0 +1,26 @@
+[agent]
+model = "deepseek-chat"
+max_iterations = 90
+auto_memory = true
+soul = "You are a helpful AI assistant running on a Linux/Android device."
+
+[provider]
+type = "openai_compatible"
+base_url = "https://api.deepseek.com/v1"
+api_key = ""
+default_model = "deepseek-chat"
+timeout = 60
+
+[memory]
+backend = "sqlite"
+path = ""
+enable_fts5 = true
+
+[security]
+autonomy = "supervised"
+workspace = ""
+allowed_commands = [
+    "ls", "cat", "head", "tail", "grep", "find", "wc",
+    "pwd", "echo", "date", "whoami", "uname",
+    "git", "curl", "wget"
+]
