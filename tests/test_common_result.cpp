@@ -10,7 +10,7 @@ TEST_CASE("Result<T> stores value", "[result]") {
 }
 
 TEST_CASE("Result<T> stores error", "[result]") {
-    Result<int> r = Error{ErrorCode::NetworkError, "connection failed"};
+    Result<int> r = Error{ErrorCode::NetworkError, "connection failed", 0, {}};
     REQUIRE_FALSE(r.ok());
     REQUIRE(r.error().code == ErrorCode::NetworkError);
     REQUIRE(r.error().message == "connection failed");
@@ -22,7 +22,7 @@ TEST_CASE("Result<T> value_or returns value when ok", "[result]") {
 }
 
 TEST_CASE("Result<T> value_or returns default when error", "[result]") {
-    Result<int> r = Error{ErrorCode::Unknown, ""};
+    Result<int> r = Error{ErrorCode::Unknown, "", 0, {}};
     REQUIRE(r.value_or(99) == 99);
 }
 
@@ -32,7 +32,7 @@ TEST_CASE("Result<void> success", "[result]") {
 }
 
 TEST_CASE("Result<void> error", "[result]") {
-    Result<void> r = Error{ErrorCode::DbError, "query failed"};
+    Result<void> r = Error{ErrorCode::DbError, "query failed", 0, {}};
     REQUIRE_FALSE(r.ok());
     REQUIRE(r.error().code == ErrorCode::DbError);
 }
