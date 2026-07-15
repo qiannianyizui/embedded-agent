@@ -12,7 +12,7 @@ public:
     std::string name() const override { return name_; }
     std::string description() const override { return "mock tool"; }
     json parameters_schema() const override { return json::object(); }
-    Result<ToolResult> execute(const json& args) override {
+    Result<ToolResult> execute(const json& /*args*/) override {
         return ToolResult{"", result_output_, false};
     }
 private:

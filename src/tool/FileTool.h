@@ -9,6 +9,7 @@ public:
     std::string description() const override { return "File read, write, and edit operations"; }
     json parameters_schema() const override;
     Result<ToolResult> execute(const json& args) override;
+    bool is_dangerous() const override { return true; }
 };
 
 }  // namespace ea::tool

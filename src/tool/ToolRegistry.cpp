@@ -2,47 +2,71 @@
 
 namespace ea::tool {
 
-void ToolRegistry::register_tool(std::unique_ptr<ITool> tool) {
-    std::string name = tool->name();
-    tools_[std::move(name)] = std::move(tool);
+void ToolRegistry::register_toolset(std::unique_ptr<Toolset> set) {
+    std::string name = set->name();
+    toolsets_[name] = std::move(set);
+    active_sets_.insert(name);
 }
 
-ITool* ToolRegistry::find(const std::string& name) const {
-    auto it = tools_.find(name);
-    if (it != tools_.end()) {
-        return it->second.get();
-    }
-    return nullptr;
+void ToolRegistry::activate(const std::string& set_name) {
+    active_sets_.insert(set_name);
 }
 
-std::vector<ToolSpec> ToolRegistry::get_all_specs() const {
+void ToolRegistry::deactivate(const std::string& set_name) {
+    active_sets_.erase(set_name);
+}
+
+std::vector<ToolSpec> ToolRegistry::active_specs() const {
     std::vector<ToolSpec> specs;
-    specs.reserve(tools_.size());
-    for (const auto& [name, tool] : tools_) {
-        specs.push_back(ToolSpec{
-            tool->name(),
-            tool->description(),
-            tool->parameters_schema()
-        });
+    for (const auto& name : active_sets_) {
+        auto it = toolsets_.find(name);
+        if (it != toolsets_.end()) {
+            auto set_specs = it->second->active_specs();
+            specs.insert(specs.end(), set_specs.begin(), set_specs.end());
+        }
     }
     return specs;
 }
 
-std::vector<std::string> ToolRegistry::get_all_names() const {
-    std::vector<std::string> names;
-    names.reserve(tools_.size());
-    for (const auto& [name, tool] : tools_) {
-        names.push_back(tool->name());
+Result<ToolResult> ToolRegistry::execute(const std::string& tool_name, const json& args) const {
+    for (const auto& name : active_sets_) {
+        auto it = toolsets_.find(name);
+        if (it != toolsets_.end() && it->second->has_tool(tool_name)) {
+            return it->second->execute(tool_name, args);
+        }
     }
-    return names;
+    return Error::tool_error("Tool not found: " + tool_name);
 }
 
-Result<ToolResult> ToolRegistry::execute(const std::string& name, const json& args) const {
-    auto it = tools_.find(name);
-    if (it == tools_.end()) {
-        return Error::not_found("Tool not found: " + name);
+void ToolRegistry::register_tool(std::unique_ptr<ITool> tool) {
+    if (toolsets_.find("default") == toolsets_.end()) {
+        auto set = std::make_unique<Toolset>("default");
+        active_sets_.insert("default");
+        toolsets_["default"] = std::move(set);
     }
-    return it->second->execute(args);
+    toolsets_["default"]->add(std::move(tool));
+}
+
+ITool* ToolRegistry::find(const std::string& tool_name) const {
+    for (const auto& [name, set] : toolsets_) {
+        auto* tool = set->find_tool(tool_name);
+        if (tool) return tool;
+    }
+    return nullptr;
+}
+
+std::vector<std::string> ToolRegistry::get_all_names() const {
+    std::vector<std::string> names;
+    for (const auto& name : active_sets_) {
+        auto it = toolsets_.find(name);
+        if (it != toolsets_.end()) {
+            auto specs = it->second->active_specs();
+            for (const auto& spec : specs) {
+                names.push_back(spec.name);
+            }
+        }
+    }
+    return names;
 }
 
 }  // namespace ea::tool

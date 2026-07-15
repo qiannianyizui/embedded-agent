@@ -13,6 +13,7 @@ public:
     std::string description() const override { return "Web search and fetch operations"; }
     json parameters_schema() const override;
     Result<ToolResult> execute(const json& args) override;
+    bool is_mutating() const override { return false; }
 
 private:
     net::HttpClient* client_;
