@@ -1,12 +1,17 @@
+// AgentLoop — orchestrates ITurnStep chain for agent execution
 #pragma once
 #include "core/IProvider.h"
 #include "tool/ToolRegistry.h"
 #include "core/IMemory.h"
 #include "common/base/Result.h"
+#include "TurnContext.h"
+#include "ITurnStep.h"
+#include "LoopDetector.h"
 #include <string>
 #include <vector>
 #include <functional>
 #include <atomic>
+#include <memory>
 
 namespace ea::agent {
 
@@ -17,6 +22,7 @@ public:
     struct Config {
         int max_iterations = 90;
         int max_tool_output_bytes = 65536;
+        int max_messages = 100;
         bool auto_memory = true;
     };
 
@@ -33,9 +39,12 @@ public:
     const std::vector<Message>& history() const;
     void clear_history();
 
+    // Step chain customization
+    void add_step(std::unique_ptr<ITurnStep> step);
+    void set_steps(std::vector<std::unique_ptr<ITurnStep>> steps);
+
 private:
-    std::vector<Message> build_messages() const;
-    std::string truncate_output(const std::string& output) const;
+    void build_system_prompt_once();
 
     IProvider* provider_;
     ToolRegistry* registry_;
@@ -46,6 +55,10 @@ private:
     std::vector<Message> history_;
     std::string system_prompt_;
     std::atomic<bool> interrupted_{false};
+
+    // Step chain
+    std::vector<std::unique_ptr<ITurnStep>> steps_;
+    LoopDetector loop_detector_;
 };
 
 }  // namespace ea::agent

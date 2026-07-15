@@ -2,6 +2,13 @@
 #include "SystemPrompt.h"
 #include "platform/Platform.h"
 #include "common/io/Logger.h"
+#include "steps/HistoryPruneStep.h"
+#include "steps/BuildToolSpecsStep.h"
+#include "steps/CallProviderStep.h"
+#include "steps/ParseResponseStep.h"
+#include "steps/LoopDetectStep.h"
+#include "steps/ExecuteToolsStep.h"
+#include "steps/CollectResultsStep.h"
 
 namespace ea::agent {
 
@@ -15,13 +22,26 @@ AgentLoop::AgentLoop(IProvider* provider,
     , memory_(memory)
     , config_(std::move(config))
     , output_(std::move(output))
-{}
+{
+    // Build default step chain
+    steps_.push_back(std::make_unique<HistoryPruneStep>(config_.max_messages));
+    steps_.push_back(std::make_unique<BuildToolSpecsStep>());
+    steps_.push_back(std::make_unique<CallProviderStep>());
+    steps_.push_back(std::make_unique<ParseResponseStep>());
+    steps_.push_back(std::make_unique<ExecuteToolsStep>());
+    steps_.push_back(std::make_unique<LoopDetectStep>(loop_detector_));
+    steps_.push_back(std::make_unique<CollectResultsStep>());
+}
 
 Result<void> AgentLoop::run(const std::string& user_input) {
     interrupted_ = false;
+    loop_detector_.reset();
 
     // Add user message to history
     history_.push_back({Role::User, user_input, std::nullopt, std::nullopt, std::nullopt});
+
+    // Build system prompt once
+    build_system_prompt_once();
 
     for (int i = 0; i < config_.max_iterations; ++i) {
         if (interrupted_) {
@@ -29,56 +49,28 @@ Result<void> AgentLoop::run(const std::string& user_input) {
             return Error::timeout("agent loop interrupted");
         }
 
-        // Build messages with system prompt
-        auto messages = build_messages();
-        auto tool_specs = registry_->get_all_specs();
+        // Create turn context
+        TurnContext ctx(history_, interrupted_);
+        ctx.iteration = i;
+        ctx.max_iterations = config_.max_iterations;
+        ctx.max_tool_output_bytes = config_.max_tool_output_bytes;
+        ctx.provider = provider_;
+        ctx.registry = registry_;
+        ctx.system_prompt = system_prompt_;
 
-        // Call LLM
-        ChatOptions opts;
-        auto response = provider_->chat(messages, tool_specs, "", opts);
-        if (!response.ok()) {
-            EA_ERROR("LLM call failed: {}", response.error().message);
-            return response.error();
+        // Run step chain
+        auto result = run_step_chain(ctx, steps_);
+        if (!result.ok()) {
+            return result;
         }
 
-        auto& resp = response.value();
-
-        // Add assistant message to history
-        Message assistant_msg{Role::Assistant, resp.content, std::nullopt, std::nullopt, std::nullopt};
-        if (!resp.tool_calls.empty()) {
-            assistant_msg.tool_calls = resp.tool_calls;
+        // Output final response if stopping
+        if (ctx.should_stop && output_ && !ctx.response.content.empty()) {
+            output_(ctx.response.content);
         }
-        history_.push_back(std::move(assistant_msg));
 
-        // If no tool calls, we're done
-        if (!resp.is_tool_use() || resp.tool_calls.empty()) {
-            if (output_ && !resp.content.empty()) {
-                output_(resp.content);
-            }
+        if (ctx.should_stop) {
             return {};
-        }
-
-        // Execute tool calls
-        for (const auto& tc : resp.tool_calls) {
-            EA_DEBUG("Executing tool: {} (id: {})", tc.name, tc.id);
-
-            auto result = registry_->execute(tc.name, tc.arguments);
-            ToolResult tool_result;
-            if (result.ok()) {
-                tool_result = std::move(result.value());
-            } else {
-                tool_result = ToolResult{tc.id, "Error: " + result.error().message, true};
-            }
-
-            // Truncate output if too long
-            tool_result.output = truncate_output(tool_result.output);
-
-            // Add tool result to history
-            Message tool_msg{Role::Tool, tool_result.output, tc.name, std::nullopt, tc.id};
-            history_.push_back(std::move(tool_msg));
-
-            EA_DEBUG("Tool {} result: {} bytes, error={}", tc.name,
-                     tool_result.output.size(), tool_result.is_error);
         }
     }
 
@@ -90,65 +82,41 @@ Result<void> AgentLoop::run(const std::string& user_input) {
     return {};
 }
 
-std::vector<Message> AgentLoop::build_messages() const {
-    std::vector<Message> messages;
+void AgentLoop::build_system_prompt_once() {
+    if (!system_prompt_.empty()) return;
 
-    // Build system prompt (only on first call or when needed)
-    if (system_prompt_.empty()) {
-        PromptContext ctx;
-        ctx.soul = "You are a helpful AI assistant.";
-        ctx.platform_info = platform::platform_description();
+    PromptContext ctx;
+    ctx.soul = "You are a helpful AI assistant.";
+    ctx.platform_info = platform::platform_description();
 
-        // Get tool guidance
-        auto specs = registry_->get_all_specs();
-        std::string tool_guide = "Available tools:\n";
-        for (const auto& spec : specs) {
-            tool_guide += "- " + spec.name + ": " + spec.description + "\n";
-        }
-        ctx.tool_guidance = tool_guide;
+    // Get tool guidance
+    auto specs = registry_->active_specs();
+    std::string tool_guide = "Available tools:\n";
+    for (const auto& spec : specs) {
+        tool_guide += "- " + spec.name + ": " + spec.description + "\n";
+    }
+    ctx.tool_guidance = tool_guide;
 
-        // Auto-inject relevant memories
-        if (memory_ && config_.auto_memory) {
-            // Use the last user message as query for memory
-            for (auto it = history_.rbegin(); it != history_.rend(); ++it) {
-                if (it->role == Role::User) {
-                    EA_DEBUG("Querying memory with: {}", it->content);
-                    auto mem_result = memory_->recall(it->content, 5);
-                    if (mem_result.ok() && !mem_result.value().empty()) {
-                        EA_DEBUG("Memory recall returned {} results", mem_result.value().size());
-                        ctx.relevant_memories = std::move(mem_result.value());
-                    } else {
-                        // Fallback: fetch recent high-importance memories
-                        EA_DEBUG("Memory recall returned 0, falling back to recent memories");
-                        auto recent = memory_->list(5, 0);
-                        if (recent.ok()) {
-                            ctx.relevant_memories = std::move(recent.value());
-                        }
+    // Auto-inject relevant memories
+    if (memory_ && config_.auto_memory) {
+        for (auto it = history_.rbegin(); it != history_.rend(); ++it) {
+            if (it->role == Role::User) {
+                EA_DEBUG("Querying memory with: {}", it->content);
+                auto mem_result = memory_->recall(it->content, 5);
+                if (mem_result.ok() && !mem_result.value().empty()) {
+                    ctx.relevant_memories = std::move(mem_result.value());
+                } else {
+                    auto recent = memory_->list(5, 0);
+                    if (recent.ok()) {
+                        ctx.relevant_memories = std::move(recent.value());
                     }
-                    break;
                 }
+                break;
             }
         }
-
-        const_cast<std::string&>(system_prompt_) = build_system_prompt(ctx);
     }
 
-    // System message
-    messages.push_back({Role::System, system_prompt_, std::nullopt, std::nullopt, std::nullopt});
-
-    // History
-    for (const auto& msg : history_) {
-        messages.push_back(msg);
-    }
-
-    return messages;
-}
-
-std::string AgentLoop::truncate_output(const std::string& output) const {
-    if (static_cast<int>(output.size()) <= config_.max_tool_output_bytes) {
-        return output;
-    }
-    return output.substr(0, config_.max_tool_output_bytes) + "\n... [truncated]";
+    system_prompt_ = build_system_prompt(ctx);
 }
 
 void AgentLoop::interrupt() {
@@ -162,6 +130,14 @@ const std::vector<Message>& AgentLoop::history() const {
 void AgentLoop::clear_history() {
     history_.clear();
     system_prompt_.clear();
+}
+
+void AgentLoop::add_step(std::unique_ptr<ITurnStep> step) {
+    steps_.push_back(std::move(step));
+}
+
+void AgentLoop::set_steps(std::vector<std::unique_ptr<ITurnStep>> steps) {
+    steps_ = std::move(steps);
 }
 
 }  // namespace ea::agent

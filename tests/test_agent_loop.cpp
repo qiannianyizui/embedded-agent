@@ -14,6 +14,9 @@ class MockProvider : public IProvider {
 public:
     std::string name() const override { return "mock"; }
     std::vector<std::string> list_models() const override { return {"mock-model"}; }
+    provider::ProviderCapabilities capabilities() const override {
+        return {true, true, false, false, false};
+    }
 
     void enqueue_response(LLMResponse resp) {
         responses_.push(std::move(resp));
