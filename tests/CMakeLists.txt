@@ -20,6 +20,7 @@ add_executable(ea-tests
     test_security_policy.cpp
     test_approval_handler.cpp
     test_stdin_approval_handler.cpp
+    test_pending_approval_handler.cpp
     test_retry_policy.cpp
     test_core_types.cpp
     test_filesystem.cpp
