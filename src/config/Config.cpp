@@ -69,6 +69,12 @@ Result<AppConfig> load(const std::string& config_path) {
             if (security.contains("allowed_commands")) {
                 cfg.security.allowed_commands = toml::find<std::vector<std::string>>(security, "allowed_commands");
             }
+            cfg.security.approval_timeout = toml::find_or<int>(security, "approval_timeout", cfg.security.approval_timeout);
+            if (security.contains("approval")) {
+                auto approval = toml::find(security, "approval");
+                cfg.security.approval_mode = toml::find_or<std::string>(approval, "mode", cfg.security.approval_mode);
+                cfg.security.auto_approve_dangerous = toml::find_or<bool>(approval, "auto_approve_dangerous", cfg.security.auto_approve_dangerous);
+            }
         }
 
     } catch (const toml::syntax_error& e) {

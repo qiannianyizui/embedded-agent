@@ -10,6 +10,10 @@
 #include "agent/AgentLoop.h"
 #include "platform/Platform.h"
 #include "security/SecurityPolicy.h"
+#include "security/IApprovalHandler.h"
+#include "security/StdinApprovalHandler.h"
+#include "security/PendingApprovalHandler.h"
+#include "ea/build_config.h"
 #include "common/io/Logger.h"
 #include "common/io/FileSystem.h"
 #include "common/net/HttpClient.h"
@@ -74,6 +78,25 @@ int main(int argc, char* argv[]) {
         security->set_allowed_commands(cfg.security.allowed_commands);
     }
 
+    // 5.5. Create approval handler
+    std::unique_ptr<ea::security::IApprovalHandler> approval;
+
+    if (security->level() == ea::security::AutonomyLevel::Full && cfg.security.auto_approve_dangerous) {
+        approval = nullptr;  // Full mode + auto-approve = no approval needed
+    } else if (cfg.security.approval_mode == "auto") {
+#ifdef EA_MODE_CLI
+        approval = std::make_unique<ea::security::StdinApprovalHandler>();
+#elif defined(EA_MODE_SERVER)
+        approval = std::make_unique<ea::security::PendingApprovalHandler>(cfg.security.approval_timeout);
+#else
+        approval = nullptr;  // Embedded mode: no interactive interface
+#endif
+    } else if (cfg.security.approval_mode == "stdin") {
+        approval = std::make_unique<ea::security::StdinApprovalHandler>();
+    } else if (cfg.security.approval_mode == "pending") {
+        approval = std::make_unique<ea::security::PendingApprovalHandler>(cfg.security.approval_timeout);
+    }
+
     // 6. Create HTTP client for WebTool
     ea::net::HttpClient http_client;
 
@@ -91,7 +114,9 @@ int main(int argc, char* argv[]) {
         ea::agent::AgentLoop::Config{cfg.agent.max_iterations},
         [](const std::string& text) {
             std::cout << text << std::endl;
-        }
+        },
+        security.get(),
+        approval.get()
     );
 
     // 9. Interactive loop

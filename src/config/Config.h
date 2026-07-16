@@ -28,6 +28,9 @@ struct SecurityConfig {
     std::string autonomy = "supervised";
     std::vector<std::string> allowed_commands;
     std::string workspace;
+    int approval_timeout = 300;              // Approval timeout in seconds (Server mode)
+    std::string approval_mode = "auto";      // stdin / pending / auto
+    bool auto_approve_dangerous = false;     // Only effective in Full autonomy
 };
 
 struct AgentConfig {
