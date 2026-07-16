@@ -4,6 +4,10 @@
 
 namespace ea::agent {
 
+ExecuteToolsStep::ExecuteToolsStep(security::SecurityPolicy* policy,
+                                   security::IApprovalHandler* approval)
+    : policy_(policy), approval_(approval) {}
+
 Result<void> ExecuteToolsStep::execute(TurnContext& ctx) {
     if (ctx.pending_tool_calls.empty()) {
         return {};
@@ -21,6 +25,41 @@ Result<void> ExecuteToolsStep::execute(TurnContext& ctx) {
     for (const auto& tc : ctx.pending_tool_calls) {
         EA_DEBUG("Executing tool: {} (id: {})", tc.name, tc.id);
 
+        // 1. SecurityPolicy hard check
+        if (policy_) {
+            auto check = policy_->check_tool(tc.name);
+            if (!check.ok()) {
+                EA_WARN("Tool blocked by security policy: {}", tc.name);
+                ctx.tool_results.push_back(
+                    ToolResult{tc.id, "Blocked by security policy: " + check.error().message, true});
+                continue;
+            }
+        }
+
+        // 2. Approval soft check for dangerous tools
+        ITool* tool = ctx.registry->find(tc.name);
+        if (tool && tool->is_dangerous() && approval_) {
+            security::ApprovalRequest req;
+            req.tool_name = tc.name;
+            req.arguments = tc.arguments;
+            req.description = "Tool '" + tc.name + "' is marked as dangerous";
+
+            auto decision = approval_->request_approval(req);
+            if (decision == security::ApprovalDecision::Rejected) {
+                EA_WARN("Tool rejected by user: {}", tc.name);
+                ctx.tool_results.push_back(
+                    ToolResult{tc.id, "User rejected this tool call", true});
+                continue;
+            }
+            if (decision == security::ApprovalDecision::Aborted) {
+                EA_WARN("User aborted agent loop during approval");
+                ctx.should_stop = true;
+                return {};
+            }
+            // Approved — continue to execute
+        }
+
+        // 3. Execute the tool
         auto result = ctx.registry->execute(tc.name, tc.arguments);
         ToolResult tool_result;
         if (result.ok()) {
@@ -29,7 +68,7 @@ Result<void> ExecuteToolsStep::execute(TurnContext& ctx) {
             tool_result = ToolResult{tc.id, "Error: " + result.error().message, true};
         }
 
-        // Truncate output using ToolOutputConfig
+        // 4. Truncate output using ToolOutputConfig
         tool_result.output = tool::truncate_output(
             tool_result.output, config.get_limit(tc.name), config.truncate_marker);
 
