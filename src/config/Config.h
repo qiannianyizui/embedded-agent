@@ -38,6 +38,10 @@ struct AgentConfig {
     int max_iterations = 90;
     bool auto_memory = true;
     std::string soul;
+    // Context compression
+    bool compression_enable = true;
+    int compression_max_tokens = 8000;
+    int compression_keep_recent_turns = 4;
 };
 
 struct AppConfig {

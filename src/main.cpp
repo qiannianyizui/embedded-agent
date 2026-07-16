@@ -8,6 +8,7 @@
 #include "tool/WebTool.h"
 #include "tool/MemoryTool.h"
 #include "agent/AgentLoop.h"
+#include "agent/ContextCompressor.h"
 #include "platform/Platform.h"
 #include "security/SecurityPolicy.h"
 #include "security/IApprovalHandler.h"
@@ -97,6 +98,15 @@ int main(int argc, char* argv[]) {
         approval = std::make_unique<ea::security::PendingApprovalHandler>(cfg.security.approval_timeout);
     }
 
+    // 5.6. Create context compressor
+    std::unique_ptr<ea::agent::ContextCompressor> compressor;
+    if (cfg.agent.compression_enable) {
+        ea::agent::CompressionConfig comp_cfg;
+        comp_cfg.max_tokens = cfg.agent.compression_max_tokens;
+        comp_cfg.keep_recent_turns = cfg.agent.compression_keep_recent_turns;
+        compressor = std::make_unique<ea::agent::ContextCompressor>(provider.get(), comp_cfg);
+    }
+
     // 6. Create HTTP client for WebTool
     ea::net::HttpClient http_client;
 
@@ -116,7 +126,8 @@ int main(int argc, char* argv[]) {
             std::cout << text << std::endl;
         },
         security.get(),
-        approval.get()
+        approval.get(),
+        compressor.get()
     );
 
     // 9. Interactive loop

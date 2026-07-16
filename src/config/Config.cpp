@@ -43,6 +43,12 @@ Result<AppConfig> load(const std::string& config_path) {
             cfg.agent.max_iterations = toml::find_or<int>(agent, "max_iterations", cfg.agent.max_iterations);
             cfg.agent.auto_memory = toml::find_or<bool>(agent, "auto_memory", cfg.agent.auto_memory);
             cfg.agent.soul = toml::find_or<std::string>(agent, "soul", cfg.agent.soul);
+            if (agent.contains("compression")) {
+                auto compression = toml::find(agent, "compression");
+                cfg.agent.compression_enable = toml::find_or<bool>(compression, "enable", cfg.agent.compression_enable);
+                cfg.agent.compression_max_tokens = toml::find_or<int>(compression, "max_tokens", cfg.agent.compression_max_tokens);
+                cfg.agent.compression_keep_recent_turns = toml::find_or<int>(compression, "keep_recent_turns", cfg.agent.compression_keep_recent_turns);
+            }
         }
 
         if (data.contains("provider")) {
