@@ -36,6 +36,7 @@ add_executable(ea-tests
     test_memory_manager.cpp
     test_turn_context.cpp
     test_loop_detector.cpp
+    test_context_compressor.cpp
     test_turn_steps.cpp
     test_integration_agent_memory.cpp
     test_integration_provider_tool.cpp

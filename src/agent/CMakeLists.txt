@@ -2,6 +2,7 @@ add_library(ea-agent OBJECT
     AgentLoop.cpp
     SystemPrompt.cpp
     LoopDetector.cpp
+    ContextCompressor.cpp
     steps/CallProviderStep.cpp
     steps/LoopDetectStep.cpp
     steps/ExecuteToolsStep.cpp
