@@ -74,8 +74,11 @@ FetchContent_Declare(httplib
 )
 
 # --- compiled ---
+set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(mbedtls
     URL https://github.com/Mbed-TLS/mbedtls/archive/v3.6.2.tar.gz
+    PATCH_COMMAND bash -c "mkdir -p framework && echo '# stub' > framework/CMakeLists.txt"
 )
 
 FetchContent_MakeAvailable(json toml11 spdlog cli11 httplib mbedtls)
