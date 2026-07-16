@@ -3,6 +3,9 @@
 
 namespace ea::agent {
 
+CallProviderStep::CallProviderStep(ContextCompressor* compressor)
+    : compressor_(compressor) {}
+
 Result<void> CallProviderStep::execute(TurnContext& ctx) {
     if (!ctx.provider) {
         return Error::invalid_arg("No provider configured");
@@ -15,6 +18,15 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
     }
     for (const auto& msg : ctx.messages) {
         messages.push_back(msg);
+    }
+
+    // Compress if needed
+    if (compressor_) {
+        auto compressed = compressor_->compress(messages);
+        if (compressed.ok()) {
+            messages = std::move(compressed.value());
+        }
+        // If compression fails, use original messages (graceful degradation)
     }
 
     ChatOptions opts;

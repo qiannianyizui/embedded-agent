@@ -18,7 +18,8 @@ AgentLoop::AgentLoop(IProvider* provider,
                      Config config,
                      OutputFn output,
                      security::SecurityPolicy* policy,
-                     security::IApprovalHandler* approval)
+                     security::IApprovalHandler* approval,
+                     ContextCompressor* compressor)
     : provider_(provider)
     , registry_(registry)
     , memory_(memory)
@@ -26,11 +27,12 @@ AgentLoop::AgentLoop(IProvider* provider,
     , output_(std::move(output))
     , policy_(policy)
     , approval_(approval)
+    , compressor_(compressor)
 {
     // Build default step chain
     steps_.push_back(std::make_unique<HistoryPruneStep>(config_.max_messages));
     steps_.push_back(std::make_unique<BuildToolSpecsStep>());
-    steps_.push_back(std::make_unique<CallProviderStep>());
+    steps_.push_back(std::make_unique<CallProviderStep>(compressor_));
     steps_.push_back(std::make_unique<ParseResponseStep>());
     steps_.push_back(std::make_unique<ExecuteToolsStep>(policy_, approval_));
     steps_.push_back(std::make_unique<LoopDetectStep>(loop_detector_));

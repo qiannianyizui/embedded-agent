@@ -9,6 +9,7 @@
 #include "LoopDetector.h"
 #include "security/SecurityPolicy.h"
 #include "security/IApprovalHandler.h"
+#include "agent/ContextCompressor.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -36,7 +37,8 @@ public:
               Config config,
               OutputFn output,
               security::SecurityPolicy* policy = nullptr,
-              security::IApprovalHandler* approval = nullptr);
+              security::IApprovalHandler* approval = nullptr,
+              ContextCompressor* compressor = nullptr);
 
     Result<void> run(const std::string& user_input);
     void interrupt();
@@ -57,6 +59,7 @@ private:
     OutputFn output_;
     security::SecurityPolicy* policy_;
     security::IApprovalHandler* approval_;
+    ContextCompressor* compressor_;
 
     std::vector<Message> history_;
     std::string system_prompt_;
