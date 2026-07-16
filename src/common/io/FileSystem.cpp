@@ -13,7 +13,7 @@ namespace ea::fs {
 Result<std::string> home_dir() {
     const char* home = getenv("HOME");
     if (home && home[0] != '\0') return std::string(home);
-    return Error{ErrorCode::IoError, "HOME not set"};
+    return Error::io("HOME not set");
 }
 
 Result<std::string> config_dir() {
@@ -30,25 +30,25 @@ Result<bool> exists(const std::string& path) {
     struct stat st;
     if (stat(path.c_str(), &st) == 0) return true;
     if (errno == ENOENT) return false;
-    return Error{ErrorCode::IoError, std::string("stat failed: ") + strerror(errno)};
+    return Error::io(std::string("stat failed: ") + strerror(errno));
 }
 
 Result<bool> is_dir(const std::string& path) {
     struct stat st;
     if (stat(path.c_str(), &st) != 0) {
-        return Error{ErrorCode::IoError, std::string("stat failed: ") + strerror(errno)};
+        return Error::io(std::string("stat failed: ") + strerror(errno));
     }
     return S_ISDIR(st.st_mode);
 }
 
 Result<void> mkdir_p(const std::string& path) {
-    if (path.empty()) return Error{ErrorCode::InvalidArgument, "empty path"};
+    if (path.empty()) return Error::invalid_arg("empty path");
 
     auto ex = exists(path);
     if (ex.ok() && ex.value()) {
         auto dir = is_dir(path);
         if (dir.ok() && dir.value()) return {};
-        return Error{ErrorCode::IoError, path + " exists but is not a directory"};
+        return Error::io(path + " exists but is not a directory");
     }
 
     auto parent = path.substr(0, path.rfind('/'));
@@ -61,16 +61,16 @@ Result<void> mkdir_p(const std::string& path) {
     }
 
     if (mkdir(path.c_str(), 0755) != 0 && errno != EEXIST) {
-        return Error{ErrorCode::IoError,
-                     std::string("mkdir failed for ") + path + ": " + strerror(errno)};
+        return Error::io(
+                     std::string("mkdir failed for ") + path + ": " + strerror(errno));
     }
     return {};
 }
 
 Result<void> remove(const std::string& path) {
     if (::remove(path.c_str()) != 0) {
-        return Error{ErrorCode::IoError,
-                     std::string("remove failed for ") + path + ": " + strerror(errno)};
+        return Error::io(
+                     std::string("remove failed for ") + path + ": " + strerror(errno));
     }
     return {};
 }
@@ -78,7 +78,7 @@ Result<void> remove(const std::string& path) {
 Result<std::string> read_file(const std::string& path) {
     std::ifstream f(path, std::ios::in | std::ios::binary);
     if (!f.is_open()) {
-        return Error{ErrorCode::IoError, "cannot open: " + path};
+        return Error::io("cannot open: " + path);
     }
     std::ostringstream ss;
     ss << f.rdbuf();
@@ -88,11 +88,11 @@ Result<std::string> read_file(const std::string& path) {
 Result<void> write_file(const std::string& path, const std::string& content) {
     std::ofstream f(path, std::ios::out | std::ios::binary);
     if (!f.is_open()) {
-        return Error{ErrorCode::IoError, "cannot open for write: " + path};
+        return Error::io("cannot open for write: " + path);
     }
     f << content;
     if (!f.good()) {
-        return Error{ErrorCode::IoError, "write failed: " + path};
+        return Error::io("write failed: " + path);
     }
     return {};
 }
@@ -100,7 +100,7 @@ Result<void> write_file(const std::string& path, const std::string& content) {
 Result<std::vector<std::string>> list_dir(const std::string& path) {
     DIR* dir = opendir(path.c_str());
     if (!dir) {
-        return Error{ErrorCode::IoError, "opendir failed: " + path};
+        return Error::io("opendir failed: " + path);
     }
     std::vector<std::string> entries;
     struct dirent* entry;

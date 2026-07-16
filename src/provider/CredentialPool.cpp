@@ -3,10 +3,17 @@
 namespace ea::provider {
 
 void CredentialPool::add(CredentialSlot slot) {
+    std::lock_guard lock(mutex_);
     slots_.push_back(std::move(slot));
 }
 
+size_t CredentialPool::size() const {
+    std::lock_guard lock(mutex_);
+    return slots_.size();
+}
+
 size_t CredentialPool::healthy_count() const {
+    std::lock_guard lock(mutex_);
     size_t count = 0;
     for (const auto& s : slots_) {
         if (s.healthy) ++count;
@@ -15,8 +22,9 @@ size_t CredentialPool::healthy_count() const {
 }
 
 Result<CredentialSlot> CredentialPool::acquire() {
+    std::lock_guard lock(mutex_);
     if (slots_.empty()) {
-        return Error{ErrorCode::NotFound, "No credentials configured", 0, {}};
+        return Error::not_found("No credentials configured");
     }
 
     size_t start = current_index_;
@@ -29,10 +37,11 @@ Result<CredentialSlot> CredentialPool::acquire() {
         current_index_ = (current_index_ + 1) % slots_.size();
     } while (current_index_ != start);
 
-    return Error{ErrorCode::NotFound, "No healthy credentials available", 0, {}};
+    return Error::not_found("No healthy credentials available");
 }
 
 void CredentialPool::release(const CredentialSlot& slot, bool success) {
+    std::lock_guard lock(mutex_);
     for (auto& s : slots_) {
         if (s.api_key == slot.api_key && s.model == slot.model) {
             if (success) {

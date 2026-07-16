@@ -12,7 +12,7 @@ public:
     std::string description() const override { return "Memory store, recall, and forget operations"; }
     json parameters_schema() const override;
     Result<ToolResult> execute(const json& args) override;
-    bool is_mutating() const override { return false; }
+    bool is_mutating() const override { return true; }  // store/forget are write ops
 
 private:
     IMemory* memory_;

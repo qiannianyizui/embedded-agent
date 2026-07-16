@@ -132,8 +132,12 @@ Result<void> SqliteMemory::create_tables() {
 }
 
 Result<void> SqliteMemory::close() {
+    if (!opened_) return {};
     if (db_) {
-        sqlite3_close(db_);
+        int rc = sqlite3_close(db_);
+        if (rc == SQLITE_BUSY) {
+            return Error::db("sqlite3_close failed: database is busy");
+        }
         db_ = nullptr;
     }
     opened_ = false;

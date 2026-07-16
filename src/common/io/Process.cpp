@@ -19,7 +19,7 @@ Result<ExecResult> exec(const std::string& command,
                          int max_output_bytes) {
     int stdout_pipe[2], stderr_pipe[2];
     if (pipe(stdout_pipe) != 0 || pipe(stderr_pipe) != 0) {
-        return Error{ErrorCode::IoError, "pipe() failed"};
+        return Error::io("pipe() failed");
     }
 
     std::string shell = "/bin/sh";
@@ -46,7 +46,7 @@ Result<ExecResult> exec(const std::string& command,
     if (spawn_result != 0) {
         close(stdout_pipe[0]); close(stdout_pipe[1]);
         close(stderr_pipe[0]); close(stderr_pipe[1]);
-        return Error{ErrorCode::IoError, "posix_spawnp failed: " + std::string(strerror(spawn_result))};
+        return Error::io("posix_spawnp failed: " + std::string(strerror(spawn_result)));
     }
 
     close(stdout_pipe[1]);
@@ -108,7 +108,7 @@ Result<ExecResult> exec(const std::string& command,
     if (timed_out) {
         kill(pid, SIGKILL);
         waitpid(pid, nullptr, 0);
-        return Error{ErrorCode::Timeout, "command timed out: " + command};
+        return Error::timeout("command timed out: " + command);
     }
 
     int status;

@@ -5,7 +5,7 @@ namespace ea::agent {
 
 Result<void> CallProviderStep::execute(TurnContext& ctx) {
     if (!ctx.provider) {
-        return Error{ErrorCode::InvalidArgument, "No provider configured", 0, {}};
+        return Error::invalid_arg("No provider configured");
     }
 
     // Build full message list with system prompt

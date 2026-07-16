@@ -132,7 +132,7 @@ Provider types: `openai` / `anthropic` / `ollama`
 | FileTool | Read/write files | ✅ | ✅ |
 | SearchTool | Search file contents | ❌ | ❌ |
 | WebTool | HTTP requests | ❌ | ❌ |
-| MemoryTool | Memory store/recall | ❌ | ❌ |
+| MemoryTool | Memory store/recall | ✅ | ❌ |
 
 - **Toolset** grouping + `CheckFn` conditional availability
 - **ToolOutputConfig** global + per-tool output truncation

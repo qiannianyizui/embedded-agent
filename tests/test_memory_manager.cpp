@@ -49,14 +49,14 @@ TEST_CASE("MemoryManager count", "[memory][manager]") {
     REQUIRE(mgr.count().value() == 2);
 }
 
-TEST_CASE("MemoryManager build_memory_block", "[memory][manager]") {
+TEST_CASE("MemoryManager system_prompt_block", "[memory][manager]") {
     auto backend = std::make_unique<InMemoryBackend>();
     MemoryManager mgr(std::move(backend));
 
-    REQUIRE(mgr.build_memory_block().empty());
+    REQUIRE(mgr.system_prompt_block().empty());
 
     mgr.store("important fact", "core", 7);
-    auto block = mgr.build_memory_block();
+    auto block = mgr.system_prompt_block();
     REQUIRE_FALSE(block.empty());
 }
 

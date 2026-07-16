@@ -76,3 +76,10 @@ TEST_CASE("ScopedMemory lifecycle delegates to backend", "[memory][scoped]") {
     REQUIRE(scoped.open().ok());
     REQUIRE(scoped.close().ok());
 }
+
+TEST_CASE("ScopedMemory rejects empty agent_id", "[memory][scoped]") {
+    auto backend = std::make_unique<InMemoryBackend>();
+    MemoryScope scope;
+    scope.agent_id = "";  // empty
+    REQUIRE_THROWS_AS(ScopedMemory(std::move(backend), scope), std::invalid_argument);
+}

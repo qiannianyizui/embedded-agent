@@ -48,11 +48,15 @@ Result<bool> MemoryManager::forget(const std::string& id) {
     return backend_->forget(id);
 }
 
+Result<std::vector<MemoryEntry>> MemoryManager::list(int limit, int offset) {
+    return backend_->list(limit, offset);
+}
+
 Result<int> MemoryManager::count() {
     return backend_->count();
 }
 
-std::string MemoryManager::build_memory_block() const {
+std::string MemoryManager::system_prompt_block() const {
     return backend_->system_prompt_block();
 }
 

@@ -2,6 +2,7 @@
 #include "common/base/Result.h"
 #include <string>
 #include <vector>
+#include <mutex>
 
 namespace ea::provider {
 
@@ -19,10 +20,11 @@ public:
     Result<CredentialSlot> acquire();
     void release(const CredentialSlot& slot, bool success);
 
-    size_t size() const { return slots_.size(); }
+    size_t size() const;
     size_t healthy_count() const;
 
 private:
+    mutable std::mutex mutex_;
     std::vector<CredentialSlot> slots_;
     size_t current_index_ = 0;
 };

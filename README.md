@@ -132,7 +132,7 @@ Provider 类型：`openai` / `anthropic` / `ollama`
 | FileTool | 读写文件 | ✅ | ✅ |
 | SearchTool | 搜索文件内容 | ❌ | ❌ |
 | WebTool | HTTP 请求 | ❌ | ❌ |
-| MemoryTool | 记忆存取 | ❌ | ❌ |
+| MemoryTool | 记忆存取 | ✅ | ❌ |
 
 - **Toolset** 分组 + `CheckFn` 条件可用性
 - **ToolOutputConfig** 全局 + 单工具输出截断

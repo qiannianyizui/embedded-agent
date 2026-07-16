@@ -16,6 +16,7 @@ enum class ErrorCode {
     ToolError,
     ParseError,
     SecurityBlocked,
+    ConfigError,
 };
 
 struct Error {
@@ -50,6 +51,15 @@ struct Error {
     }
     static Error security(const std::string& msg) {
         return {ErrorCode::SecurityBlocked, msg, 0, {}};
+    }
+    static Error io(const std::string& msg) {
+        return {ErrorCode::IoError, msg, 0, {}};
+    }
+    static Error invalid_arg(const std::string& msg) {
+        return {ErrorCode::InvalidArgument, msg, 0, {}};
+    }
+    static Error config(const std::string& msg) {
+        return {ErrorCode::ConfigError, msg, 0, {}};
     }
 };
 

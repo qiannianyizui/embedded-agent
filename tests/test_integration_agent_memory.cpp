@@ -119,7 +119,7 @@ TEST_CASE("Integration: MemoryManager sync_turn lifecycle", "[integration][memor
     auto results2 = mgr.prefetch("C++");
     REQUIRE(results2.size() >= 1);
 
-    // Build memory block
-    auto block = mgr.build_memory_block();
+    // Memory block via IMemory interface
+    auto block = mgr.system_prompt_block();
     REQUIRE_FALSE(block.empty());
 }

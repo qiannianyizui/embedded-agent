@@ -3,7 +3,11 @@
 namespace ea::memory {
 
 ScopedMemory::ScopedMemory(std::unique_ptr<IMemory> backend, MemoryScope scope)
-    : backend_(std::move(backend)), scope_(std::move(scope)) {}
+    : backend_(std::move(backend)), scope_(std::move(scope)) {
+    if (scope_.agent_id.empty()) {
+        throw std::invalid_argument("ScopedMemory requires non-empty agent_id");
+    }
+}
 
 Result<std::string> ScopedMemory::store(const std::string& content,
                                          const std::string& category,

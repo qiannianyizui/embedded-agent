@@ -10,6 +10,12 @@
 namespace ea::agent {
 
 struct TurnContext {
+    // Non-copyable — holds reference to atomic and message history
+    TurnContext(const TurnContext&) = delete;
+    TurnContext& operator=(const TurnContext&) = delete;
+    TurnContext(TurnContext&&) = default;
+    TurnContext& operator=(TurnContext&&) = default;
+
     // Message history (shared with AgentLoop)
     std::vector<Message>& messages;
 

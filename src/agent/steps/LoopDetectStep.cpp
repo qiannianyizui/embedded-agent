@@ -9,13 +9,15 @@ Result<void> LoopDetectStep::execute(TurnContext& ctx) {
         return {};
     }
 
-    // Check the last tool call + result
-    const auto& last_call = ctx.pending_tool_calls.back();
-    const auto& last_result = ctx.tool_results.back();
+    // Check all tool call + result pairs, track the worst action
+    LoopAction worst = LoopAction::Continue;
+    size_t count = std::min(ctx.pending_tool_calls.size(), ctx.tool_results.size());
+    for (size_t i = 0; i < count; ++i) {
+        auto action = detector_.check(ctx.pending_tool_calls[i], ctx.tool_results[i]);
+        if (action > worst) worst = action;
+    }
 
-    auto action = detector_.check(last_call, last_result);
-
-    switch (action) {
+    switch (worst) {
     case LoopAction::Continue:
         break;
     case LoopAction::Warn:

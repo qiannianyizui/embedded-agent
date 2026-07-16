@@ -43,7 +43,7 @@ struct LLMResponse {
 };
 
 struct StreamChunk {
-    enum Type { Content, ToolCallBegin, ToolCallDelta, ToolCallEnd, Done, Error };
+    enum class Type { Content, ToolCallBegin, ToolCallDelta, ToolCallEnd, Done, Error };
     Type type;
     std::string data;
     std::optional<ToolCall> tool_call;
@@ -75,7 +75,7 @@ struct ChatOptions {
     float temperature = 0.7f;
     int max_tokens = 4096;
     std::optional<std::string> stop;
-    int top_p = 1;
+    float top_p = 1.0f;
     bool stream = false;
     std::optional<std::string> route_hint;  // "code", "fast", "vision", "cheap"
 };

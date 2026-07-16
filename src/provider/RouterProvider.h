@@ -12,6 +12,11 @@ struct RouteRule {
     std::shared_ptr<IProvider> provider;
 };
 
+struct ResolvedRoute {
+    std::shared_ptr<IProvider> provider;
+    std::string model;  // effective model override (empty = use default)
+};
+
 class RouterProvider : public IProvider {
 public:
     struct Config {
@@ -39,7 +44,7 @@ public:
         const ChatOptions& opts = {}) override;
 
 private:
-    std::shared_ptr<IProvider> resolve_provider(const ChatOptions& opts) const;
+    ResolvedRoute resolve(const ChatOptions& opts) const;
 
     Config config_;
 };

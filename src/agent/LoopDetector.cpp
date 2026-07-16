@@ -84,11 +84,11 @@ bool LoopDetector::is_no_progress(const ToolCall& call, const ToolResult& result
     int same_count = 0;
 
     for (auto it = tool_result_history_.rbegin(); it != tool_result_history_.rend(); ++it) {
-        if (it->first != call.name) break;
+        if (it->first != call.name) continue;  // skip different tools
         if (it->second == res_sig) {
             same_count++;
         } else {
-            break;
+            break;  // same tool but different result — stop
         }
     }
 

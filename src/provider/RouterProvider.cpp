@@ -23,21 +23,41 @@ std::vector<std::string> RouterProvider::list_models() const {
 }
 
 provider::ProviderCapabilities RouterProvider::capabilities() const {
-    if (config_.default_provider) {
-        return config_.default_provider->capabilities();
+    // Merge capabilities from all routed providers (union)
+    provider::ProviderCapabilities result;
+    auto merge = [&](const std::shared_ptr<IProvider>& p) {
+        if (!p) return;
+        auto c = p->capabilities();
+        result.native_tool_calling |= c.native_tool_calling;
+        result.streaming |= c.streaming;
+        result.vision |= c.vision;
+        result.prompt_caching |= c.prompt_caching;
+        result.extended_thinking |= c.extended_thinking;
+    };
+    merge(config_.default_provider);
+    for (const auto& rule : config_.rules) {
+        merge(rule.provider);
     }
-    return {};
+    return result;
 }
 
-std::shared_ptr<IProvider> RouterProvider::resolve_provider(const ChatOptions& opts) const {
+ResolvedRoute RouterProvider::resolve(const ChatOptions& opts) const {
+    ResolvedRoute route;
+    route.provider = config_.default_provider;
+    route.model = {};  // no override
+
     if (opts.route_hint.has_value()) {
         for (const auto& rule : config_.rules) {
             if (rule.model_hint == opts.route_hint.value()) {
-                return rule.provider;
+                route.provider = rule.provider;
+                if (!rule.model.empty()) {
+                    route.model = rule.model;
+                }
+                return route;
             }
         }
     }
-    return config_.default_provider;
+    return route;
 }
 
 Result<LLMResponse> RouterProvider::chat(
@@ -46,22 +66,13 @@ Result<LLMResponse> RouterProvider::chat(
     const std::string& model,
     const ChatOptions& opts)
 {
-    auto provider = resolve_provider(opts);
-    if (!provider) {
+    auto route = resolve(opts);
+    if (!route.provider) {
         return Error::net("No provider available for route");
     }
 
-    std::string effective_model = model;
-    if (effective_model.empty() && opts.route_hint.has_value()) {
-        for (const auto& rule : config_.rules) {
-            if (rule.model_hint == opts.route_hint.value() && !rule.model.empty()) {
-                effective_model = rule.model;
-                break;
-            }
-        }
-    }
-
-    return provider->chat(messages, tools, effective_model, opts);
+    std::string effective_model = model.empty() ? route.model : model;
+    return route.provider->chat(messages, tools, effective_model, opts);
 }
 
 Result<void> RouterProvider::stream_chat(
@@ -71,22 +82,13 @@ Result<void> RouterProvider::stream_chat(
     std::function<void(const StreamChunk&)> on_chunk,
     const ChatOptions& opts)
 {
-    auto provider = resolve_provider(opts);
-    if (!provider) {
+    auto route = resolve(opts);
+    if (!route.provider) {
         return Error::net("No provider available for route");
     }
 
-    std::string effective_model = model;
-    if (effective_model.empty() && opts.route_hint.has_value()) {
-        for (const auto& rule : config_.rules) {
-            if (rule.model_hint == opts.route_hint.value() && !rule.model.empty()) {
-                effective_model = rule.model;
-                break;
-            }
-        }
-    }
-
-    return provider->stream_chat(messages, tools, effective_model, on_chunk, opts);
+    std::string effective_model = model.empty() ? route.model : model;
+    return route.provider->stream_chat(messages, tools, effective_model, on_chunk, opts);
 }
 
 }  // namespace ea::provider

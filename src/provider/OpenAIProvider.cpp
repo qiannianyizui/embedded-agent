@@ -223,7 +223,7 @@ Result<void> OpenAIProvider::stream_chat(
     auto on_sse_event = [&](const net::SseEvent& event) {
         if (event.data == "[DONE]") {
             StreamChunk chunk;
-            chunk.type = StreamChunk::Done;
+            chunk.type = StreamChunk::Type::Done;
             on_chunk(chunk);
             return;
         }
@@ -264,7 +264,7 @@ void OpenAIProvider::parse_sse_chunk(
             std::string text = d["content"].get<std::string>();
             content += text;
             StreamChunk chunk;
-            chunk.type = StreamChunk::Content;
+            chunk.type = StreamChunk::Type::Content;
             chunk.data = text;
             on_chunk(chunk);
         }
@@ -285,7 +285,7 @@ void OpenAIProvider::parse_sse_chunk(
                     acc.id = tc_delta["id"].get<std::string>();
 
                     StreamChunk chunk;
-                    chunk.type = StreamChunk::ToolCallBegin;
+                    chunk.type = StreamChunk::Type::ToolCallBegin;
                     chunk.tool_call = acc;
                     on_chunk(chunk);
                 }
@@ -296,10 +296,16 @@ void OpenAIProvider::parse_sse_chunk(
                         acc.name += fn["name"].get<std::string>();
                     }
                     if (fn.contains("arguments") && !fn["arguments"].is_null()) {
+                        std::string arg_delta = fn["arguments"].get<std::string>();
                         StreamChunk chunk;
-                        chunk.type = StreamChunk::ToolCallDelta;
-                        chunk.data = fn["arguments"].get<std::string>();
-                        acc.arguments = json::parse(acc.arguments.dump() + chunk.data);
+                        chunk.type = StreamChunk::Type::ToolCallDelta;
+                        chunk.data = arg_delta;
+                        // Accumulate raw string; parsed into object at finish_reason
+                        if (acc.arguments.is_string()) {
+                            acc.arguments = acc.arguments.get<std::string>() + arg_delta;
+                        } else {
+                            acc.arguments = arg_delta;
+                        }
                         on_chunk(chunk);
                     }
                 }
@@ -319,7 +325,7 @@ void OpenAIProvider::parse_sse_chunk(
             } catch (...) {}
 
             StreamChunk chunk;
-            chunk.type = StreamChunk::ToolCallEnd;
+            chunk.type = StreamChunk::Type::ToolCallEnd;
             chunk.tool_call = tc;
             on_chunk(chunk);
         }
@@ -329,7 +335,7 @@ void OpenAIProvider::parse_sse_chunk(
     // Usage (may appear in the final chunk)
     if (delta.contains("usage") && delta["usage"].is_object()) {
         StreamChunk chunk;
-        chunk.type = StreamChunk::Content;
+        chunk.type = StreamChunk::Type::Content;
         Usage u;
         u.input_tokens = delta["usage"].value("prompt_tokens", 0);
         u.output_tokens = delta["usage"].value("completion_tokens", 0);

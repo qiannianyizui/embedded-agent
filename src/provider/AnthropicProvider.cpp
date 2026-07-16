@@ -253,7 +253,7 @@ Result<void> AnthropicProvider::stream_chat(
     auto on_sse_event = [&](const net::SseEvent& event) {
         if (event.data == "[DONE]") {
             StreamChunk chunk;
-            chunk.type = StreamChunk::Done;
+            chunk.type = StreamChunk::Type::Done;
             on_chunk(chunk);
             return;
         }
@@ -276,7 +276,7 @@ Result<void> AnthropicProvider::stream_chat(
                     acc.name = block.value("name", "");
 
                     StreamChunk chunk;
-                    chunk.type = StreamChunk::ToolCallBegin;
+                    chunk.type = StreamChunk::Type::ToolCallBegin;
                     chunk.tool_call = acc;
                     on_chunk(chunk);
                 }
@@ -288,7 +288,7 @@ Result<void> AnthropicProvider::stream_chat(
                     std::string text = delta.value("text", "");
                     content += text;
                     StreamChunk chunk;
-                    chunk.type = StreamChunk::Content;
+                    chunk.type = StreamChunk::Type::Content;
                     chunk.data = text;
                     on_chunk(chunk);
                 } else if (delta_type == "input_json_delta") {
@@ -296,7 +296,7 @@ Result<void> AnthropicProvider::stream_chat(
                     int idx = parsed.value("index", 0);
                     if (idx < static_cast<int>(accumulating_calls.size())) {
                         StreamChunk chunk;
-                        chunk.type = StreamChunk::ToolCallDelta;
+                        chunk.type = StreamChunk::Type::ToolCallDelta;
                         chunk.data = partial;
                         on_chunk(chunk);
                     }
@@ -316,7 +316,7 @@ Result<void> AnthropicProvider::stream_chat(
                         } catch (...) {}
 
                         StreamChunk chunk;
-                        chunk.type = StreamChunk::ToolCallEnd;
+                        chunk.type = StreamChunk::Type::ToolCallEnd;
                         chunk.tool_call = tc;
                         on_chunk(chunk);
                     }
@@ -327,7 +327,7 @@ Result<void> AnthropicProvider::stream_chat(
                 const auto& usage = parsed.value("usage", json::object());
                 if (!usage.empty()) {
                     StreamChunk chunk;
-                    chunk.type = StreamChunk::Done;
+                    chunk.type = StreamChunk::Type::Done;
                     Usage u;
                     u.output_tokens = usage.value("output_tokens", 0);
                     chunk.usage = u;
