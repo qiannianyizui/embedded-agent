@@ -18,6 +18,7 @@ add_executable(ea-tests
     test_agent_loop.cpp
     test_system_prompt.cpp
     test_security_policy.cpp
+    test_approval_handler.cpp
     test_retry_policy.cpp
     test_core_types.cpp
     test_filesystem.cpp
