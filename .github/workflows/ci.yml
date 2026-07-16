@@ -26,10 +26,10 @@ jobs:
       - name: Configure
         run: |
           mkdir -p build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          cmake .. -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DENABLE_TESTS=ON
 
       - name: Build
         run: cmake --build build -j$(nproc)
 
       - name: Run tests
-        run: cd build && ./tests/ea-tests --reporter compact
+        run: cd build && ctest --output-on-failure -j$(nproc)
