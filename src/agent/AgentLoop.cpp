@@ -16,19 +16,23 @@ AgentLoop::AgentLoop(IProvider* provider,
                      ToolRegistry* registry,
                      IMemory* memory,
                      Config config,
-                     OutputFn output)
+                     OutputFn output,
+                     security::SecurityPolicy* policy,
+                     security::IApprovalHandler* approval)
     : provider_(provider)
     , registry_(registry)
     , memory_(memory)
     , config_(std::move(config))
     , output_(std::move(output))
+    , policy_(policy)
+    , approval_(approval)
 {
     // Build default step chain
     steps_.push_back(std::make_unique<HistoryPruneStep>(config_.max_messages));
     steps_.push_back(std::make_unique<BuildToolSpecsStep>());
     steps_.push_back(std::make_unique<CallProviderStep>());
     steps_.push_back(std::make_unique<ParseResponseStep>());
-    steps_.push_back(std::make_unique<ExecuteToolsStep>());
+    steps_.push_back(std::make_unique<ExecuteToolsStep>(policy_, approval_));
     steps_.push_back(std::make_unique<LoopDetectStep>(loop_detector_));
     steps_.push_back(std::make_unique<CollectResultsStep>());
 }

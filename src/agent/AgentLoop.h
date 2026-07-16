@@ -7,6 +7,8 @@
 #include "TurnContext.h"
 #include "ITurnStep.h"
 #include "LoopDetector.h"
+#include "security/SecurityPolicy.h"
+#include "security/IApprovalHandler.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -32,7 +34,9 @@ public:
               ToolRegistry* registry,
               IMemory* memory,
               Config config,
-              OutputFn output);
+              OutputFn output,
+              security::SecurityPolicy* policy = nullptr,
+              security::IApprovalHandler* approval = nullptr);
 
     Result<void> run(const std::string& user_input);
     void interrupt();
@@ -51,6 +55,8 @@ private:
     IMemory* memory_;
     Config config_;
     OutputFn output_;
+    security::SecurityPolicy* policy_;
+    security::IApprovalHandler* approval_;
 
     std::vector<Message> history_;
     std::string system_prompt_;
