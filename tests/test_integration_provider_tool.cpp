@@ -9,6 +9,7 @@
 #include "tool/ToolRegistry.h"
 #include "tool/Toolset.h"
 #include "core/ITool.h"
+#include "security/IApprovalHandler.h"
 
 using namespace ea;
 using namespace ea::agent;
@@ -234,4 +235,147 @@ TEST_CASE("Integration: loop detection blocks exact repeat", "[integration][loop
     auto result = loop.run("loop test");
     // Loop detection should have kicked in — counter should NOT have been called 10 times
     REQUIRE(counter->count() < 10);
+}
+
+// --- Approval integration tests ---
+
+class MockApprovalHandler : public ea::security::IApprovalHandler {
+public:
+    ea::security::ApprovalDecision next_decision = ea::security::ApprovalDecision::Approved;
+    mutable ea::security::ApprovalRequest last_request;
+
+    ea::security::ApprovalDecision request_approval(const ea::security::ApprovalRequest& req) override {
+        last_request = req;
+        return next_decision;
+    }
+};
+
+class DangerousTool : public ea::ITool {
+public:
+    std::string name() const override { return "dangerous_op"; }
+    std::string description() const override { return "A dangerous tool for testing"; }
+    nlohmann::json parameters_schema() const override { return nlohmann::json::object(); }
+    ea::Result<ea::ToolResult> execute(const nlohmann::json&) override {
+        return ea::ToolResult{"", "dangerous result", false};
+    }
+    bool is_dangerous() const override { return true; }
+};
+
+class SafeTool : public ea::ITool {
+public:
+    std::string name() const override { return "safe_op"; }
+    std::string description() const override { return "A safe tool for testing"; }
+    nlohmann::json parameters_schema() const override { return nlohmann::json::object(); }
+    ea::Result<ea::ToolResult> execute(const nlohmann::json&) override {
+        return ea::ToolResult{"", "safe result", false};
+    }
+    bool is_dangerous() const override { return false; }
+};
+
+TEST_CASE("Approval: safe tool executes without approval", "[integration][approval]") {
+    MockApprovalHandler approval;
+    ea::tool::ToolRegistry registry;
+    registry.register_tool(std::make_unique<SafeTool>());
+
+    ea::agent::AgentLoop loop(
+        nullptr, &registry, nullptr,
+        ea::agent::AgentLoop::Config{3},
+        [](const std::string&) {},
+        nullptr,
+        &approval
+    );
+
+    // Safe tool should not trigger approval — last_request.tool_name stays empty
+    REQUIRE(approval.last_request.tool_name.empty());
+}
+
+TEST_CASE("Approval: dangerous tool approved executes normally", "[integration][approval]") {
+    MockApprovalHandler approval;
+    approval.next_decision = ea::security::ApprovalDecision::Approved;
+
+    ea::tool::ToolRegistry registry;
+    registry.register_tool(std::make_unique<DangerousTool>());
+
+    IntegrationProvider provider;
+    provider.enqueue(make_tool_response({make_call("dangerous_op", "c1")}));
+    provider.enqueue(make_text_response("Done!"));
+
+    ea::agent::AgentLoop loop(
+        &provider, &registry, nullptr,
+        ea::agent::AgentLoop::Config{3},
+        [](const std::string&) {},
+        nullptr,
+        &approval
+    );
+
+    auto result = loop.run("test");
+    REQUIRE(result.ok());
+    REQUIRE(approval.last_request.tool_name == "dangerous_op");
+}
+
+TEST_CASE("Approval: dangerous tool rejected returns error result", "[integration][approval]") {
+    MockApprovalHandler approval;
+    approval.next_decision = ea::security::ApprovalDecision::Rejected;
+
+    ea::tool::ToolRegistry registry;
+    registry.register_tool(std::make_unique<DangerousTool>());
+
+    IntegrationProvider provider;
+    provider.enqueue(make_tool_response({make_call("dangerous_op", "c1")}));
+    provider.enqueue(make_text_response("I see the tool was rejected"));
+
+    ea::agent::AgentLoop loop(
+        &provider, &registry, nullptr,
+        ea::agent::AgentLoop::Config{3},
+        [](const std::string&) {},
+        nullptr,
+        &approval
+    );
+
+    auto result = loop.run("test");
+    REQUIRE(result.ok());
+    REQUIRE(approval.last_request.tool_name == "dangerous_op");
+}
+
+TEST_CASE("Approval: dangerous tool aborted stops agent loop", "[integration][approval]") {
+    MockApprovalHandler approval;
+    approval.next_decision = ea::security::ApprovalDecision::Aborted;
+
+    ea::tool::ToolRegistry registry;
+    registry.register_tool(std::make_unique<DangerousTool>());
+
+    IntegrationProvider provider;
+    provider.enqueue(make_tool_response({make_call("dangerous_op", "c1")}));
+
+    ea::agent::AgentLoop loop(
+        &provider, &registry, nullptr,
+        ea::agent::AgentLoop::Config{3},
+        [](const std::string&) {},
+        nullptr,
+        &approval
+    );
+
+    auto result = loop.run("test");
+    REQUIRE(result.ok());  // Aborted sets should_stop, loop exits cleanly
+}
+
+TEST_CASE("Approval: null handler allows dangerous tools without approval", "[integration][approval]") {
+    ea::tool::ToolRegistry registry;
+    registry.register_tool(std::make_unique<DangerousTool>());
+
+    IntegrationProvider provider;
+    provider.enqueue(make_tool_response({make_call("dangerous_op", "c1")}));
+    provider.enqueue(make_text_response("Done!"));
+
+    // No approval handler (nullptr)
+    ea::agent::AgentLoop loop(
+        &provider, &registry, nullptr,
+        ea::agent::AgentLoop::Config{3},
+        [](const std::string&) {},
+        nullptr,
+        nullptr
+    );
+
+    auto result = loop.run("test");
+    REQUIRE(result.ok());  // Dangerous tool executes without approval
 }
