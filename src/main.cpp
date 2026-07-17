@@ -9,6 +9,9 @@
 #include "tool/MemoryTool.h"
 #include "agent/AgentLoop.h"
 #include "agent/ContextCompressor.h"
+#include "mcp/McpClient.h"
+#include "mcp/StdioTransport.h"
+#include "mcp/McpToolAdapter.h"
 #include "platform/Platform.h"
 #include "security/SecurityPolicy.h"
 #include "security/IApprovalHandler.h"
@@ -117,6 +120,43 @@ int main(int argc, char* argv[]) {
     registry.register_tool(std::make_unique<ea::tool::SearchTool>());
     registry.register_tool(std::make_unique<ea::tool::WebTool>(&http_client));
     registry.register_tool(std::make_unique<ea::tool::MemoryTool>(memory.get()));
+
+    // 7.5. Connect MCP servers and register their tools
+    std::vector<std::shared_ptr<ea::mcp::McpClient>> mcp_clients;
+
+    for (auto& server_cfg : cfg.mcp_servers) {
+        EA_INFO("Connecting MCP server: {}", server_cfg.name);
+
+        ea::mcp::StdioTransport::Config transport_cfg;
+        transport_cfg.command = server_cfg.command;
+        transport_cfg.args = server_cfg.args;
+        transport_cfg.env = server_cfg.env;
+
+        auto transport = std::make_unique<ea::mcp::StdioTransport>(std::move(transport_cfg));
+        auto client = std::make_shared<ea::mcp::McpClient>(std::move(transport));
+
+        auto conn_result = client->connect();
+        if (!conn_result.ok()) {
+            EA_ERROR("MCP server '{}' connection failed: {}", server_cfg.name, conn_result.error().message);
+            continue;
+        }
+
+        auto tools_result = client->list_tools();
+        if (!tools_result.ok()) {
+            EA_ERROR("MCP server '{}' list_tools failed: {}", server_cfg.name, tools_result.error().message);
+            client->disconnect();
+            continue;
+        }
+
+        auto toolset = std::make_unique<ea::tool::Toolset>(server_cfg.name);
+        for (auto& spec : tools_result.value()) {
+            toolset->add(std::make_unique<ea::mcp::McpToolAdapter>(client, spec, server_cfg.dangerous));
+        }
+        registry.register_toolset(std::move(toolset));
+        mcp_clients.push_back(client);
+
+        EA_INFO("MCP server '{}' connected with {} tools", server_cfg.name, tools_result.value().size());
+    }
 
     // 8. Create agent loop
     ea::agent::AgentLoop loop(

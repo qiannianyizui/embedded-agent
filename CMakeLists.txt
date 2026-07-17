@@ -20,6 +20,7 @@ option(EA_ENABLE_TOOLS_WEB  "Enable web tool (requires TLS)" ON)
 option(EA_ENABLE_TOOLS_SHELL "Enable shell tool"           ON)
 option(EA_ENABLE_ROUTER     "Enable model router provider" OFF)
 option(EA_ENABLE_FALLBACK   "Enable provider fallback"     OFF)
+option(EA_ENABLE_MCP        "Enable MCP client"            ON)
 
 # --- Embedded mode auto-configuration ---
 if(EA_MODE_EMBEDDED)
@@ -27,6 +28,7 @@ if(EA_MODE_EMBEDDED)
     set(EA_ENABLE_TOOLS_WEB OFF CACHE BOOL "Disable web tool for embedded" FORCE)
     set(EA_ENABLE_ROUTER OFF CACHE BOOL "Disable router for embedded" FORCE)
     set(EA_ENABLE_FALLBACK OFF CACHE BOOL "Disable fallback for embedded" FORCE)
+    set(EA_ENABLE_MCP OFF CACHE BOOL "Disable MCP for embedded" FORCE)
 endif()
 
 if(EA_MODE_SERVER)
@@ -92,6 +94,7 @@ add_subdirectory(src/memory)
 add_subdirectory(src/provider)
 add_subdirectory(src/tool)
 add_subdirectory(src/agent)
+add_subdirectory(src/mcp)
 
 option(ENABLE_TESTS "Build tests" OFF)
 if(ENABLE_TESTS)
@@ -139,6 +142,7 @@ add_library(embedded-agent-core STATIC
     $<TARGET_OBJECTS:ea-tool>
     $<TARGET_OBJECTS:ea-memory>
     $<TARGET_OBJECTS:ea-agent>
+    $<TARGET_OBJECTS:ea-mcp>
     $<TARGET_OBJECTS:ea-platform>
     $<TARGET_OBJECTS:ea-config>
     $<TARGET_OBJECTS:ea-security>

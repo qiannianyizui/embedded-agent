@@ -22,7 +22,7 @@ Result<void> McpClient::connect() {
     auto init_result = send_request("initialize", params);
     if (!init_result.ok()) {
         transport_->stop();
-        return init_result;
+        return init_result.error();
     }
 
     auto& response = init_result.value();

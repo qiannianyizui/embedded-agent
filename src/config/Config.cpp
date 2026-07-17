@@ -83,6 +83,30 @@ Result<AppConfig> load(const std::string& config_path) {
             }
         }
 
+        if (data.contains("mcp")) {
+            auto mcp = toml::find(data, "mcp");
+            if (mcp.contains("servers")) {
+                auto servers = toml::find<std::vector<toml::value>>(mcp, "servers");
+                for (const auto& server_val : servers) {
+                    const auto& server = server_val.as_table();
+                    McpServerConfig sc;
+                    sc.name = toml::find<std::string>(server_val, "name");
+                    sc.command = toml::find<std::string>(server_val, "command");
+                    if (server.find("args") != server.end()) {
+                        sc.args = toml::find<std::vector<std::string>>(server_val, "args");
+                    }
+                    if (server.find("env") != server.end()) {
+                        auto env_table = toml::find<toml::table>(server_val, "env");
+                        for (const auto& [k, v] : env_table) {
+                            sc.env[k] = v.as_string();
+                        }
+                    }
+                    sc.dangerous = toml::find_or<bool>(server_val, "dangerous", false);
+                    cfg.mcp_servers.push_back(std::move(sc));
+                }
+            }
+        }
+
     } catch (const toml::syntax_error& e) {
         return Error::parse(std::string("TOML parse error: ") + e.what());
     } catch (const std::exception& e) {

@@ -41,6 +41,7 @@ add_executable(ea-tests
     test_integration_agent_memory.cpp
     test_integration_provider_tool.cpp
     test_integration_full_pipeline.cpp
+    test_mcp_client.cpp
 )
 target_link_libraries(ea-tests PRIVATE
     ea-common
@@ -49,6 +50,7 @@ target_link_libraries(ea-tests PRIVATE
     ea-provider
     ea-tool
     ea-agent
+    ea-mcp
     ea-platform
     ea-security
     nlohmann_json::nlohmann_json

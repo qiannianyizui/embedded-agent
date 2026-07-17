@@ -2,6 +2,7 @@
 #include "common/base/Result.h"
 #include "common/net/TlsConfig.h"
 #include "common/net/RetryPolicy.h"
+#include <map>
 #include <string>
 #include <vector>
 #include <chrono>
@@ -44,11 +45,20 @@ struct AgentConfig {
     int compression_keep_recent_turns = 4;
 };
 
+struct McpServerConfig {
+    std::string name;
+    std::string command;
+    std::vector<std::string> args;
+    std::map<std::string, std::string> env;
+    bool dangerous = false;
+};
+
 struct AppConfig {
     ProviderConfig provider;
     MemoryConfig memory;
     SecurityConfig security;
     AgentConfig agent;
+    std::vector<McpServerConfig> mcp_servers;
     std::string config_path;
 };
 

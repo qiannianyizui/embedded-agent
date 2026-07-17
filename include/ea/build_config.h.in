@@ -12,3 +12,4 @@
 #cmakedefine EA_ENABLE_TOOLS_SHELL
 #cmakedefine EA_ENABLE_ROUTER
 #cmakedefine EA_ENABLE_FALLBACK
+#cmakedefine EA_ENABLE_MCP
