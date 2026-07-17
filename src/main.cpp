@@ -8,6 +8,7 @@
 #include "tool/WebTool.h"
 #include "tool/MemoryTool.h"
 #include "agent/AgentLoop.h"
+#include "agent/LoggingEventListener.h"
 #include "agent/ContextCompressor.h"
 #include "agent/SubagentOrchestrator.h"
 #include "agent/DelegateTool.h"
@@ -199,6 +200,11 @@ int main(int argc, char* argv[]) {
         approval.get(),
         compressor.get()
     );
+
+    // 8.5. Add event listeners
+    if (debug) {
+        loop.add_listener(std::make_shared<ea::agent::LoggingEventListener>());
+    }
 
     // 9. Interactive loop
     std::string input;
