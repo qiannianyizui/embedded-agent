@@ -1,4 +1,5 @@
 #include "CallProviderStep.h"
+#include "agent/AgentEvent.h"
 #include "common/io/Logger.h"
 
 namespace ea::agent {
@@ -66,6 +67,18 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
         ctx.response.content = std::move(accumulated_content);
         ctx.response.tool_calls = std::move(accumulated_calls);
         ctx.response.stop_reason = accumulated_calls.empty() ? "stop" : "tool_calls";
+
+        // Emit LLMResponse event
+        if (ctx.emit_fn) {
+            AgentEvent event;
+            event.type = AgentEventType::LLMResponse;
+            event.iteration = ctx.iteration;
+            event.agent_id = ctx.agent_id;
+            event.assistant_output = ctx.response.content;
+            event.usage = ctx.response.usage;
+            ctx.emit_fn(event);
+        }
+
         return {};
     }
 
@@ -98,6 +111,17 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
         done.type = StreamChunk::Type::Done;
         ctx.stream_callback(done);
 
+        // Emit LLMResponse event
+        if (ctx.emit_fn) {
+            AgentEvent event;
+            event.type = AgentEventType::LLMResponse;
+            event.iteration = ctx.iteration;
+            event.agent_id = ctx.agent_id;
+            event.assistant_output = ctx.response.content;
+            event.usage = ctx.response.usage;
+            ctx.emit_fn(event);
+        }
+
         return {};
     }
 
@@ -109,6 +133,18 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
     }
 
     ctx.response = std::move(response.value());
+
+    // Emit LLMResponse event
+    if (ctx.emit_fn) {
+        AgentEvent event;
+        event.type = AgentEventType::LLMResponse;
+        event.iteration = ctx.iteration;
+        event.agent_id = ctx.agent_id;
+        event.assistant_output = ctx.response.content;
+        event.usage = ctx.response.usage;
+        ctx.emit_fn(event);
+    }
+
     return {};
 }
 

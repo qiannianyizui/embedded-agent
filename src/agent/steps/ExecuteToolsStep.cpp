@@ -1,4 +1,5 @@
 #include "ExecuteToolsStep.h"
+#include "agent/AgentEvent.h"
 #include "tool/ToolOutputConfig.h"
 #include "common/io/Logger.h"
 
@@ -59,6 +60,17 @@ Result<void> ExecuteToolsStep::execute(TurnContext& ctx) {
             // Approved — continue to execute
         }
 
+        // Emit ToolCallStart event
+        if (ctx.emit_fn) {
+            AgentEvent event;
+            event.type = AgentEventType::ToolCallStart;
+            event.iteration = ctx.iteration;
+            event.agent_id = ctx.agent_id;
+            event.tool_name = tc.name;
+            event.tool_arguments = tc.arguments;
+            ctx.emit_fn(event);
+        }
+
         // 3. Execute the tool
         auto result = ctx.registry->execute(tc.name, tc.arguments);
         ToolResult tool_result;
@@ -76,6 +88,18 @@ Result<void> ExecuteToolsStep::execute(TurnContext& ctx) {
 
         EA_DEBUG("Tool {} result: {} bytes, error={}", tc.name,
                  ctx.tool_results.back().output.size(), ctx.tool_results.back().is_error);
+
+        // Emit ToolCallEnd event
+        if (ctx.emit_fn) {
+            AgentEvent event;
+            event.type = AgentEventType::ToolCallEnd;
+            event.iteration = ctx.iteration;
+            event.agent_id = ctx.agent_id;
+            event.tool_name = tc.name;
+            event.tool_result = ctx.tool_results.back().output;
+            event.tool_error = ctx.tool_results.back().is_error;
+            ctx.emit_fn(event);
+        }
     }
 
     return {};
