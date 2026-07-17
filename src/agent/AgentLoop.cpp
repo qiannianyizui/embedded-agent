@@ -1,4 +1,5 @@
 #include "AgentLoop.h"
+#include "AgentEvent.h"
 #include "SystemPrompt.h"
 #include "platform/Platform.h"
 #include "common/io/Logger.h"
@@ -9,6 +10,7 @@
 #include "steps/LoopDetectStep.h"
 #include "steps/ExecuteToolsStep.h"
 #include "steps/CollectResultsStep.h"
+#include <algorithm>
 
 namespace ea::agent {
 
@@ -54,6 +56,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
     for (int i = 0; i < config_.max_iterations; ++i) {
         if (interrupted_) {
             EA_WARN("Agent loop interrupted at iteration {}", i);
+            emit(AgentEventType::Interrupt, TurnContext(history_, interrupted_));
             return Error::timeout("agent loop interrupted");
         }
 
@@ -66,16 +69,27 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         ctx.registry = registry_;
         ctx.system_prompt = system_prompt_;
         ctx.stream_callback = stream_fn_;
+        ctx.emit_fn = [this](const AgentEvent& e) { emit_event(e); };
+
+        // Emit TurnStart
+        emit(AgentEventType::TurnStart, ctx);
 
         // Run step chain
         auto result = run_step_chain(ctx, steps_);
         if (!result.ok()) {
+            AgentEvent err_event;
+            err_event.type = AgentEventType::Error;
+            err_event.iteration = ctx.iteration;
+            err_event.agent_id = ctx.agent_id;
+            err_event.error_message = result.error().message;
+            emit_event(err_event);
             return result;
         }
 
         // Output final response if stopping
         // In streaming mode, content is already delivered via StreamFn — skip OutputFn
         if (ctx.should_stop) {
+            emit(AgentEventType::TurnEnd, ctx);
             if (!config_.stream || !stream_fn_) {
                 if (output_ && !ctx.response.content.empty()) {
                     output_(ctx.response.content);
@@ -149,6 +163,56 @@ void AgentLoop::add_step(std::unique_ptr<ITurnStep> step) {
 
 void AgentLoop::set_steps(std::vector<std::unique_ptr<ITurnStep>> steps) {
     steps_ = std::move(steps);
+}
+
+void AgentLoop::add_listener(std::shared_ptr<IEventListener> listener) {
+    listeners_.push_back(std::move(listener));
+}
+
+void AgentLoop::remove_listener(const std::shared_ptr<IEventListener>& listener) {
+    auto it = std::find(listeners_.begin(), listeners_.end(), listener);
+    if (it != listeners_.end()) {
+        listeners_.erase(it);
+    }
+}
+
+void AgentLoop::emit(AgentEventType type, const TurnContext& ctx) {
+    if (listeners_.empty()) return;
+
+    AgentEvent event;
+    event.type = type;
+    event.iteration = ctx.iteration;
+    event.agent_id = ctx.agent_id;
+
+    switch (type) {
+    case AgentEventType::TurnStart:
+        for (auto it = ctx.messages.rbegin(); it != ctx.messages.rend(); ++it) {
+            if (it->role == Role::User) {
+                event.user_input = it->content;
+                break;
+            }
+        }
+        break;
+    case AgentEventType::TurnEnd:
+        event.assistant_output = ctx.response.content;
+        break;
+    case AgentEventType::LLMResponse:
+        event.assistant_output = ctx.response.content;
+        event.usage = ctx.response.usage;
+        break;
+    case AgentEventType::Interrupt:
+        break;
+    default:
+        break;
+    }
+
+    emit_event(event);
+}
+
+void AgentLoop::emit_event(const AgentEvent& event) {
+    for (const auto& listener : listeners_) {
+        listener->on_event(event);
+    }
 }
 
 }  // namespace ea::agent

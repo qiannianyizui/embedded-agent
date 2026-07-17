@@ -3,6 +3,7 @@
 #include "core/Types.h"
 #include "core/IProvider.h"
 #include "tool/ToolRegistry.h"
+#include "AgentEvent.h"
 #include <vector>
 #include <string>
 #include <atomic>
@@ -50,6 +51,12 @@ struct TurnContext {
 
     // Streaming callback — when set, CallProviderStep uses stream_chat
     std::function<void(const StreamChunk&)> stream_callback;
+
+    // Agent identifier (empty for main agent, set for subagents)
+    std::string agent_id;
+
+    // Event emission callback — set by AgentLoop for step-level events
+    std::function<void(const AgentEvent&)> emit_fn;
 
     TurnContext(std::vector<Message>& msgs, std::atomic<bool>& intr)
         : messages(msgs), interrupted(intr) {}

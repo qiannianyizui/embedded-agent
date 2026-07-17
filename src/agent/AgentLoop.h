@@ -6,6 +6,7 @@
 #include "common/base/Result.h"
 #include "TurnContext.h"
 #include "ITurnStep.h"
+#include "IEventListener.h"
 #include "LoopDetector.h"
 #include "security/SecurityPolicy.h"
 #include "security/IApprovalHandler.h"
@@ -52,8 +53,14 @@ public:
     void add_step(std::unique_ptr<ITurnStep> step);
     void set_steps(std::vector<std::unique_ptr<ITurnStep>> steps);
 
+    // Event listener management
+    void add_listener(std::shared_ptr<IEventListener> listener);
+    void remove_listener(const std::shared_ptr<IEventListener>& listener);
+
 private:
     void build_system_prompt_once();
+    void emit(AgentEventType type, const TurnContext& ctx);
+    void emit_event(const AgentEvent& event);
 
     IProvider* provider_;
     ToolRegistry* registry_;
@@ -72,6 +79,7 @@ private:
     // Step chain
     std::vector<std::unique_ptr<ITurnStep>> steps_;
     LoopDetector loop_detector_;
+    std::vector<std::shared_ptr<IEventListener>> listeners_;
 };
 
 }  // namespace ea::agent
