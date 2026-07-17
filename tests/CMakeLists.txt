@@ -44,6 +44,7 @@ add_executable(ea-tests
     test_mcp_client.cpp
     test_subagent.cpp
     test_streaming.cpp
+    test_events.cpp
 )
 target_link_libraries(ea-tests PRIVATE
     ea-common
