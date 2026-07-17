@@ -43,6 +43,7 @@ add_executable(ea-tests
     test_integration_full_pipeline.cpp
     test_mcp_client.cpp
     test_subagent.cpp
+    test_streaming.cpp
 )
 target_link_libraries(ea-tests PRIVATE
     ea-common
