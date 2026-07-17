@@ -231,7 +231,7 @@ TEST_CASE("Stream interruption via StreamInterrupted", "[streaming]") {
     std::atomic<bool> interrupted{false};
     int chunk_count = 0;
 
-    auto stream_fn = [&](const StreamChunk& chunk) {
+    auto stream_fn = [&](const StreamChunk& /*chunk*/) {
         chunk_count++;
         if (chunk_count == 1) {
             // Simulate interrupt after first chunk
