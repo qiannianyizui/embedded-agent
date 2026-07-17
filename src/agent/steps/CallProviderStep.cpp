@@ -30,6 +30,78 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
     }
 
     ChatOptions opts;
+
+    // Path 1: Streaming — provider supports it and callback is set
+    if (ctx.stream_callback && ctx.provider->capabilities().streaming) {
+        std::string accumulated_content;
+        std::vector<ToolCall> accumulated_calls;
+
+        try {
+            auto result = ctx.provider->stream_chat(
+                messages, ctx.tool_specs, "",
+                [&](const StreamChunk& chunk) {
+                    if (ctx.interrupted) throw StreamInterrupted{};
+                    ctx.stream_callback(chunk);
+
+                    if (chunk.type == StreamChunk::Type::Content) {
+                        accumulated_content += chunk.data;
+                    }
+                    if (chunk.type == StreamChunk::Type::ToolCallEnd && chunk.tool_call) {
+                        accumulated_calls.push_back(chunk.tool_call.value());
+                    }
+                },
+                opts
+            );
+
+            if (!result.ok()) {
+                EA_ERROR("LLM stream call failed: {}", result.error().message);
+                return result.error();
+            }
+        } catch (const StreamInterrupted&) {
+            return Error::timeout("stream interrupted");
+        } catch (const std::exception& e) {
+            return Error::net(std::string("stream error: ") + e.what());
+        }
+
+        ctx.response.content = std::move(accumulated_content);
+        ctx.response.tool_calls = std::move(accumulated_calls);
+        ctx.response.stop_reason = accumulated_calls.empty() ? "stop" : "tool_calls";
+        return {};
+    }
+
+    // Path 2: Degraded streaming — callback set but provider doesn't support streaming
+    if (ctx.stream_callback) {
+        auto response = ctx.provider->chat(messages, ctx.tool_specs, "", opts);
+        if (!response.ok()) {
+            EA_ERROR("LLM call failed: {}", response.error().message);
+            return response.error();
+        }
+
+        ctx.response = response.value();
+
+        // Simulate Content chunk
+        if (!ctx.response.content.empty()) {
+            StreamChunk chunk;
+            chunk.type = StreamChunk::Type::Content;
+            chunk.data = ctx.response.content;
+            ctx.stream_callback(chunk);
+        }
+        // Simulate ToolCallEnd chunks
+        for (const auto& tc : ctx.response.tool_calls) {
+            StreamChunk chunk;
+            chunk.type = StreamChunk::Type::ToolCallEnd;
+            chunk.tool_call = tc;
+            ctx.stream_callback(chunk);
+        }
+        // Simulate Done
+        StreamChunk done;
+        done.type = StreamChunk::Type::Done;
+        ctx.stream_callback(done);
+
+        return {};
+    }
+
+    // Path 3: Non-streaming — original behavior
     auto response = ctx.provider->chat(messages, ctx.tool_specs, "", opts);
     if (!response.ok()) {
         EA_ERROR("LLM call failed: {}", response.error().message);
