@@ -174,13 +174,27 @@ int main(int argc, char* argv[]) {
     }
 
     // 8. Create agent loop
+    ea::agent::AgentLoop::StreamFn stream_fn;
+
+    if (cfg.agent.stream) {
+        stream_fn = [](const ea::StreamChunk& chunk) {
+            if (chunk.type == ea::StreamChunk::Type::Content) {
+                std::cout << chunk.data << std::flush;
+            } else if (chunk.type == ea::StreamChunk::Type::Done) {
+                std::cout << std::endl;
+            }
+            // ToolCallBegin/Delta/End are silent in CLI mode
+            // Server mode can forward these via WebSocket
+        };
+    }
+
     ea::agent::AgentLoop loop(
         provider.get(), &registry, memory.get(),
-        ea::agent::AgentLoop::Config{cfg.agent.max_iterations},
-        [](const std::string& text) {
-            std::cout << text << std::endl;
+        ea::agent::AgentLoop::Config{
+            cfg.agent.max_iterations, 65536, 100, true, cfg.agent.stream
         },
-        nullptr,  // stream_fn — not used in CLI mode
+        [](const std::string& text) { std::cout << text << std::endl; },
+        stream_fn,
         security.get(),
         approval.get(),
         compressor.get()

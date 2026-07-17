@@ -46,6 +46,8 @@ struct AgentConfig {
     int compression_keep_recent_turns = 4;
     // Subagent delegation
     std::vector<agent::SubagentConfig> subagents;
+    // Streaming output
+    bool stream = true;
 };
 
 struct McpServerConfig {
