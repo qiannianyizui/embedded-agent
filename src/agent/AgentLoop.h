@@ -27,15 +27,18 @@ public:
         int max_tool_output_bytes = 65536;
         int max_messages = 100;
         bool auto_memory = true;
+        bool stream = true;  // Enable streaming output
     };
 
     using OutputFn = std::function<void(const std::string&)>;
+    using StreamFn = std::function<void(const StreamChunk&)>;
 
     AgentLoop(IProvider* provider,
               ToolRegistry* registry,
               IMemory* memory,
               Config config,
               OutputFn output,
+              StreamFn stream_fn = nullptr,
               security::SecurityPolicy* policy = nullptr,
               security::IApprovalHandler* approval = nullptr,
               ContextCompressor* compressor = nullptr);
@@ -57,6 +60,7 @@ private:
     IMemory* memory_;
     Config config_;
     OutputFn output_;
+    StreamFn stream_fn_;
     security::SecurityPolicy* policy_;
     security::IApprovalHandler* approval_;
     ContextCompressor* compressor_;

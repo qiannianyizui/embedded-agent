@@ -17,6 +17,7 @@ AgentLoop::AgentLoop(IProvider* provider,
                      IMemory* memory,
                      Config config,
                      OutputFn output,
+                     StreamFn stream_fn,
                      security::SecurityPolicy* policy,
                      security::IApprovalHandler* approval,
                      ContextCompressor* compressor)
@@ -25,6 +26,7 @@ AgentLoop::AgentLoop(IProvider* provider,
     , memory_(memory)
     , config_(std::move(config))
     , output_(std::move(output))
+    , stream_fn_(std::move(stream_fn))
     , policy_(policy)
     , approval_(approval)
     , compressor_(compressor)
@@ -63,6 +65,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         ctx.provider = provider_;
         ctx.registry = registry_;
         ctx.system_prompt = system_prompt_;
+        ctx.stream_callback = stream_fn_;
 
         // Run step chain
         auto result = run_step_chain(ctx, steps_);
@@ -71,11 +74,13 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         }
 
         // Output final response if stopping
-        if (ctx.should_stop && output_ && !ctx.response.content.empty()) {
-            output_(ctx.response.content);
-        }
-
+        // In streaming mode, content is already delivered via StreamFn — skip OutputFn
         if (ctx.should_stop) {
+            if (!config_.stream || !stream_fn_) {
+                if (output_ && !ctx.response.content.empty()) {
+                    output_(ctx.response.content);
+                }
+            }
             return {};
         }
     }

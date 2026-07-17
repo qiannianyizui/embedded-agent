@@ -24,6 +24,7 @@ Result<std::string> Subagent::execute(const std::string& task) {
         provider_, registry_, memory_,
         AgentLoop::Config{config_.max_iterations},
         [&](const std::string& text) { output = text; },
+        nullptr,  // stream_fn — subagents don't stream
         nullptr,  // policy — subagents don't need approval flow
         nullptr,  // approval handler
         nullptr   // compressor

@@ -180,6 +180,7 @@ int main(int argc, char* argv[]) {
         [](const std::string& text) {
             std::cout << text << std::endl;
         },
+        nullptr,  // stream_fn — not used in CLI mode
         security.get(),
         approval.get(),
         compressor.get()

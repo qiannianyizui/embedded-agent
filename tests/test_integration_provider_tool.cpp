@@ -281,6 +281,7 @@ TEST_CASE("Approval: safe tool executes without approval", "[integration][approv
         nullptr, &registry, nullptr,
         ea::agent::AgentLoop::Config{3},
         [](const std::string&) {},
+        nullptr,  // stream_fn
         nullptr,
         &approval
     );
@@ -304,6 +305,7 @@ TEST_CASE("Approval: dangerous tool approved executes normally", "[integration][
         &provider, &registry, nullptr,
         ea::agent::AgentLoop::Config{3},
         [](const std::string&) {},
+        nullptr,  // stream_fn
         nullptr,
         &approval
     );
@@ -328,6 +330,7 @@ TEST_CASE("Approval: dangerous tool rejected returns error result", "[integratio
         &provider, &registry, nullptr,
         ea::agent::AgentLoop::Config{3},
         [](const std::string&) {},
+        nullptr,  // stream_fn
         nullptr,
         &approval
     );
@@ -351,6 +354,7 @@ TEST_CASE("Approval: dangerous tool aborted stops agent loop", "[integration][ap
         &provider, &registry, nullptr,
         ea::agent::AgentLoop::Config{3},
         [](const std::string&) {},
+        nullptr,  // stream_fn
         nullptr,
         &approval
     );
@@ -372,6 +376,7 @@ TEST_CASE("Approval: null handler allows dangerous tools without approval", "[in
         &provider, &registry, nullptr,
         ea::agent::AgentLoop::Config{3},
         [](const std::string&) {},
+        nullptr,  // stream_fn
         nullptr,
         nullptr
     );
