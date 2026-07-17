@@ -6,8 +6,15 @@
 #include <vector>
 #include <string>
 #include <atomic>
+#include <functional>
+#include <exception>
 
 namespace ea::agent {
+
+// Thrown inside stream_chat on_chunk callback to break out of streaming
+struct StreamInterrupted : std::exception {
+    const char* what() const noexcept override { return "stream interrupted"; }
+};
 
 struct TurnContext {
     // Non-copyable — holds reference to atomic and message history
@@ -40,6 +47,9 @@ struct TurnContext {
 
     // System prompt (built once, reused)
     std::string system_prompt;
+
+    // Streaming callback — when set, CallProviderStep uses stream_chat
+    std::function<void(const StreamChunk&)> stream_callback;
 
     TurnContext(std::vector<Message>& msgs, std::atomic<bool>& intr)
         : messages(msgs), interrupted(intr) {}
