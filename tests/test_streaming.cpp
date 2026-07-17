@@ -124,16 +124,20 @@ TEST_CASE("Streaming accumulates complete LLMResponse", "[streaming]") {
     });
 
     ToolRegistry registry;
-    std::string output;
-    auto stream_fn = [](const StreamChunk&) {};
+    std::string accumulated;
+    auto stream_fn = [&](const StreamChunk& chunk) {
+        if (chunk.type == StreamChunk::Type::Content) {
+            accumulated += chunk.data;
+        }
+    };
 
     AgentLoop loop(provider.get(), &registry, nullptr,
-                   AgentLoop::Config{}, [&](const std::string& t) { output = t; }, stream_fn);
+                   AgentLoop::Config{}, [](const std::string&) {}, stream_fn);
 
     auto result = loop.run("test");
     REQUIRE(result.ok());
-    // In streaming mode, OutputFn should NOT be called
-    REQUIRE(output.empty());
+    // Verify accumulated content from all Content chunks
+    REQUIRE(accumulated == "Part1 Part2");
 }
 
 TEST_CASE("Streaming tool call accumulation", "[streaming]") {
@@ -224,7 +228,6 @@ TEST_CASE("Stream interruption via StreamInterrupted", "[streaming]") {
         StreamChunk{StreamChunk::Type::Done, "", std::nullopt, std::nullopt}
     });
 
-    ToolRegistry registry;
     std::atomic<bool> interrupted{false};
     int chunk_count = 0;
 
