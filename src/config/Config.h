@@ -2,6 +2,7 @@
 #include "common/base/Result.h"
 #include "common/net/TlsConfig.h"
 #include "common/net/RetryPolicy.h"
+#include "agent/SubagentConfig.h"
 #include <map>
 #include <string>
 #include <vector>
@@ -43,6 +44,8 @@ struct AgentConfig {
     bool compression_enable = true;
     int compression_max_tokens = 8000;
     int compression_keep_recent_turns = 4;
+    // Subagent delegation
+    std::vector<agent::SubagentConfig> subagents;
 };
 
 struct McpServerConfig {

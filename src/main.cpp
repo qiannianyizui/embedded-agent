@@ -9,6 +9,8 @@
 #include "tool/MemoryTool.h"
 #include "agent/AgentLoop.h"
 #include "agent/ContextCompressor.h"
+#include "agent/SubagentOrchestrator.h"
+#include "agent/DelegateTool.h"
 #include "mcp/McpClient.h"
 #include "mcp/StdioTransport.h"
 #include "mcp/McpToolAdapter.h"
@@ -156,6 +158,19 @@ int main(int argc, char* argv[]) {
         mcp_clients.push_back(client);
 
         EA_INFO("MCP server '{}' connected with {} tools", server_cfg.name, tools_result.value().size());
+    }
+
+    // 7.6. Create subagent orchestrator
+    auto orchestrator = std::make_unique<ea::agent::SubagentOrchestrator>(
+        provider.get(), &registry, memory.get());
+
+    for (auto& sub_cfg : cfg.agent.subagents) {
+        EA_INFO("Registering subagent template: {}", sub_cfg.name);
+        orchestrator->register_template(sub_cfg);
+    }
+
+    if (!cfg.agent.subagents.empty()) {
+        registry.register_tool(std::make_unique<ea::agent::DelegateTool>(orchestrator.get()));
     }
 
     // 8. Create agent loop

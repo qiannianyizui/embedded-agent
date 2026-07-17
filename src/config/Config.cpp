@@ -49,6 +49,24 @@ Result<AppConfig> load(const std::string& config_path) {
                 cfg.agent.compression_max_tokens = toml::find_or<int>(compression, "max_tokens", cfg.agent.compression_max_tokens);
                 cfg.agent.compression_keep_recent_turns = toml::find_or<int>(compression, "keep_recent_turns", cfg.agent.compression_keep_recent_turns);
             }
+            if (agent.contains("subagents")) {
+                auto subs = toml::find<std::vector<toml::value>>(agent, "subagents");
+                for (const auto& sub_val : subs) {
+                    const auto& sub = sub_val.as_table();
+                    agent::SubagentConfig sc;
+                    sc.name = toml::find<std::string>(sub_val, "name");
+                    sc.description = toml::find<std::string>(sub_val, "description");
+                    sc.model = toml::find_or<std::string>(sub_val, "model", "");
+                    sc.system_prompt = toml::find_or<std::string>(sub_val, "system_prompt", "");
+                    if (sub.find("toolsets") != sub.end()) {
+                        sc.toolsets = toml::find<std::vector<std::string>>(sub_val, "toolsets");
+                    }
+                    sc.shared_memory = toml::find_or<bool>(sub_val, "shared_memory", true);
+                    sc.max_iterations = toml::find_or<int>(sub_val, "max_iterations", 20);
+                    sc.dangerous = toml::find_or<bool>(sub_val, "dangerous", false);
+                    cfg.agent.subagents.push_back(std::move(sc));
+                }
+            }
         }
 
         if (data.contains("provider")) {
