@@ -46,7 +46,10 @@ std::unique_ptr<IProvider> create(const config::ProviderConfig& cfg,
     } else if (cfg.type == "ollama") {
         OllamaProvider::Config pcfg;
         pcfg.base_url = cfg.base_url;
+        pcfg.default_model = cfg.default_model;
         pcfg.timeout = cfg.timeout;
+        pcfg.tls = cfg.tls;
+        pcfg.retry = cfg.retry;
 
         if (opts.enable_retry && opts.max_retries > 0) {
             auto primary = std::make_shared<OllamaProvider>(std::move(pcfg));
