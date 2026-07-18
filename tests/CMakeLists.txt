@@ -7,6 +7,7 @@ add_executable(ea-tests
     test_memory_sqlite.cpp
     test_provider_openai.cpp
     test_provider_anthropic.cpp
+    test_provider_ollama.cpp
     test_tool_registry.cpp
     test_toolset.cpp
     test_tool_shell.cpp
