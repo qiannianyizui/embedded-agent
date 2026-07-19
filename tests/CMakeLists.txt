@@ -47,6 +47,7 @@ add_executable(ea-tests
     test_streaming.cpp
     test_events.cpp
     test_session_manager.cpp
+    test_http_server.cpp
 )
 target_link_libraries(ea-tests PRIVATE
     ea-common
@@ -60,6 +61,7 @@ target_link_libraries(ea-tests PRIVATE
     ea-security
     ea-server
     nlohmann_json::nlohmann_json
+    httplib::httplib
     Catch2::Catch2WithMain
 )
 target_include_directories(ea-tests PRIVATE
