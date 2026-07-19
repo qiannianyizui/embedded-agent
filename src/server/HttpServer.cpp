@@ -3,6 +3,8 @@
 #include "common/io/Logger.h"
 #include <httplib.h>
 #include <chrono>
+#include <set>
+#include <thread>
 
 namespace ea::server {
 
@@ -351,20 +353,127 @@ void HttpServer::setup_routes() {
 
     // Approvals
     server_->Get("/api/approvals", [this](const httplib::Request&, httplib::Response& res) {
+        auto sessions = sessions_.list();
+        json arr = json::array();
+
+        for (auto* session : sessions) {
+            if (!session->approval) continue;
+            auto pending = session->approval->pending_list();
+            for (auto* pa : pending) {
+                json obj;
+                obj["id"] = pa->id;
+                obj["session_id"] = session->id;
+                obj["tool"] = pa->request.tool_name;
+                obj["arguments"] = pa->request.arguments;
+                obj["description"] = pa->request.description;
+                arr.push_back(obj);
+            }
+        }
+
         set_cors_headers(&res);
-        res.set_content(json::array().dump(), "application/json");
+        res.set_content(arr.dump(), "application/json");
     });
 
-    server_->Post(R"(/api/approvals/([^/]+)/resolve)", [this](const httplib::Request&, httplib::Response& res) {
-        // Full implementation in Task 5
+    server_->Post(R"(/api/approvals/([^/]+)/resolve)", [this](const httplib::Request& req, httplib::Response& res) {
+        std::string approval_id = req.matches[1];
+
+        // Parse request body
+        json body;
+        try {
+            body = json::parse(req.body);
+        } catch (...) {
+            set_cors_headers(&res);
+            res.status = 400;
+            res.set_content(error_response("invalid_json", "Failed to parse request body").dump(), "application/json");
+            return;
+        }
+
+        if (!body.contains("decision") || !body["decision"].is_string()) {
+            set_cors_headers(&res);
+            res.status = 400;
+            res.set_content(error_response("missing_field", "Request must contain a 'decision' string field").dump(), "application/json");
+            return;
+        }
+
+        std::string decision_str = body["decision"].get<std::string>();
+        security::ApprovalDecision decision;
+        if (decision_str == "approved") {
+            decision = security::ApprovalDecision::Approved;
+        } else if (decision_str == "rejected") {
+            decision = security::ApprovalDecision::Rejected;
+        } else if (decision_str == "aborted") {
+            decision = security::ApprovalDecision::Aborted;
+        } else {
+            set_cors_headers(&res);
+            res.status = 400;
+            res.set_content(error_response("invalid_decision", "Decision must be 'approved', 'rejected', or 'aborted'").dump(), "application/json");
+            return;
+        }
+
+        // Search across all sessions for the matching approval ID
+        auto sessions = sessions_.list();
+        bool found = false;
+        for (auto* session : sessions) {
+            if (!session->approval) continue;
+            if (session->approval->resolve(approval_id, decision)) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            set_cors_headers(&res);
+            res.status = 404;
+            res.set_content(error_response("approval_not_found", "Approval " + approval_id + " not found").dump(), "application/json");
+            return;
+        }
+
         set_cors_headers(&res);
         res.set_content(json{{"ok", true}}.dump(), "application/json");
     });
 
     server_->Get("/api/approvals/stream", [this](const httplib::Request&, httplib::Response& res) {
-        // Full implementation in Task 5
         set_cors_headers(&res);
-        res.set_content(error_response("not_implemented", "Approval stream not yet implemented").dump(), "application/json");
+
+        res.set_chunked_content_provider(
+            "text/event-stream",
+            [this](size_t /*offset*/, httplib::DataSink& sink) -> bool {
+                // Send initial connected comment
+                std::string connected = ": connected\n\n";
+                sink.write(connected.data(), connected.size());
+
+                std::set<std::string> sent_ids;
+
+                // Poll for up to 5 minutes (150 iterations * 2 seconds)
+                for (int i = 0; i < 150; ++i) {
+                    auto sessions = sessions_.list();
+                    for (auto* session : sessions) {
+                        if (!session->approval) continue;
+                        auto pending = session->approval->pending_list();
+                        for (auto* pa : pending) {
+                            if (sent_ids.count(pa->id)) continue;
+                            sent_ids.insert(pa->id);
+
+                            json evt;
+                            evt["type"] = "approval_request";
+                            evt["id"] = pa->id;
+                            evt["session_id"] = session->id;
+                            evt["tool"] = pa->request.tool_name;
+                            evt["arguments"] = pa->request.arguments;
+                            evt["description"] = pa->request.description;
+
+                            std::string data = "data: " + evt.dump() + "\n\n";
+                            sink.write(data.data(), data.size());
+                        }
+                    }
+
+                    std::this_thread::sleep_for(std::chrono::seconds(2));
+                }
+
+                sink.done();
+                return true;
+            }
+        );
     });
 }
 

@@ -275,3 +275,179 @@ TEST_CASE("History endpoint returns messages array", "[server][http]") {
     REQUIRE(body.contains("messages"));
     REQUIRE(body["messages"].is_array());
 }
+
+TEST_CASE("Approvals list returns array", "[server][http][approval]") {
+    ServerFixture fx;
+    httplib::Client cli(fx.base_url());
+
+    auto res = cli.Get("/api/approvals");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+
+    auto body = json::parse(res->body);
+    REQUIRE(body.is_array());
+}
+
+TEST_CASE("Resolve nonexistent approval returns 404", "[server][http][approval]") {
+    ServerFixture fx;
+    httplib::Client cli(fx.base_url());
+
+    json req;
+    req["decision"] = "approved";
+
+    auto res = cli.Post("/api/approvals/999/resolve", req.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 404);
+}
+
+TEST_CASE("Resolve approval with invalid decision returns 400", "[server][http][approval]") {
+    ServerFixture fx;
+    httplib::Client cli(fx.base_url());
+
+    json req;
+    req["decision"] = "maybe";
+
+    auto res = cli.Post("/api/approvals/1/resolve", req.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 400);
+
+    auto body = json::parse(res->body);
+    REQUIRE(body.contains("error"));
+}
+
+TEST_CASE("Resolve approval with missing decision returns 400", "[server][http][approval]") {
+    ServerFixture fx;
+    httplib::Client cli(fx.base_url());
+
+    json req = json::object();
+
+    auto res = cli.Post("/api/approvals/1/resolve", req.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 400);
+}
+
+TEST_CASE("Resolve approval with invalid JSON returns 400", "[server][http][approval]") {
+    ServerFixture fx;
+    httplib::Client cli(fx.base_url());
+
+    auto res = cli.Post("/api/approvals/1/resolve", "not json", "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 400);
+}
+
+TEST_CASE("Approvals list includes pending approvals from sessions", "[server][http][approval]") {
+    ServerFixture fx;
+    httplib::Client cli(fx.base_url());
+
+    // Create a session
+    json create_req = json::object();
+    auto create_res = cli.Post("/api/sessions", create_req.dump(), "application/json");
+    auto create_body = json::parse(create_res->body);
+    std::string session_id = create_body["id"];
+
+    // Get the session and inject a pending approval directly
+    auto* session = fx.server->test_sessions().get(session_id);
+    REQUIRE(session != nullptr);
+    REQUIRE(session->approval != nullptr);
+
+    // Request an approval in a separate thread (it blocks until resolved)
+    std::thread approval_thread([session]() {
+        security::ApprovalRequest ar;
+        ar.tool_name = "shell";
+        ar.arguments = json{{"command", "ls -la"}};
+        ar.description = "List files";
+        session->approval->request_approval(ar);
+    });
+
+    // Give the approval thread time to register the pending approval
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // List approvals — should see the pending one
+    auto res = cli.Get("/api/approvals");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+
+    auto body = json::parse(res->body);
+    REQUIRE(body.is_array());
+    REQUIRE(body.size() >= 1);
+
+    bool found = false;
+    for (const auto& a : body) {
+        if (a["tool"] == "shell" && a["session_id"] == session_id) {
+            found = true;
+            REQUIRE(a.contains("id"));
+            REQUIRE(a.contains("arguments"));
+            REQUIRE(a.contains("description"));
+            REQUIRE(a["description"] == "List files");
+            break;
+        }
+    }
+    REQUIRE(found);
+
+    // Resolve the approval so the thread can finish
+    std::string approval_id;
+    for (const auto& a : body) {
+        if (a["tool"] == "shell" && a["session_id"] == session_id) {
+            approval_id = a["id"].get<std::string>();
+            break;
+        }
+    }
+
+    json resolve_req;
+    resolve_req["decision"] = "approved";
+    auto resolve_res = cli.Post("/api/approvals/" + approval_id + "/resolve",
+                                resolve_req.dump(), "application/json");
+    REQUIRE(resolve_res != nullptr);
+    REQUIRE(resolve_res->status == 200);
+
+    auto resolve_body = json::parse(resolve_res->body);
+    REQUIRE(resolve_body["ok"] == true);
+
+    approval_thread.join();
+}
+
+TEST_CASE("Resolve approval with rejected decision", "[server][http][approval]") {
+    ServerFixture fx;
+    httplib::Client cli(fx.base_url());
+
+    // Create a session
+    json create_req = json::object();
+    auto create_res = cli.Post("/api/sessions", create_req.dump(), "application/json");
+    auto create_body = json::parse(create_res->body);
+    std::string session_id = create_body["id"];
+
+    auto* session = fx.server->test_sessions().get(session_id);
+
+    // Request an approval in a separate thread
+    std::thread approval_thread([session]() {
+        security::ApprovalRequest ar;
+        ar.tool_name = "file_write";
+        ar.arguments = json{{"path", "/tmp/test"}};
+        ar.description = "Write file";
+        session->approval->request_approval(ar);
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Get the approval ID
+    auto list_res = cli.Get("/api/approvals");
+    auto list_body = json::parse(list_res->body);
+    std::string approval_id;
+    for (const auto& a : list_body) {
+        if (a["tool"] == "file_write") {
+            approval_id = a["id"].get<std::string>();
+            break;
+        }
+    }
+    REQUIRE_FALSE(approval_id.empty());
+
+    // Resolve with "rejected"
+    json resolve_req;
+    resolve_req["decision"] = "rejected";
+    auto resolve_res = cli.Post("/api/approvals/" + approval_id + "/resolve",
+                                resolve_req.dump(), "application/json");
+    REQUIRE(resolve_res != nullptr);
+    REQUIRE(resolve_res->status == 200);
+
+    approval_thread.join();
+}
