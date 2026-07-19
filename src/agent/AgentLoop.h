@@ -11,6 +11,7 @@
 #include "security/SecurityPolicy.h"
 #include "security/IApprovalHandler.h"
 #include "agent/ContextCompressor.h"
+#include "IMemoryStrategy.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -42,7 +43,8 @@ public:
               StreamFn stream_fn = nullptr,
               security::SecurityPolicy* policy = nullptr,
               security::IApprovalHandler* approval = nullptr,
-              ContextCompressor* compressor = nullptr);
+              ContextCompressor* compressor = nullptr,
+              IMemoryStrategy* strategy = nullptr);
 
     Result<void> run(const std::string& user_input);
     void interrupt();
@@ -71,6 +73,7 @@ private:
     security::SecurityPolicy* policy_;
     security::IApprovalHandler* approval_;
     ContextCompressor* compressor_;
+    IMemoryStrategy* strategy_;
 
     std::vector<Message> history_;
     std::string system_prompt_;

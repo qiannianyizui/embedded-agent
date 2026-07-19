@@ -22,7 +22,8 @@ AgentLoop::AgentLoop(IProvider* provider,
                      StreamFn stream_fn,
                      security::SecurityPolicy* policy,
                      security::IApprovalHandler* approval,
-                     ContextCompressor* compressor)
+                     ContextCompressor* compressor,
+                     IMemoryStrategy* strategy)
     : provider_(provider)
     , registry_(registry)
     , memory_(memory)
@@ -32,6 +33,7 @@ AgentLoop::AgentLoop(IProvider* provider,
     , policy_(policy)
     , approval_(approval)
     , compressor_(compressor)
+    , strategy_(strategy)
 {
     // Build default step chain
     steps_.push_back(std::make_unique<HistoryPruneStep>(config_.max_messages));
@@ -95,6 +97,21 @@ Result<void> AgentLoop::run(const std::string& user_input) {
                     output_(ctx.response.content);
                 }
             }
+
+            // After successful turn, let memory strategy process this turn
+            if (strategy_ && memory_ && provider_) {
+                // Find last assistant output
+                std::string last_output;
+                for (auto it = history_.rbegin(); it != history_.rend(); ++it) {
+                    if (it->role == Role::Assistant) {
+                        last_output = it->content;
+                        break;
+                    }
+                }
+                MemoryStrategyContext mctx{history_, memory_, provider_, user_input, last_output};
+                strategy_->on_turn_end(mctx);
+            }
+
             return {};
         }
     }
@@ -142,6 +159,14 @@ void AgentLoop::build_system_prompt_once() {
     }
 
     system_prompt_ = build_system_prompt(ctx);
+
+    // Inject memory strategy prompt if available
+    if (strategy_ && memory_) {
+        auto mem_prompt = strategy_->build_memory_prompt(history_, memory_);
+        if (!mem_prompt.empty()) {
+            system_prompt_ += "\n" + mem_prompt;
+        }
+    }
 }
 
 void AgentLoop::interrupt() {
