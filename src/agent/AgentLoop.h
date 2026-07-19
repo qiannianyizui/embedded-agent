@@ -76,6 +76,7 @@ private:
     IMemoryStrategy* strategy_;
 
     std::vector<Message> history_;
+    std::string base_system_prompt_;
     std::string system_prompt_;
     std::atomic<bool> interrupted_{false};
 

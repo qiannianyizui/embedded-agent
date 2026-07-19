@@ -58,6 +58,10 @@ Session* SessionManager::create(IProvider* provider,
         300);  // 5 minute default timeout
 
     // Create AgentLoop for this session
+    // TODO: pass IMemoryStrategy to AgentLoop constructor so server-mode sessions
+    // can use multi-turn memory strategies (e.g., SummarizeStrategy). Requires
+    // SessionManager to accept and store strategy objects, plus HttpServer to
+    // create them. This is a follow-up task for Phase 4D+.
     session->loop = std::make_shared<AgentLoop>(
         provider,
         registry,

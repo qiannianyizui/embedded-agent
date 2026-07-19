@@ -52,8 +52,17 @@ Result<void> AgentLoop::run(const std::string& user_input) {
     // Add user message to history
     history_.push_back({Role::User, user_input, std::nullopt, std::nullopt, std::nullopt});
 
-    // Build system prompt once
+    // Build system prompt once (base part)
     build_system_prompt_once();
+
+    // Refresh strategy prompt each turn so new facts/summaries appear
+    if (strategy_ && memory_) {
+        auto mem_prompt = strategy_->build_memory_prompt(history_, memory_);
+        system_prompt_ = base_system_prompt_;
+        if (!mem_prompt.empty()) {
+            system_prompt_ += "\n" + mem_prompt;
+        }
+    }
 
     for (int i = 0; i < config_.max_iterations; ++i) {
         if (interrupted_) {
@@ -116,8 +125,19 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         }
     }
 
-    // Max iterations reached
+    // Max iterations reached — still call on_turn_end so strategy can process
     EA_WARN("Max iterations ({}) reached", config_.max_iterations);
+    if (strategy_ && memory_ && provider_) {
+        std::string last_output;
+        for (auto it = history_.rbegin(); it != history_.rend(); ++it) {
+            if (it->role == Role::Assistant) {
+                last_output = it->content;
+                break;
+            }
+        }
+        MemoryStrategyContext mctx{history_, memory_, provider_, user_input, last_output};
+        strategy_->on_turn_end(mctx);
+    }
     if (output_) {
         output_("[Warning: Reached maximum iteration limit]");
     }
@@ -125,7 +145,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
 }
 
 void AgentLoop::build_system_prompt_once() {
-    if (!system_prompt_.empty()) return;
+    if (!base_system_prompt_.empty()) return;
 
     PromptContext ctx;
     ctx.soul = "You are a helpful AI assistant.";
@@ -158,15 +178,8 @@ void AgentLoop::build_system_prompt_once() {
         }
     }
 
-    system_prompt_ = build_system_prompt(ctx);
-
-    // Inject memory strategy prompt if available
-    if (strategy_ && memory_) {
-        auto mem_prompt = strategy_->build_memory_prompt(history_, memory_);
-        if (!mem_prompt.empty()) {
-            system_prompt_ += "\n" + mem_prompt;
-        }
-    }
+    base_system_prompt_ = build_system_prompt(ctx);
+    system_prompt_ = base_system_prompt_;
 }
 
 void AgentLoop::interrupt() {
@@ -179,6 +192,7 @@ const std::vector<Message>& AgentLoop::history() const {
 
 void AgentLoop::clear_history() {
     history_.clear();
+    base_system_prompt_.clear();
     system_prompt_.clear();
 }
 
