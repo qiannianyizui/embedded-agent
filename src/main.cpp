@@ -10,6 +10,7 @@
 #include "agent/AgentLoop.h"
 #include "agent/LoggingEventListener.h"
 #include "agent/ContextCompressor.h"
+#include "agent/ProgressiveMemoryStrategy.h"
 #include "agent/SubagentOrchestrator.h"
 #include "agent/DelegateTool.h"
 #include "mcp/McpClient.h"
@@ -114,6 +115,19 @@ int main(int argc, char* argv[]) {
         compressor = std::make_unique<ea::agent::ContextCompressor>(provider.get(), comp_cfg);
     }
 
+    // 5.7. Create memory strategy
+    std::unique_ptr<ea::agent::IMemoryStrategy> strategy;
+    if (cfg.memory_strategy.type == "progressive") {
+        ea::agent::ProgressiveMemoryConfig strat_cfg;
+        strat_cfg.working_turns = cfg.memory_strategy.working_turns;
+        strat_cfg.short_term_max = cfg.memory_strategy.short_term_max;
+        strat_cfg.long_term_importance = cfg.memory_strategy.long_term_importance;
+        strat_cfg.enable_fact_extraction = cfg.memory_strategy.enable_fact_extraction;
+        strat_cfg.enable_auto_summarize = cfg.memory_strategy.enable_auto_summarize;
+        strategy = std::make_unique<ea::agent::ProgressiveMemoryStrategy>(strat_cfg);
+    }
+    // type == "none" → strategy stays nullptr → NullMemoryStrategy behavior (no-op)
+
     // 6. Create HTTP client for WebTool
     ea::net::HttpClient http_client;
 
@@ -199,7 +213,8 @@ int main(int argc, char* argv[]) {
         stream_fn,
         security.get(),
         approval.get(),
-        compressor.get()
+        compressor.get(),
+        strategy.get()
     );
 
     // 8.5. Add event listeners
