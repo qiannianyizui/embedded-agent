@@ -95,6 +95,7 @@ add_subdirectory(src/provider)
 add_subdirectory(src/tool)
 add_subdirectory(src/agent)
 add_subdirectory(src/mcp)
+add_subdirectory(src/server)
 
 option(ENABLE_TESTS "Build tests" OFF)
 if(ENABLE_TESTS)
@@ -146,6 +147,7 @@ add_library(embedded-agent-core STATIC
     $<TARGET_OBJECTS:ea-platform>
     $<TARGET_OBJECTS:ea-config>
     $<TARGET_OBJECTS:ea-security>
+    $<TARGET_OBJECTS:ea-server>
 )
 target_link_libraries(embedded-agent-core PUBLIC
     ea-core

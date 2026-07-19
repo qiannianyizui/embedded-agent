@@ -58,12 +58,21 @@ struct McpServerConfig {
     bool dangerous = false;
 };
 
+struct ServerConfig {
+    std::string host = "0.0.0.0";
+    int port = 8080;
+    int max_sessions = 100;
+    std::string cors_origin = "*";
+    int session_idle_timeout = 3600;  // seconds
+};
+
 struct AppConfig {
     ProviderConfig provider;
     MemoryConfig memory;
     SecurityConfig security;
     AgentConfig agent;
     std::vector<McpServerConfig> mcp_servers;
+    ServerConfig server;
     std::string config_path;
 };
 

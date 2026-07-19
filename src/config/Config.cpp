@@ -126,6 +126,15 @@ Result<AppConfig> load(const std::string& config_path) {
             }
         }
 
+        if (data.contains("server")) {
+            auto server = toml::find(data, "server");
+            cfg.server.host = toml::find_or<std::string>(server, "host", cfg.server.host);
+            cfg.server.port = toml::find_or<int>(server, "port", cfg.server.port);
+            cfg.server.max_sessions = toml::find_or<int>(server, "max_sessions", cfg.server.max_sessions);
+            cfg.server.cors_origin = toml::find_or<std::string>(server, "cors_origin", cfg.server.cors_origin);
+            cfg.server.session_idle_timeout = toml::find_or<int>(server, "session_idle_timeout", cfg.server.session_idle_timeout);
+        }
+
     } catch (const toml::syntax_error& e) {
         return Error::parse(std::string("TOML parse error: ") + e.what());
     } catch (const std::exception& e) {
