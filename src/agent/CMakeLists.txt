@@ -3,6 +3,7 @@ add_library(ea-agent OBJECT
     SystemPrompt.cpp
     LoopDetector.cpp
     ContextCompressor.cpp
+    ProgressiveMemoryStrategy.cpp
     Subagent.cpp
     SubagentOrchestrator.cpp
     steps/CallProviderStep.cpp
