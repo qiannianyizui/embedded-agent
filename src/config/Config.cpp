@@ -85,6 +85,15 @@ Result<AppConfig> load(const std::string& config_path) {
             cfg.memory.backend = toml::find_or<std::string>(memory, "backend", cfg.memory.backend);
             cfg.memory.path = toml::find_or<std::string>(memory, "path", cfg.memory.path);
             cfg.memory.enable_fts5 = toml::find_or<bool>(memory, "enable_fts5", cfg.memory.enable_fts5);
+            if (memory.contains("strategy")) {
+                auto strategy = toml::find(memory, "strategy");
+                cfg.memory_strategy.type = toml::find_or<std::string>(strategy, "type", cfg.memory_strategy.type);
+                cfg.memory_strategy.working_turns = toml::find_or<int>(strategy, "working_turns", cfg.memory_strategy.working_turns);
+                cfg.memory_strategy.short_term_max = toml::find_or<int>(strategy, "short_term_max", cfg.memory_strategy.short_term_max);
+                cfg.memory_strategy.long_term_importance = toml::find_or<int>(strategy, "long_term_importance", cfg.memory_strategy.long_term_importance);
+                cfg.memory_strategy.enable_fact_extraction = toml::find_or<bool>(strategy, "enable_fact_extraction", cfg.memory_strategy.enable_fact_extraction);
+                cfg.memory_strategy.enable_auto_summarize = toml::find_or<bool>(strategy, "enable_auto_summarize", cfg.memory_strategy.enable_auto_summarize);
+            }
         }
 
         if (data.contains("security")) {

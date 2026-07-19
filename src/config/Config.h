@@ -66,9 +66,19 @@ struct ServerConfig {
     int session_idle_timeout = 3600;  // seconds
 };
 
+struct MemoryStrategyConfig {
+    std::string type = "progressive";       // "progressive" | "none"
+    int working_turns = 6;
+    int short_term_max = 20;
+    int long_term_importance = 8;
+    bool enable_fact_extraction = true;
+    bool enable_auto_summarize = true;
+};
+
 struct AppConfig {
     ProviderConfig provider;
     MemoryConfig memory;
+    MemoryStrategyConfig memory_strategy;
     SecurityConfig security;
     AgentConfig agent;
     std::vector<McpServerConfig> mcp_servers;
