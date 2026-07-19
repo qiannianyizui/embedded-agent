@@ -46,6 +46,7 @@ add_executable(ea-tests
     test_subagent.cpp
     test_streaming.cpp
     test_events.cpp
+    test_session_manager.cpp
 )
 target_link_libraries(ea-tests PRIVATE
     ea-common
@@ -57,6 +58,7 @@ target_link_libraries(ea-tests PRIVATE
     ea-mcp
     ea-platform
     ea-security
+    ea-server
     nlohmann_json::nlohmann_json
     Catch2::Catch2WithMain
 )
