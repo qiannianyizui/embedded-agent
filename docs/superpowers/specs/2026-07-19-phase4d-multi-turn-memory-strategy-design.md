@@ -82,8 +82,8 @@ struct ProgressiveMemoryConfig {
     int long_term_importance = 8;     // Importance level for long-term facts
     bool enable_fact_extraction = true;   // Enable LLM key fact extraction
     bool enable_auto_summarize = true;    // Enable automatic summarization of old messages
-    std::string fact_extraction_prompt;   // Customizable extraction prompt
-    std::string summarization_prompt;     // Customizable summarization prompt
+    std::string fact_extraction_prompt;   // Customizable extraction prompt (default: see Default Prompts below)
+    std::string summarization_prompt;     // Customizable summarization prompt (default: see Default Prompts below)
 };
 
 class ProgressiveMemoryStrategy : public IMemoryStrategy {
@@ -126,8 +126,8 @@ private:
      a. Take oldest (history.size() - working_turns*2) messages
      b. LLM summarize them
      c. memory->store(summary, "short_term", importance=5)
-     d. Remove summarized messages from history
-     e. Insert [Summary] breadcrumb message
+     d. Remove summarized messages from history (in-place via ctx.history reference)
+     e. Insert [Summary] breadcrumb message at removal point
    Failure: Fall back to simple truncation (keep head + tail)
 
 3. Short-term Eviction
@@ -139,7 +139,7 @@ private:
 ### build_memory_prompt Flow
 
 ```
-1. Query long-term: memory->recall(last_user_input, 3) → key facts
+1. Query long-term: extract last user message from history, then memory->recall(last_user_msg, 3) → key facts
 2. Query short-term: memory->list(short_term_max, 0) → recent summaries
 3. Assemble:
    "# Conversation Context\n
@@ -230,6 +230,24 @@ enable_auto_summarize = true
 ## Namespace
 
 `ea::agent` — memory strategy is an agent-level concern, not a memory-backend concern.
+
+## Default Prompts
+
+**Fact extraction prompt** (used when `fact_extraction_prompt` is empty):
+```
+Extract key facts from this conversation turn. Return each fact as a separate line starting with "- ".
+Focus on: user preferences, decisions made, important entities, constraints, and outcomes.
+Omit: greetings, acknowledgments, and routine exchanges.
+
+User: {user_input}
+Assistant: {assistant_output}
+```
+
+**Summarization prompt** (used when `summarization_prompt` is empty):
+```
+Summarize the following conversation segment concisely, preserving key facts, decisions, and outcomes.
+Omit greetings and repetitions. Focus on information that would be needed in future turns.
+```
 
 ## Out of Scope
 
