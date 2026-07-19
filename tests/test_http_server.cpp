@@ -199,3 +199,79 @@ TEST_CASE("CORS headers present", "[server][http]") {
     REQUIRE(res != nullptr);
     REQUIRE(res->has_header("Access-Control-Allow-Origin"));
 }
+
+TEST_CASE("Chat endpoint returns response", "[server][http][chat]") {
+    ServerFixture fx;
+    httplib::Client cli(fx.base_url());
+
+    json create_req = json::object();
+    auto create_res = cli.Post("/api/sessions", create_req.dump(), "application/json");
+    auto create_body = json::parse(create_res->body);
+    std::string id = create_body["id"];
+
+    json chat_req;
+    chat_req["message"] = "Hello";
+
+    auto res = cli.Post("/api/sessions/" + id + "/chat", chat_req.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+
+    auto body = json::parse(res->body);
+    REQUIRE(body.contains("content"));
+}
+
+TEST_CASE("Chat with running session returns 409", "[server][http][chat]") {
+    ServerFixture fx;
+    httplib::Client cli(fx.base_url());
+
+    json create_req = json::object();
+    auto create_res = cli.Post("/api/sessions", create_req.dump(), "application/json");
+    auto create_body = json::parse(create_res->body);
+    std::string id = create_body["id"];
+
+    // Manually set running flag to simulate active session
+    auto* session = fx.server->test_sessions().get(id);
+    session->running.store(true);
+
+    json chat_req;
+    chat_req["message"] = "Hello";
+
+    auto res = cli.Post("/api/sessions/" + id + "/chat", chat_req.dump(), "application/json");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 409);
+}
+
+TEST_CASE("Interrupt endpoint returns ok", "[server][http]") {
+    ServerFixture fx;
+    httplib::Client cli(fx.base_url());
+
+    json create_req = json::object();
+    auto create_res = cli.Post("/api/sessions", create_req.dump(), "application/json");
+    auto create_body = json::parse(create_res->body);
+    std::string id = create_body["id"];
+
+    auto res = cli.Post("/api/sessions/" + id + "/interrupt");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+
+    auto body = json::parse(res->body);
+    REQUIRE(body["ok"] == true);
+}
+
+TEST_CASE("History endpoint returns messages array", "[server][http]") {
+    ServerFixture fx;
+    httplib::Client cli(fx.base_url());
+
+    json create_req = json::object();
+    auto create_res = cli.Post("/api/sessions", create_req.dump(), "application/json");
+    auto create_body = json::parse(create_res->body);
+    std::string id = create_body["id"];
+
+    auto res = cli.Get("/api/sessions/" + id + "/history");
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+
+    auto body = json::parse(res->body);
+    REQUIRE(body.contains("messages"));
+    REQUIRE(body["messages"].is_array());
+}

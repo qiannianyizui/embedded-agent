@@ -146,9 +146,65 @@ void HttpServer::setup_routes() {
             res.set_content(error_response("session_not_found", "Session " + id + " not found").dump(), "application/json");
             return;
         }
-        // Full implementation in Task 4
+
+        // Check if session is already running
+        bool expected = false;
+        if (!session->running.compare_exchange_strong(expected, true)) {
+            set_cors_headers(&res);
+            res.status = 409;
+            res.set_content(error_response("session_busy", "Session " + id + " is already processing a request").dump(), "application/json");
+            return;
+        }
+
+        // Parse request body
+        json body;
+        try {
+            body = json::parse(req.body);
+        } catch (...) {
+            session->running.store(false);
+            set_cors_headers(&res);
+            res.status = 400;
+            res.set_content(error_response("invalid_json", "Failed to parse request body").dump(), "application/json");
+            return;
+        }
+
+        if (!body.contains("message") || !body["message"].is_string()) {
+            session->running.store(false);
+            set_cors_headers(&res);
+            res.status = 400;
+            res.set_content(error_response("missing_field", "Request must contain a 'message' string field").dump(), "application/json");
+            return;
+        }
+
+        std::string message = body["message"].get<std::string>();
+
+        // Run the agent loop
+        auto result = session->loop->run(message);
+        session->running.store(false);
+
+        if (!result.ok()) {
+            set_cors_headers(&res);
+            res.status = 500;
+            res.set_content(error_response("agent_error", result.error().message).dump(), "application/json");
+            return;
+        }
+
+        // Find the last assistant message in history
+        std::string content;
+        const auto& history = session->loop->history();
+        for (auto it = history.rbegin(); it != history.rend(); ++it) {
+            if (it->role == Role::Assistant) {
+                content = it->content;
+                break;
+            }
+        }
+
+        json resp;
+        resp["content"] = content;
+        resp["stop_reason"] = "stop";
+
         set_cors_headers(&res);
-        res.set_content(error_response("not_implemented", "Chat endpoint not yet implemented").dump(), "application/json");
+        res.set_content(resp.dump(), "application/json");
     });
 
     server_->Get(R"(/api/sessions/([^/]+)/stream)", [this](const httplib::Request& req, httplib::Response& res) {
@@ -160,9 +216,69 @@ void HttpServer::setup_routes() {
             res.set_content(error_response("session_not_found", "Session " + id + " not found").dump(), "application/json");
             return;
         }
-        // Full implementation in Task 4
+
+        std::string message = req.get_param_value("message");
+        if (message.empty()) {
+            set_cors_headers(&res);
+            res.status = 400;
+            res.set_content(error_response("missing_field", "Query parameter 'message' is required").dump(), "application/json");
+            return;
+        }
+
+        // Check if session is already running
+        bool expected = false;
+        if (!session->running.compare_exchange_strong(expected, true)) {
+            set_cors_headers(&res);
+            res.status = 409;
+            res.set_content(error_response("session_busy", "Session " + id + " is already processing a request").dump(), "application/json");
+            return;
+        }
+
         set_cors_headers(&res);
-        res.set_content(error_response("not_implemented", "Stream endpoint not yet implemented").dump(), "application/json");
+
+        // SSE: run the agent loop and wrap the response in SSE format.
+        // NOTE: AgentLoop doesn't currently support setting StreamFn after construction,
+        // so this works like the chat endpoint but wraps the response in SSE events.
+        // A future enhancement can add proper streaming by reconstructing the AgentLoop with a StreamFn.
+        res.set_chunked_content_provider(
+            "text/event-stream",
+            [this, session, message](size_t /*offset*/, httplib::DataSink& sink) -> bool {
+                auto result = session->loop->run(message);
+
+                if (!result.ok()) {
+                    // Send error event
+                    json err;
+                    err["type"] = "error";
+                    err["error"] = result.error().message;
+                    std::string err_data = "data: " + err.dump() + "\n\n";
+                    sink.write(err_data.data(), err_data.size());
+                } else {
+                    // Find the last assistant message
+                    std::string content;
+                    const auto& history = session->loop->history();
+                    for (auto it = history.rbegin(); it != history.rend(); ++it) {
+                        if (it->role == Role::Assistant) {
+                            content = it->content;
+                            break;
+                        }
+                    }
+
+                    // Send done event with the full content
+                    json done;
+                    done["type"] = "done";
+                    done["content"] = content;
+                    done["stop_reason"] = "stop";
+                    std::string done_data = "data: " + done.dump() + "\n\n";
+                    sink.write(done_data.data(), done_data.size());
+                }
+
+                sink.done();
+                return true;
+            },
+            [session](bool /*success*/) {
+                session->running.store(false);
+            }
+        );
     });
 
     server_->Post(R"(/api/sessions/([^/]+)/interrupt)", [this](const httplib::Request& req, httplib::Response& res) {
@@ -174,7 +290,9 @@ void HttpServer::setup_routes() {
             res.set_content(error_response("session_not_found", "Session " + id + " not found").dump(), "application/json");
             return;
         }
-        // Full implementation in Task 4
+
+        session->loop->interrupt();
+
         set_cors_headers(&res);
         res.set_content(json{{"ok", true}}.dump(), "application/json");
     });
@@ -188,9 +306,45 @@ void HttpServer::setup_routes() {
             res.set_content(error_response("session_not_found", "Session " + id + " not found").dump(), "application/json");
             return;
         }
-        // Full implementation in Task 4
+
+        const auto& history = session->loop->history();
+        json messages = json::array();
+
+        for (const auto& msg : history) {
+            json m;
+            // Map Role enum to string
+            switch (msg.role) {
+                case Role::System:    m["role"] = "system"; break;
+                case Role::User:      m["role"] = "user"; break;
+                case Role::Assistant: m["role"] = "assistant"; break;
+                case Role::Tool:      m["role"] = "tool"; break;
+            }
+            m["content"] = msg.content;
+
+            if (msg.name.has_value()) {
+                m["name"] = msg.name.value();
+            }
+            if (msg.tool_calls.has_value()) {
+                json tc_arr = json::array();
+                for (const auto& tc : msg.tool_calls.value()) {
+                    json tc_obj;
+                    tc_obj["id"] = tc.id;
+                    tc_obj["name"] = tc.name;
+                    tc_obj["arguments"] = tc.arguments;
+                    tc_arr.push_back(tc_obj);
+                }
+                m["tool_calls"] = tc_arr;
+            }
+            if (msg.tool_call_id.has_value()) {
+                m["tool_call_id"] = msg.tool_call_id.value();
+            }
+
+            messages.push_back(m);
+        }
+
         json body;
-        body["messages"] = json::array();
+        body["messages"] = messages;
+
         set_cors_headers(&res);
         res.set_content(body.dump(), "application/json");
     });
