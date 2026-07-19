@@ -24,6 +24,7 @@
 #include "common/io/Logger.h"
 #include "common/io/FileSystem.h"
 #include "common/net/HttpClient.h"
+#include "server/HttpServer.h"
 #include <CLI/CLI.hpp>
 #include <iostream>
 #include <string>
@@ -206,7 +207,24 @@ int main(int argc, char* argv[]) {
         loop.add_listener(std::make_shared<ea::agent::LoggingEventListener>());
     }
 
-    // 9. Interactive loop
+    // 9. Run mode
+#ifdef EA_MODE_SERVER
+    // Server mode: start HTTP API
+    ea::server::ServerConfig srv_cfg;
+    srv_cfg.host = cfg.server.host;
+    srv_cfg.port = cfg.server.port;
+    srv_cfg.max_sessions = cfg.server.max_sessions;
+    srv_cfg.cors_origin = cfg.server.cors_origin;
+    srv_cfg.session_idle_timeout = std::chrono::seconds(cfg.server.session_idle_timeout);
+
+    auto http_server = std::make_unique<ea::server::HttpServer>(
+        srv_cfg, provider.get(), &registry, security.get(), memory.get()
+    );
+
+    EA_INFO("Server starting on {}:{}", srv_cfg.host, srv_cfg.port);
+    http_server->start();
+#else
+    // CLI mode: interactive loop
     std::string input;
     std::cout << "embedded-agent v0.1.0 (type /quit to exit)" << std::endl;
 
@@ -222,6 +240,7 @@ int main(int argc, char* argv[]) {
             std::cerr << "Error: " << result.error().message << std::endl;
         }
     }
+#endif
 
     EA_INFO("embedded-agent shutting down");
     return 0;
