@@ -4,6 +4,7 @@
 #include "common/io/Logger.h"
 #include "agent/ContextCompressor.h"
 #include <sstream>
+#include <algorithm>
 
 namespace ea::agent {
 
@@ -182,8 +183,8 @@ void ProgressiveMemoryStrategy::summarize_old_messages(MemoryStrategyContext& ct
 void ProgressiveMemoryStrategy::evict_short_term(IMemory* memory) {
     if (!memory) return;
 
-    // Count short-term entries
-    auto list_result = memory->list(config_.short_term_max + 10, 0);
+    // List with generous limit to ensure we get all short_term entries
+    auto list_result = memory->list(1000, 0);
     if (!list_result.ok()) {
         EA_WARN("Failed to list short-term memories for eviction: {}", list_result.error().message);
         return;
@@ -199,7 +200,17 @@ void ProgressiveMemoryStrategy::evict_short_term(IMemory* memory) {
 
     if (static_cast<int>(short_term_entries.size()) <= config_.short_term_max) return;
 
-    // Evict oldest entries (list returns in creation order)
+    // Sort by created_at ascending so oldest entries come first.
+    // SqliteMemory::list() returns ORDER BY created_at DESC (newest first),
+    // so we must reverse-sort to evict the oldest as the spec requires.
+    // If created_at is empty (e.g. InMemoryBackend), the existing
+    // insertion-order behavior is preserved (stable sort keeps relative order).
+    std::stable_sort(short_term_entries.begin(), short_term_entries.end(),
+        [](const MemoryEntry& a, const MemoryEntry& b) {
+            return a.created_at < b.created_at;
+        });
+
+    // Evict oldest entries
     int to_evict = static_cast<int>(short_term_entries.size()) - config_.short_term_max;
     int evicted = 0;
     for (int i = 0; i < to_evict && i < static_cast<int>(short_term_entries.size()); ++i) {
