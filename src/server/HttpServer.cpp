@@ -99,7 +99,7 @@ void HttpServer::setup_routes() {
         json resp;
         resp["id"] = session->id;
         resp["created_at"] = std::chrono::duration_cast<std::chrono::seconds>(
-            session->last_active.time_since_epoch()).count();
+            std::chrono::system_clock::now().time_since_epoch()).count();
 
         set_cors_headers(&res);
         res.set_content(resp.dump(), "application/json");
@@ -114,7 +114,7 @@ void HttpServer::setup_routes() {
             obj["id"] = s->id;
             obj["running"] = s->running.load();
             obj["last_active"] = std::chrono::duration_cast<std::chrono::seconds>(
-                s->last_active.time_since_epoch()).count();
+                std::chrono::system_clock::now().time_since_epoch()).count();
             if (!s->model.empty()) {
                 obj["model"] = s->model;
             }
@@ -127,12 +127,26 @@ void HttpServer::setup_routes() {
 
     server_->Delete(R"(/api/sessions/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
         std::string id = req.matches[1];
-        if (!sessions_.remove(id)) {
+
+        // Check if session exists first to distinguish 404 from 409
+        auto* session = sessions_.get(id);
+        if (!session) {
             set_cors_headers(&res);
             res.status = 404;
             res.set_content(error_response("session_not_found", "Session " + id + " not found").dump(), "application/json");
             return;
         }
+
+        // Session exists — check if it's running
+        if (session->running.load()) {
+            set_cors_headers(&res);
+            res.status = 409;
+            res.set_content(error_response("session_busy", "Session " + id + " is running and cannot be deleted").dump(), "application/json");
+            return;
+        }
+
+        // Not running — safe to remove
+        sessions_.remove(id);
 
         set_cors_headers(&res);
         res.set_content(json{{"ok", true}}.dump(), "application/json");
@@ -410,14 +424,27 @@ void HttpServer::setup_routes() {
             return;
         }
 
-        // Search across all sessions for the matching approval ID
-        auto sessions = sessions_.list();
+        // If session_id query parameter is provided, only search that specific session.
+        // This avoids resolving an approval in the wrong session when IDs collide
+        // (each session's PendingApprovalHandler starts next_id_ at 1).
+        // If session_id is not provided, search all sessions (may resolve wrong session
+        // if approval IDs collide across sessions).
+        std::string session_id = req.get_param_value("session_id");
         bool found = false;
-        for (auto* session : sessions) {
-            if (!session->approval) continue;
-            if (session->approval->resolve(approval_id, decision)) {
-                found = true;
-                break;
+
+        if (!session_id.empty()) {
+            auto* session = sessions_.get(session_id);
+            if (session && session->approval) {
+                found = session->approval->resolve(approval_id, decision);
+            }
+        } else {
+            auto sessions = sessions_.list();
+            for (auto* session : sessions) {
+                if (!session->approval) continue;
+                if (session->approval->resolve(approval_id, decision)) {
+                    found = true;
+                    break;
+                }
             }
         }
 

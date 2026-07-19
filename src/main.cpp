@@ -92,10 +92,10 @@ int main(int argc, char* argv[]) {
     if (security->level() == ea::security::AutonomyLevel::Full && cfg.security.auto_approve_dangerous) {
         approval = nullptr;  // Full mode + auto-approve = no approval needed
     } else if (cfg.security.approval_mode == "auto") {
-#ifdef EA_MODE_CLI
-        approval = std::make_unique<ea::security::StdinApprovalHandler>();
-#elif defined(EA_MODE_SERVER)
+#if defined(EA_MODE_SERVER)
         approval = std::make_unique<ea::security::PendingApprovalHandler>(cfg.security.approval_timeout);
+#elif defined(EA_MODE_CLI)
+        approval = std::make_unique<ea::security::StdinApprovalHandler>();
 #else
         approval = nullptr;  // Embedded mode: no interactive interface
 #endif

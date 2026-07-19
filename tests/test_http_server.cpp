@@ -292,10 +292,16 @@ TEST_CASE("Resolve nonexistent approval returns 404", "[server][http][approval]"
     ServerFixture fx;
     httplib::Client cli(fx.base_url());
 
+    // Create a session so we have a valid session_id to scope the query
+    json create_req = json::object();
+    auto create_res = cli.Post("/api/sessions", create_req.dump(), "application/json");
+    auto create_body = json::parse(create_res->body);
+    std::string session_id = create_body["id"];
+
     json req;
     req["decision"] = "approved";
 
-    auto res = cli.Post("/api/approvals/999/resolve", req.dump(), "application/json");
+    auto res = cli.Post("/api/approvals/999/resolve?session_id=" + session_id, req.dump(), "application/json");
     REQUIRE(res != nullptr);
     REQUIRE(res->status == 404);
 }
@@ -395,7 +401,7 @@ TEST_CASE("Approvals list includes pending approvals from sessions", "[server][h
 
     json resolve_req;
     resolve_req["decision"] = "approved";
-    auto resolve_res = cli.Post("/api/approvals/" + approval_id + "/resolve",
+    auto resolve_res = cli.Post("/api/approvals/" + approval_id + "/resolve?session_id=" + session_id,
                                 resolve_req.dump(), "application/json");
     REQUIRE(resolve_res != nullptr);
     REQUIRE(resolve_res->status == 200);
@@ -444,7 +450,7 @@ TEST_CASE("Resolve approval with rejected decision", "[server][http][approval]")
     // Resolve with "rejected"
     json resolve_req;
     resolve_req["decision"] = "rejected";
-    auto resolve_res = cli.Post("/api/approvals/" + approval_id + "/resolve",
+    auto resolve_res = cli.Post("/api/approvals/" + approval_id + "/resolve?session_id=" + session_id,
                                 resolve_req.dump(), "application/json");
     REQUIRE(resolve_res != nullptr);
     REQUIRE(resolve_res->status == 200);
