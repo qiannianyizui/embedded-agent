@@ -6,8 +6,9 @@
 
 namespace ea::server {
 
-SessionManager::SessionManager(const ServerConfig& config)
-    : config_(config) {}
+SessionManager::SessionManager(const ServerConfig& config,
+                                conversation::IConversationStore* conv_store)
+    : config_(config), conv_store_(conv_store) {}
 
 std::string SessionManager::generate_id() {
     // Generate "sess_" + 8 hex chars from random bytes
@@ -27,7 +28,8 @@ Session* SessionManager::create(IProvider* provider,
                                  security::SecurityPolicy* policy,
                                  const AgentLoop::Config& loop_cfg,
                                  const std::string& model,
-                                 const std::string& /*system_prompt*/) {
+                                 const std::string& /*system_prompt*/,
+                                 const std::string& conversation_id) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (static_cast<int>(sessions_.size()) >= config_.max_sessions) {
@@ -70,8 +72,23 @@ Session* SessionManager::create(IProvider* provider,
         [](const std::string& text) { (void)text; },  // Output captured via history
         nullptr,  // StreamFn set per-request
         policy,
-        session->approval.get()
+        session->approval.get(),
+        nullptr,   // compressor
+        nullptr,   // strategy (TODO from Phase 4D)
+        conv_store_
     );
+
+    // Restore conversation if conversation_id provided
+    if (!conversation_id.empty() && conv_store_) {
+        auto msgs = conv_store_->load(conversation_id);
+        if (msgs.ok() && !msgs.value().empty()) {
+            session->loop->restore_conversation(conversation_id, std::move(msgs.value()));
+            EA_INFO("Session {} restored conversation {}", session->id, conversation_id);
+        } else {
+            EA_WARN("Failed to restore conversation {}: {}",
+                    conversation_id, msgs.ok() ? "empty" : msgs.error().message);
+        }
+    }
 
     auto* ptr = session.get();
     sessions_[session->id] = std::move(session);

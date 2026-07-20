@@ -8,6 +8,7 @@
 #include "tool/ToolRegistry.h"
 #include "core/IMemory.h"
 #include "security/SecurityPolicy.h"
+#include "conversation/IConversationStore.h"
 #include "nlohmann/json.hpp"
 #include <string>
 #include <chrono>
@@ -24,7 +25,8 @@ public:
                IProvider* provider,
                tool::ToolRegistry* registry,
                security::SecurityPolicy* policy,
-               IMemory* shared_memory = nullptr);
+               IMemory* shared_memory = nullptr,
+               conversation::IConversationStore* conv_store = nullptr);
     ~HttpServer();
 
     void start();   // blocking
@@ -46,6 +48,7 @@ private:
     tool::ToolRegistry* registry_;
     security::SecurityPolicy* policy_;
     IMemory* shared_memory_;
+    conversation::IConversationStore* conv_store_;
     std::chrono::steady_clock::time_point start_time_;
     int bound_port_ = 0;
 };

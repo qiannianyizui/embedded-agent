@@ -9,6 +9,7 @@
 #include "memory/ScopedMemory.h"
 #include "memory/InMemoryBackend.h"
 #include "security/PendingApprovalHandler.h"
+#include "conversation/IConversationStore.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -34,7 +35,8 @@ struct Session {
 
 class SessionManager {
 public:
-    explicit SessionManager(const ServerConfig& config);
+    explicit SessionManager(const ServerConfig& config,
+                            conversation::IConversationStore* conv_store = nullptr);
 
     Session* create(IProvider* provider,
                     tool::ToolRegistry* registry,
@@ -42,7 +44,8 @@ public:
                     security::SecurityPolicy* policy,
                     const AgentLoop::Config& loop_cfg,
                     const std::string& model = "",
-                    const std::string& system_prompt = "");
+                    const std::string& system_prompt = "",
+                    const std::string& conversation_id = "");
 
     Session* get(const std::string& id);
     bool remove(const std::string& id);
@@ -53,6 +56,7 @@ private:
     std::string generate_id();
 
     ServerConfig config_;
+    conversation::IConversationStore* conv_store_;
     std::mutex mutex_;
     std::map<std::string, std::unique_ptr<Session>> sessions_;
     std::mt19937 rng_{std::random_device{}()};

@@ -14,14 +14,16 @@ HttpServer::HttpServer(ServerConfig config,
                        IProvider* provider,
                        tool::ToolRegistry* registry,
                        security::SecurityPolicy* policy,
-                       IMemory* shared_memory)
+                       IMemory* shared_memory,
+                       conversation::IConversationStore* conv_store)
     : config_(std::move(config))
     , server_(std::make_unique<httplib::Server>())
-    , sessions_(config_)
+    , sessions_(config_, conv_store)
     , provider_(provider)
     , registry_(registry)
     , policy_(policy)
     , shared_memory_(shared_memory)
+    , conv_store_(conv_store)
     , start_time_(std::chrono::steady_clock::now()) {
     setup_routes();
 }
@@ -85,9 +87,10 @@ void HttpServer::setup_routes() {
 
         std::string model = body.value("model", "");
         std::string system_prompt = body.value("system_prompt", "");
+        std::string conversation_id = body.value("conversation_id", "");
 
         AgentLoop::Config loop_cfg;
-        auto* session = sessions_.create(provider_, registry_, shared_memory_, policy_, loop_cfg, model, system_prompt);
+        auto* session = sessions_.create(provider_, registry_, shared_memory_, policy_, loop_cfg, model, system_prompt, conversation_id);
 
         if (!session) {
             set_cors_headers(&res);
@@ -98,6 +101,7 @@ void HttpServer::setup_routes() {
 
         json resp;
         resp["id"] = session->id;
+        resp["conversation_id"] = session->loop->conversation_id();
         resp["created_at"] = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
 
@@ -502,6 +506,150 @@ void HttpServer::setup_routes() {
             }
         );
     });
+
+    // --- Conversation API ---
+    if (conv_store_) {
+        // List conversations
+        server_->Get("/api/conversations", [this](const httplib::Request& req, httplib::Response& res) {
+            int limit = std::stoi(req.get_param_value("limit").empty() ? "50" : req.get_param_value("limit"));
+            int offset = std::stoi(req.get_param_value("offset").empty() ? "0" : req.get_param_value("offset"));
+
+            auto list = conv_store_->list(limit, offset);
+            json arr = json::array();
+            if (list.ok()) {
+                for (const auto& m : list.value()) {
+                    json obj;
+                    obj["id"] = m.id;
+                    obj["title"] = m.title;
+                    obj["model"] = m.model;
+                    obj["created_at"] = m.created_at;
+                    obj["updated_at"] = m.updated_at;
+                    obj["message_count"] = m.message_count;
+                    arr.push_back(obj);
+                }
+            }
+            set_cors_headers(&res);
+            res.set_content(json{{"conversations", arr}}.dump(), "application/json");
+        });
+
+        // Get conversation metadata
+        server_->Get(R"(/api/conversations/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+            std::string id = req.matches[1];
+            auto meta = conv_store_->get_meta(id);
+            if (!meta.ok()) {
+                set_cors_headers(&res);
+                res.status = 404;
+                res.set_content(error_response("not_found", "Conversation " + id + " not found").dump(), "application/json");
+                return;
+            }
+            json obj;
+            obj["id"] = meta.value().id;
+            obj["title"] = meta.value().title;
+            obj["model"] = meta.value().model;
+            obj["created_at"] = meta.value().created_at;
+            obj["updated_at"] = meta.value().updated_at;
+            obj["message_count"] = meta.value().message_count;
+            set_cors_headers(&res);
+            res.set_content(obj.dump(), "application/json");
+        });
+
+        // Get conversation messages
+        server_->Get(R"(/api/conversations/([^/]+)/messages)", [this](const httplib::Request& req, httplib::Response& res) {
+            std::string id = req.matches[1];
+            auto msgs = conv_store_->load(id);
+            if (!msgs.ok()) {
+                set_cors_headers(&res);
+                res.status = 404;
+                res.set_content(error_response("not_found", "Conversation " + id + " not found").dump(), "application/json");
+                return;
+            }
+            json messages = json::array();
+            for (const auto& msg : msgs.value()) {
+                json m;
+                switch (msg.role) {
+                    case Role::System:    m["role"] = "system"; break;
+                    case Role::User:      m["role"] = "user"; break;
+                    case Role::Assistant: m["role"] = "assistant"; break;
+                    case Role::Tool:      m["role"] = "tool"; break;
+                }
+                m["content"] = msg.content;
+                if (msg.name.has_value()) m["name"] = msg.name.value();
+                if (msg.tool_calls.has_value()) {
+                    json tc_arr = json::array();
+                    for (const auto& tc : msg.tool_calls.value()) {
+                        json tc_obj;
+                        tc_obj["id"] = tc.id;
+                        tc_obj["name"] = tc.name;
+                        tc_obj["arguments"] = tc.arguments;
+                        tc_arr.push_back(tc_obj);
+                    }
+                    m["tool_calls"] = tc_arr;
+                }
+                if (msg.tool_call_id.has_value()) m["tool_call_id"] = msg.tool_call_id.value();
+                messages.push_back(m);
+            }
+            set_cors_headers(&res);
+            res.set_content(json{{"messages", messages}}.dump(), "application/json");
+        });
+
+        // Delete conversation
+        server_->Delete(R"(/api/conversations/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+            std::string id = req.matches[1];
+            auto r = conv_store_->remove(id);
+            if (!r.ok()) {
+                set_cors_headers(&res);
+                res.status = 500;
+                res.set_content(error_response("delete_failed", r.error().message).dump(), "application/json");
+                return;
+            }
+            set_cors_headers(&res);
+            res.set_content(json{{"ok", true}, {"deleted", r.value()}}.dump(), "application/json");
+        });
+
+        // Export conversation as JSONL
+        server_->Get(R"(/api/conversations/([^/]+)/export)", [this](const httplib::Request& req, httplib::Response& res) {
+            std::string id = req.matches[1];
+            auto data = conv_store_->export_jsonl(id);
+            if (!data.ok()) {
+                set_cors_headers(&res);
+                res.status = 404;
+                res.set_content(error_response("not_found", "Conversation " + id + " not found").dump(), "application/json");
+                return;
+            }
+            set_cors_headers(&res);
+            res.set_content(data.value(), "application/x-jsonl");
+        });
+
+        // Import conversation from JSONL
+        server_->Post("/api/conversations/import", [this](const httplib::Request& req, httplib::Response& res) {
+            json body;
+            try {
+                body = json::parse(req.body);
+            } catch (...) {
+                set_cors_headers(&res);
+                res.status = 400;
+                res.set_content(error_response("invalid_json", "Failed to parse request body").dump(), "application/json");
+                return;
+            }
+            if (!body.contains("data") || !body["data"].is_string()) {
+                set_cors_headers(&res);
+                res.status = 400;
+                res.set_content(error_response("missing_field", "Request must contain a 'data' string field").dump(), "application/json");
+                return;
+            }
+            std::string jsonl_data = body["data"].get<std::string>();
+            std::string model = body.value("model", "");
+            auto new_id = conv_store_->import_jsonl(jsonl_data, model);
+            if (!new_id.ok()) {
+                set_cors_headers(&res);
+                res.status = 400;
+                res.set_content(error_response("import_failed", new_id.error().message).dump(), "application/json");
+                return;
+            }
+            set_cors_headers(&res);
+            res.set_content(json{{"id", new_id.value()}}.dump(), "application/json");
+        });
+    }
 }
 
 // --- Server lifecycle ---
