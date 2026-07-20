@@ -541,28 +541,7 @@ void HttpServer::setup_routes() {
             res.set_content(json{{"conversations", arr}}.dump(), "application/json");
         });
 
-        // Get conversation metadata
-        server_->Get(R"(/api/conversations/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
-            std::string id = req.matches[1];
-            auto meta = conv_store_->get_meta(id);
-            if (!meta.ok()) {
-                set_cors_headers(&res);
-                res.status = 404;
-                res.set_content(error_response("not_found", "Conversation " + id + " not found").dump(), "application/json");
-                return;
-            }
-            json obj;
-            obj["id"] = meta.value().id;
-            obj["title"] = meta.value().title;
-            obj["model"] = meta.value().model;
-            obj["created_at"] = meta.value().created_at;
-            obj["updated_at"] = meta.value().updated_at;
-            obj["message_count"] = meta.value().message_count;
-            set_cors_headers(&res);
-            res.set_content(obj.dump(), "application/json");
-        });
-
-        // Get conversation messages
+        // Get conversation messages (must be registered before the less-specific GET below)
         server_->Get(R"(/api/conversations/([^/]+)/messages)", [this](const httplib::Request& req, httplib::Response& res) {
             std::string id = req.matches[1];
             auto msgs = conv_store_->load(id);
@@ -601,6 +580,41 @@ void HttpServer::setup_routes() {
             res.set_content(json{{"messages", messages}}.dump(), "application/json");
         });
 
+        // Export conversation as JSONL (must be registered before the less-specific GET below)
+        server_->Get(R"(/api/conversations/([^/]+)/export)", [this](const httplib::Request& req, httplib::Response& res) {
+            std::string id = req.matches[1];
+            auto data = conv_store_->export_jsonl(id);
+            if (!data.ok()) {
+                set_cors_headers(&res);
+                res.status = 404;
+                res.set_content(error_response("not_found", "Conversation " + id + " not found").dump(), "application/json");
+                return;
+            }
+            set_cors_headers(&res);
+            res.set_content(data.value(), "application/x-jsonl");
+        });
+
+        // Get conversation metadata (less specific — registered after /messages and /export)
+        server_->Get(R"(/api/conversations/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
+            std::string id = req.matches[1];
+            auto meta = conv_store_->get_meta(id);
+            if (!meta.ok()) {
+                set_cors_headers(&res);
+                res.status = 404;
+                res.set_content(error_response("not_found", "Conversation " + id + " not found").dump(), "application/json");
+                return;
+            }
+            json obj;
+            obj["id"] = meta.value().id;
+            obj["title"] = meta.value().title;
+            obj["model"] = meta.value().model;
+            obj["created_at"] = meta.value().created_at;
+            obj["updated_at"] = meta.value().updated_at;
+            obj["message_count"] = meta.value().message_count;
+            set_cors_headers(&res);
+            res.set_content(obj.dump(), "application/json");
+        });
+
         // Delete conversation
         server_->Delete(R"(/api/conversations/([^/]+))", [this](const httplib::Request& req, httplib::Response& res) {
             std::string id = req.matches[1];
@@ -613,20 +627,6 @@ void HttpServer::setup_routes() {
             }
             set_cors_headers(&res);
             res.set_content(json{{"ok", true}, {"deleted", r.value()}}.dump(), "application/json");
-        });
-
-        // Export conversation as JSONL
-        server_->Get(R"(/api/conversations/([^/]+)/export)", [this](const httplib::Request& req, httplib::Response& res) {
-            std::string id = req.matches[1];
-            auto data = conv_store_->export_jsonl(id);
-            if (!data.ok()) {
-                set_cors_headers(&res);
-                res.status = 404;
-                res.set_content(error_response("not_found", "Conversation " + id + " not found").dump(), "application/json");
-                return;
-            }
-            set_cors_headers(&res);
-            res.set_content(data.value(), "application/x-jsonl");
         });
 
         // Import conversation from JSONL

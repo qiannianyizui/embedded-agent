@@ -6,6 +6,7 @@
 #include <sstream>
 #include <iomanip>
 #include <random>
+#include <mutex>
 
 namespace ea::conversation {
 
@@ -14,7 +15,9 @@ using json = nlohmann::json;
 // --- Helpers ---
 
 static std::string generate_conv_id() {
+    static std::mutex mtx;
     static std::mt19937 rng{std::random_device{}()};
+    std::lock_guard<std::mutex> lock(mtx);
     std::stringstream ss;
     ss << "conv_";
     for (int i = 0; i < 4; ++i) {
@@ -25,11 +28,13 @@ static std::string generate_conv_id() {
 
 static std::string current_iso8601() {
     auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         now.time_since_epoch()) % 1000;
-    auto time_t = std::chrono::system_clock::to_time_t(now);
+    struct tm tm_buf;
+    gmtime_r(&time_t, &tm_buf);
     std::stringstream ss;
-    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%S")
+    ss << std::put_time(&tm_buf, "%Y-%m-%dT%H:%M:%S")
        << '.' << std::setfill('0') << std::setw(3) << ms.count() << 'Z';
     return ss.str();
 }
