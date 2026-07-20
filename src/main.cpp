@@ -293,10 +293,14 @@ int main(int argc, char* argv[]) {
                 if (event.usage.input_tokens > 0 || event.usage.output_tokens > 0) {
                     auto su = tracker_->session_usage();
                     auto sc = tracker_->session_cost();
+                    auto old_flags = std::cout.flags();
+                    auto old_precision = std::cout.precision();
                     std::cout << "\n[Usage: " << su.input_tokens << " in / "
                               << su.output_tokens << " out | $"
                               << std::fixed << std::setprecision(4) << sc.total()
                               << " session]" << std::flush;
+                    std::cout.flags(old_flags);
+                    std::cout.precision(old_precision);
                 }
             }
         }
@@ -369,10 +373,14 @@ int main(int argc, char* argv[]) {
             if (budget_tracker) {
                 auto sc = budget_tracker->session_cost();
                 auto gc = budget_tracker->global_cost();
+                auto old_flags = std::cout.flags();
+                auto old_precision = std::cout.precision();
                 std::cout << "Session Cost:\n"
                           << "  Total: $" << std::fixed << std::setprecision(4) << sc.total() << "\n\n"
                           << "Global Cost:\n"
                           << "  Total: $" << gc.total() << std::endl;
+                std::cout.flags(old_flags);
+                std::cout.precision(old_precision);
             } else {
                 std::cout << "Budget tracking not enabled" << std::endl;
             }
@@ -385,14 +393,22 @@ int main(int argc, char* argv[]) {
                           << "  Input:  " << gu.input_tokens << " tokens\n"
                           << "  Output: " << gu.output_tokens << " tokens\n"
                           << "  Total:  " << gu.total_tokens() << " tokens" << std::endl;
+            } else {
+                std::cout << "Budget tracking not enabled" << std::endl;
             }
             continue;
         }
         if (input == "/cost global") {
             if (budget_tracker) {
                 auto gc = budget_tracker->global_cost();
+                auto old_flags = std::cout.flags();
+                auto old_precision = std::cout.precision();
                 std::cout << "Global Cost:\n"
                           << "  Total: $" << std::fixed << std::setprecision(4) << gc.total() << std::endl;
+                std::cout.flags(old_flags);
+                std::cout.precision(old_precision);
+            } else {
+                std::cout << "Budget tracking not enabled" << std::endl;
             }
             continue;
         }
