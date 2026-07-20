@@ -22,6 +22,7 @@
 #include "security/StdinApprovalHandler.h"
 #include "security/PendingApprovalHandler.h"
 #include "ea/build_config.h"
+#include "conversation/SqliteConversationStore.h"
 #include "common/io/Logger.h"
 #include "common/io/FileSystem.h"
 #include "common/net/HttpClient.h"
@@ -29,6 +30,7 @@
 #include <CLI/CLI.hpp>
 #include <iostream>
 #include <string>
+#include <fstream>
 
 int main(int argc, char* argv[]) {
     CLI::App app{"embedded-agent — Lightweight AI Agent for Linux & Android"};
@@ -128,6 +130,25 @@ int main(int argc, char* argv[]) {
     }
     // type == "none" → strategy stays nullptr → NullMemoryStrategy behavior (no-op)
 
+    // 5.8. Create conversation store
+    std::unique_ptr<ea::conversation::SqliteConversationStore> conv_store;
+    std::string conv_path = cfg.conversation.path;
+    if (conv_path.empty()) {
+        auto data_dir = ea::fs::config_dir();
+        if (data_dir.ok()) {
+            conv_path = data_dir.value() + "/conversations.db";
+        } else {
+            conv_path = home + "/.embedded-agent/conversations.db";
+        }
+    }
+    conv_store = std::make_unique<ea::conversation::SqliteConversationStore>(
+        ea::conversation::SqliteConversationStore::Config{conv_path});
+    auto conv_open = conv_store->open();
+    if (!conv_open.ok()) {
+        EA_ERROR("Conversation store open failed: {}", conv_open.error().message);
+        conv_store.reset();  // Continue without persistence
+    }
+
     // 6. Create HTTP client for WebTool
     ea::net::HttpClient http_client;
 
@@ -207,14 +228,15 @@ int main(int argc, char* argv[]) {
     ea::agent::AgentLoop loop(
         provider.get(), &registry, memory.get(),
         ea::agent::AgentLoop::Config{
-            cfg.agent.max_iterations, 65536, 100, true, cfg.agent.stream
+            cfg.agent.max_iterations, 65536, 100, true, cfg.agent.stream, cfg.conversation.auto_persist
         },
         [](const std::string& text) { std::cout << text << std::endl; },
         stream_fn,
         security.get(),
         approval.get(),
         compressor.get(),
-        strategy.get()
+        strategy.get(),
+        conv_store.get()   // NEW
     );
 
     // 8.5. Add event listeners
@@ -243,11 +265,86 @@ int main(int argc, char* argv[]) {
     std::string input;
     std::cout << "embedded-agent v0.1.0 (type /quit to exit)" << std::endl;
 
+    // Auto-resume last conversation
+    if (conv_store && cfg.conversation.auto_resume) {
+        auto recent = conv_store->list(1, 0);
+        if (recent.ok() && !recent.value().empty()) {
+            auto& meta = recent.value()[0];
+            auto msgs = conv_store->load(meta.id);
+            if (msgs.ok() && !msgs.value().empty()) {
+                loop.restore_conversation(meta.id, std::move(msgs.value()));
+                std::cout << "Resumed: " << meta.title
+                          << " (" << meta.message_count << " messages)" << std::endl;
+            }
+        }
+    }
+
     while (true) {
         std::cout << "\n> " << std::flush;
         if (!std::getline(std::cin, input)) break;
         if (input == "/quit" || input == "/exit") break;
         if (input.empty()) continue;
+
+        if (input == "/history") {
+            if (conv_store) {
+                auto list = conv_store->list(10, 0);
+                if (list.ok()) {
+                    for (const auto& m : list.value()) {
+                        std::cout << "  " << m.id << "  " << m.title
+                                  << "  (" << m.message_count << " msgs, " << m.updated_at << ")" << std::endl;
+                    }
+                }
+            } else {
+                std::cout << "Conversation persistence not available" << std::endl;
+            }
+            continue;
+        }
+        if (input.substr(0, 8) == "/resume ") {
+            if (conv_store) {
+                std::string cid = input.substr(8);
+                auto msgs = conv_store->load(cid);
+                if (msgs.ok()) {
+                    loop.restore_conversation(cid, std::move(msgs.value()));
+                    auto meta = conv_store->get_meta(cid);
+                    std::cout << "Resumed: " << (meta.ok() ? meta.value().title : cid) << std::endl;
+                } else {
+                    std::cout << "Conversation not found: " << cid << std::endl;
+                }
+            }
+            continue;
+        }
+        if (input == "/export") {
+            if (conv_store && !loop.conversation_id().empty()) {
+                auto data = conv_store->export_jsonl(loop.conversation_id());
+                if (data.ok()) {
+                    std::cout << data.value();
+                } else {
+                    std::cout << "Export failed: " << data.error().message << std::endl;
+                }
+            } else {
+                std::cout << "No active conversation to export" << std::endl;
+            }
+            continue;
+        }
+        if (input.substr(0, 8) == "/import ") {
+            if (conv_store) {
+                std::string filepath = input.substr(8);
+                std::ifstream file(filepath);
+                if (!file.is_open()) {
+                    std::cout << "Cannot open file: " << filepath << std::endl;
+                    continue;
+                }
+                std::string jsonl_data((std::istreambuf_iterator<char>(file)),
+                                        std::istreambuf_iterator<char>());
+                auto new_id = conv_store->import_jsonl(jsonl_data);
+                if (new_id.ok()) {
+                    std::cout << "Imported conversation: " << new_id.value() << std::endl;
+                } else {
+                    std::cout << "Import failed: " << new_id.error().message << std::endl;
+                }
+            }
+            continue;
+        }
 
         auto result = loop.run(input);
         if (!result.ok()) {
