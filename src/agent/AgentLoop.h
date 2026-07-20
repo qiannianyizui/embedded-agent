@@ -12,6 +12,7 @@
 #include "security/IApprovalHandler.h"
 #include "agent/ContextCompressor.h"
 #include "IMemoryStrategy.h"
+#include "conversation/IConversationStore.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -30,6 +31,7 @@ public:
         int max_messages = 100;
         bool auto_memory = true;
         bool stream = true;  // Enable streaming output
+        bool auto_persist = true;
     };
 
     using OutputFn = std::function<void(const std::string&)>;
@@ -44,12 +46,18 @@ public:
               security::SecurityPolicy* policy = nullptr,
               security::IApprovalHandler* approval = nullptr,
               ContextCompressor* compressor = nullptr,
-              IMemoryStrategy* strategy = nullptr);
+              IMemoryStrategy* strategy = nullptr,
+              conversation::IConversationStore* conv_store = nullptr);
 
     Result<void> run(const std::string& user_input);
     void interrupt();
     const std::vector<Message>& history() const;
     void clear_history();
+
+    // Conversation persistence
+    void restore_conversation(const std::string& conversation_id,
+                              std::vector<Message> messages);
+    const std::string& conversation_id() const { return conversation_id_; }
 
     // Step chain customization
     void add_step(std::unique_ptr<ITurnStep> step);
@@ -63,6 +71,7 @@ private:
     void build_system_prompt_once();
     void emit(AgentEventType type, const TurnContext& ctx);
     void emit_event(const AgentEvent& event);
+    void persist_new_messages();
 
     IProvider* provider_;
     ToolRegistry* registry_;
@@ -74,10 +83,13 @@ private:
     security::IApprovalHandler* approval_;
     ContextCompressor* compressor_;
     IMemoryStrategy* strategy_;
+    conversation::IConversationStore* conv_store_;
 
     std::vector<Message> history_;
     std::string base_system_prompt_;
     std::string system_prompt_;
+    std::string conversation_id_;
+    size_t saved_count_ = 0;
     std::atomic<bool> interrupted_{false};
 
     // Step chain

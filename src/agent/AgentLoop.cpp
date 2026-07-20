@@ -23,7 +23,8 @@ AgentLoop::AgentLoop(IProvider* provider,
                      security::SecurityPolicy* policy,
                      security::IApprovalHandler* approval,
                      ContextCompressor* compressor,
-                     IMemoryStrategy* strategy)
+                     IMemoryStrategy* strategy,
+                     conversation::IConversationStore* conv_store)
     : provider_(provider)
     , registry_(registry)
     , memory_(memory)
@@ -34,6 +35,7 @@ AgentLoop::AgentLoop(IProvider* provider,
     , approval_(approval)
     , compressor_(compressor)
     , strategy_(strategy)
+    , conv_store_(conv_store)
 {
     // Build default step chain
     steps_.push_back(std::make_unique<HistoryPruneStep>(config_.max_messages));
@@ -61,6 +63,17 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         system_prompt_ = base_system_prompt_;
         if (!mem_prompt.empty()) {
             system_prompt_ += "\n" + mem_prompt;
+        }
+    }
+
+    // Create conversation on first run
+    if (conv_store_ && config_.auto_persist && conversation_id_.empty()) {
+        auto r = conv_store_->create();
+        if (r.ok()) {
+            conversation_id_ = r.value();
+            saved_count_ = 0;
+        } else {
+            EA_WARN("Failed to create conversation: {}", r.error().message);
         }
     }
 
@@ -121,6 +134,8 @@ Result<void> AgentLoop::run(const std::string& user_input) {
                 strategy_->on_turn_end(mctx);
             }
 
+            persist_new_messages();
+
             return {};
         }
     }
@@ -138,6 +153,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         MemoryStrategyContext mctx{history_, memory_, provider_, user_input, last_output};
         strategy_->on_turn_end(mctx);
     }
+    persist_new_messages();
     if (output_) {
         output_("[Warning: Reached maximum iteration limit]");
     }
@@ -194,6 +210,8 @@ void AgentLoop::clear_history() {
     history_.clear();
     base_system_prompt_.clear();
     system_prompt_.clear();
+    conversation_id_.clear();
+    saved_count_ = 0;
 }
 
 void AgentLoop::add_step(std::unique_ptr<ITurnStep> step) {
@@ -252,6 +270,27 @@ void AgentLoop::emit_event(const AgentEvent& event) {
     for (const auto& listener : listeners_) {
         listener->on_event(event);
     }
+}
+
+void AgentLoop::persist_new_messages() {
+    if (!conv_store_ || !config_.auto_persist || conversation_id_.empty()) return;
+
+    for (size_t i = saved_count_; i < history_.size(); ++i) {
+        auto r = conv_store_->append(conversation_id_, history_[i]);
+        if (!r.ok()) {
+            EA_WARN("Failed to persist message: {}", r.error().message);
+            // Don't block — just log and continue
+        }
+    }
+    saved_count_ = history_.size();
+}
+
+void AgentLoop::restore_conversation(const std::string& conversation_id,
+                                      std::vector<Message> messages) {
+    conversation_id_ = conversation_id;
+    history_ = std::move(messages);
+    saved_count_ = history_.size();
+    base_system_prompt_.clear();  // Force rebuild on next run()
 }
 
 }  // namespace ea::agent
