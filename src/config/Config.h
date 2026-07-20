@@ -3,6 +3,7 @@
 #include "common/net/TlsConfig.h"
 #include "common/net/RetryPolicy.h"
 #include "agent/SubagentConfig.h"
+#include "budget/Types.h"
 #include <map>
 #include <string>
 #include <vector>
@@ -87,6 +88,7 @@ struct AppConfig {
     MemoryConfig memory;
     MemoryStrategyConfig memory_strategy;
     ConversationConfig conversation;
+    budget::BudgetConfig budget;
     SecurityConfig security;
     AgentConfig agent;
     std::vector<McpServerConfig> mcp_servers;

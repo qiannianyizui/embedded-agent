@@ -152,6 +152,29 @@ Result<AppConfig> load(const std::string& config_path) {
             cfg.conversation.max_conversations = toml::find_or<int>(conv, "max_conversations", cfg.conversation.max_conversations);
         }
 
+        if (data.contains("budget")) {
+            auto budget = toml::find(data, "budget");
+            cfg.budget.path = toml::find_or<std::string>(budget, "path", cfg.budget.path);
+            cfg.budget.warn_input_tokens = toml::find_or<int>(budget, "warn_input_tokens", cfg.budget.warn_input_tokens);
+            cfg.budget.warn_output_tokens = toml::find_or<int>(budget, "warn_output_tokens", cfg.budget.warn_output_tokens);
+            cfg.budget.warn_cost_usd = toml::find_or<double>(budget, "warn_cost_usd", cfg.budget.warn_cost_usd);
+            cfg.budget.max_input_tokens = toml::find_or<int>(budget, "max_input_tokens", cfg.budget.max_input_tokens);
+            cfg.budget.max_output_tokens = toml::find_or<int>(budget, "max_output_tokens", cfg.budget.max_output_tokens);
+            cfg.budget.max_cost_usd = toml::find_or<double>(budget, "max_cost_usd", cfg.budget.max_cost_usd);
+            if (budget.contains("pricing")) {
+                auto pricings = toml::find<std::vector<toml::value>>(budget, "pricing");
+                for (const auto& pv : pricings) {
+                    budget::ModelPricing mp;
+                    mp.model_id = toml::find<std::string>(pv, "model_id");
+                    mp.input_per_mtok = toml::find_or<double>(pv, "input_per_mtok", 0.0);
+                    mp.output_per_mtok = toml::find_or<double>(pv, "output_per_mtok", 0.0);
+                    mp.cache_read_per_mtok = toml::find_or<double>(pv, "cache_read_per_mtok", 0.0);
+                    mp.cache_write_per_mtok = toml::find_or<double>(pv, "cache_write_per_mtok", 0.0);
+                    cfg.budget.pricing.push_back(std::move(mp));
+                }
+            }
+        }
+
     } catch (const toml::syntax_error& e) {
         return Error::parse(std::string("TOML parse error: ") + e.what());
     } catch (const std::exception& e) {

@@ -51,12 +51,15 @@ add_executable(ea-tests
     test_memory_strategy.cpp
     test_conversation_store.cpp
     test_conversation_integration.cpp
+    test_usage_store.cpp
+    test_budget_tracker.cpp
 )
 target_link_libraries(ea-tests PRIVATE
     ea-common
     ea-config
     ea-memory
     ea-conversation
+    ea-budget
     ea-provider
     ea-tool
     ea-agent
