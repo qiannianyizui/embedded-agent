@@ -91,6 +91,7 @@ add_subdirectory(src/core)
 add_subdirectory(src/platform)
 add_subdirectory(src/security)
 add_subdirectory(src/memory)
+add_subdirectory(src/conversation)
 add_subdirectory(src/provider)
 add_subdirectory(src/tool)
 add_subdirectory(src/agent)
@@ -142,6 +143,7 @@ add_library(embedded-agent-core STATIC
     $<TARGET_OBJECTS:ea-provider>
     $<TARGET_OBJECTS:ea-tool>
     $<TARGET_OBJECTS:ea-memory>
+    $<TARGET_OBJECTS:ea-conversation>
     $<TARGET_OBJECTS:ea-agent>
     $<TARGET_OBJECTS:ea-mcp>
     $<TARGET_OBJECTS:ea-platform>

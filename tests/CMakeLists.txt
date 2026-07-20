@@ -54,6 +54,7 @@ target_link_libraries(ea-tests PRIVATE
     ea-common
     ea-config
     ea-memory
+    ea-conversation
     ea-provider
     ea-tool
     ea-agent
