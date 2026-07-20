@@ -9,6 +9,7 @@
 #include "core/IMemory.h"
 #include "security/SecurityPolicy.h"
 #include "conversation/IConversationStore.h"
+#include "budget/BudgetTracker.h"
 #include "nlohmann/json.hpp"
 #include <string>
 #include <chrono>
@@ -26,7 +27,8 @@ public:
                tool::ToolRegistry* registry,
                security::SecurityPolicy* policy,
                IMemory* shared_memory = nullptr,
-               conversation::IConversationStore* conv_store = nullptr);
+               conversation::IConversationStore* conv_store = nullptr,
+               budget::BudgetTracker* budget_tracker = nullptr);
     ~HttpServer();
 
     void start();   // blocking
@@ -49,6 +51,7 @@ private:
     security::SecurityPolicy* policy_;
     IMemory* shared_memory_;
     conversation::IConversationStore* conv_store_;
+    budget::BudgetTracker* budget_tracker_;
     std::chrono::steady_clock::time_point start_time_;
     int bound_port_ = 0;
 };

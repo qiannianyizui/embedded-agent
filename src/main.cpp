@@ -320,7 +320,8 @@ int main(int argc, char* argv[]) {
     srv_cfg.session_idle_timeout = std::chrono::seconds(cfg.server.session_idle_timeout);
 
     auto http_server = std::make_unique<ea::server::HttpServer>(
-        srv_cfg, effective_provider, &registry, security.get(), memory.get(), conv_store.get()
+        srv_cfg, effective_provider, &registry, security.get(), memory.get(),
+        conv_store.get(), budget_tracker.get()
     );
 
     EA_INFO("Server starting on {}:{}", srv_cfg.host, srv_cfg.port);

@@ -10,6 +10,7 @@
 #include "memory/InMemoryBackend.h"
 #include "security/PendingApprovalHandler.h"
 #include "conversation/IConversationStore.h"
+#include "budget/BudgetTracker.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -36,7 +37,8 @@ struct Session {
 class SessionManager {
 public:
     explicit SessionManager(const ServerConfig& config,
-                            conversation::IConversationStore* conv_store = nullptr);
+                            conversation::IConversationStore* conv_store = nullptr,
+                            budget::BudgetTracker* budget_tracker = nullptr);
 
     Session* create(IProvider* provider,
                     tool::ToolRegistry* registry,
@@ -57,6 +59,7 @@ private:
 
     ServerConfig config_;
     conversation::IConversationStore* conv_store_;
+    budget::BudgetTracker* budget_tracker_;
     std::mutex mutex_;
     std::map<std::string, std::unique_ptr<Session>> sessions_;
     std::mt19937 rng_{std::random_device{}()};

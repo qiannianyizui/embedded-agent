@@ -7,8 +7,9 @@
 namespace ea::server {
 
 SessionManager::SessionManager(const ServerConfig& config,
-                                conversation::IConversationStore* conv_store)
-    : config_(config), conv_store_(conv_store) {}
+                                conversation::IConversationStore* conv_store,
+                                budget::BudgetTracker* budget_tracker)
+    : config_(config), conv_store_(conv_store), budget_tracker_(budget_tracker) {}
 
 std::string SessionManager::generate_id() {
     // Generate "sess_" + 8 hex chars from random bytes
@@ -75,8 +76,14 @@ Session* SessionManager::create(IProvider* provider,
         session->approval.get(),
         nullptr,   // compressor
         nullptr,   // strategy (TODO from Phase 4D)
-        conv_store_
+        conv_store_,
+        budget_tracker_
     );
+
+    // Set session_id on BudgetTracker if budget tracking is enabled
+    if (budget_tracker_) {
+        budget_tracker_->set_session_id(session->id);
+    }
 
     // Restore conversation if conversation_id provided
     if (!conversation_id.empty() && conv_store_) {

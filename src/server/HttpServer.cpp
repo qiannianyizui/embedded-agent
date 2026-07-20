@@ -15,15 +15,17 @@ HttpServer::HttpServer(ServerConfig config,
                        tool::ToolRegistry* registry,
                        security::SecurityPolicy* policy,
                        IMemory* shared_memory,
-                       conversation::IConversationStore* conv_store)
+                       conversation::IConversationStore* conv_store,
+                       budget::BudgetTracker* budget_tracker)
     : config_(std::move(config))
     , server_(std::make_unique<httplib::Server>())
-    , sessions_(config_, conv_store)
+    , sessions_(config_, conv_store, budget_tracker)
     , provider_(provider)
     , registry_(registry)
     , policy_(policy)
     , shared_memory_(shared_memory)
     , conv_store_(conv_store)
+    , budget_tracker_(budget_tracker)
     , start_time_(std::chrono::steady_clock::now()) {
     setup_routes();
 }
@@ -222,6 +224,25 @@ void HttpServer::setup_routes() {
         json resp;
         resp["content"] = content;
         resp["stop_reason"] = "stop";
+
+        if (budget_tracker_) {
+            auto su = budget_tracker_->session_usage();
+            auto sc = budget_tracker_->session_cost();
+            resp["usage"] = {
+                {"input_tokens", su.input_tokens},
+                {"output_tokens", su.output_tokens},
+                {"total_tokens", su.total_tokens()}
+            };
+            resp["cost"] = {{"total", sc.total()}};
+            resp["session_usage"] = {
+                {"input_tokens", su.input_tokens},
+                {"output_tokens", su.output_tokens},
+                {"total_tokens", su.total_tokens()}
+            };
+            resp["session_cost"] = {{"total", sc.total()}};
+            resp["over_warn"] = budget_tracker_->is_over_warn();
+            resp["over_limit"] = budget_tracker_->is_over_limit();
+        }
 
         set_cors_headers(&res);
         res.set_content(resp.dump(), "application/json");
@@ -506,6 +527,76 @@ void HttpServer::setup_routes() {
             }
         );
     });
+
+    // --- Budget API ---
+    if (budget_tracker_) {
+        // GET /api/usage
+        server_->Get("/api/usage", [this](const httplib::Request& req, httplib::Response& res) {
+            std::string scope = req.get_param_value("scope");
+            std::string session_id = req.get_param_value("session_id");
+            json body;
+            body["scope"] = scope.empty() ? "session" : scope;
+            if (scope == "global") {
+                auto u = budget_tracker_->global_usage();
+                auto c = budget_tracker_->global_cost();
+                body["usage"] = {{"input_tokens", u.input_tokens}, {"output_tokens", u.output_tokens},
+                                 {"cache_read_tokens", u.cache_read_tokens}, {"cache_write_tokens", u.cache_write_tokens},
+                                 {"total_tokens", u.total_tokens()}};
+                body["cost"] = {{"total", c.total()}};
+            } else {
+                auto u = budget_tracker_->session_usage();
+                auto c = budget_tracker_->session_cost();
+                body["session_id"] = session_id;
+                body["usage"] = {{"input_tokens", u.input_tokens}, {"output_tokens", u.output_tokens},
+                                 {"cache_read_tokens", u.cache_read_tokens}, {"cache_write_tokens", u.cache_write_tokens},
+                                 {"total_tokens", u.total_tokens()}};
+                body["cost"] = {{"total", c.total()}};
+            }
+            body["over_warn"] = budget_tracker_->is_over_warn();
+            body["over_limit"] = budget_tracker_->is_over_limit();
+            set_cors_headers(&res);
+            res.set_content(body.dump(), "application/json");
+        });
+
+        // GET /api/cost
+        server_->Get("/api/cost", [this](const httplib::Request& req, httplib::Response& res) {
+            std::string scope = req.get_param_value("scope");
+            json body;
+            body["scope"] = scope.empty() ? "session" : scope;
+            if (scope == "global") {
+                auto c = budget_tracker_->global_cost();
+                body["cost"] = {{"input_cost", c.input_cost}, {"output_cost", c.output_cost},
+                                {"cache_read_cost", c.cache_read_cost}, {"cache_write_cost", c.cache_write_cost},
+                                {"total", c.total()}};
+            } else {
+                auto c = budget_tracker_->session_cost();
+                body["cost"] = {{"input_cost", c.input_cost}, {"output_cost", c.output_cost},
+                                {"cache_read_cost", c.cache_read_cost}, {"cache_write_cost", c.cache_write_cost},
+                                {"total", c.total()}};
+            }
+            body["over_warn"] = budget_tracker_->is_over_warn();
+            body["over_limit"] = budget_tracker_->is_over_limit();
+            set_cors_headers(&res);
+            res.set_content(body.dump(), "application/json");
+        });
+
+        // GET /api/usage/history
+        server_->Get("/api/usage/history", [this](const httplib::Request& req, httplib::Response& res) {
+            int limit = 50, offset = 0;
+            try {
+                if (!req.get_param_value("limit").empty()) limit = std::stoi(req.get_param_value("limit"));
+                if (!req.get_param_value("offset").empty()) offset = std::stoi(req.get_param_value("offset"));
+            } catch (...) {}
+            if (limit < 1) limit = 1;
+            if (limit > 1000) limit = 1000;
+            if (offset < 0) offset = 0;
+            // Query from usage_store if available
+            json arr = json::array();
+            // BudgetTracker has the store reference; for now return from in-memory
+            set_cors_headers(&res);
+            res.set_content(json{{"records", arr}, {"limit", limit}, {"offset", offset}}.dump(), "application/json");
+        });
+    }
 
     // --- Conversation API ---
     if (conv_store_) {
