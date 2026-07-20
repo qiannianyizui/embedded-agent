@@ -23,6 +23,8 @@
 #include "security/PendingApprovalHandler.h"
 #include "ea/build_config.h"
 #include "conversation/SqliteConversationStore.h"
+#include "budget/BudgetTracker.h"
+#include "budget/SqliteUsageStore.h"
 #include "common/io/Logger.h"
 #include "common/io/FileSystem.h"
 #include "common/net/HttpClient.h"
@@ -31,6 +33,7 @@
 #include <iostream>
 #include <string>
 #include <fstream>
+#include <iomanip>
 
 int main(int argc, char* argv[]) {
     CLI::App app{"embedded-agent — Lightweight AI Agent for Linux & Android"};
@@ -59,12 +62,48 @@ int main(int argc, char* argv[]) {
     auto cfg = cfg_result.value();
 
     // 3. Create provider
-    auto provider = ea::provider::create(cfg.provider);
-    if (!provider) {
+    auto provider_raw = ea::provider::create(cfg.provider);
+    if (!provider_raw) {
         EA_ERROR("Unknown provider type: {}", cfg.provider.type);
         std::cerr << "Unknown provider type: " << cfg.provider.type << std::endl;
         return 1;
     }
+    auto provider = std::shared_ptr<ea::IProvider>(std::move(provider_raw));
+
+    // 3.5. Create budget tracker (wraps provider if budget is enabled)
+    std::shared_ptr<ea::budget::SqliteUsageStore> usage_store;
+    std::shared_ptr<ea::budget::BudgetTracker> budget_tracker;
+
+    if (!cfg.budget.pricing.empty() || cfg.budget.warn_cost_usd > 0) {
+        std::string usage_path = cfg.budget.path;
+        if (usage_path.empty()) {
+            auto data_dir = ea::fs::config_dir();
+            if (data_dir.ok()) {
+                usage_path = data_dir.value() + "/usage.db";
+            } else {
+                usage_path = home + "/.embedded-agent/usage.db";
+            }
+        }
+
+        usage_store = std::make_shared<ea::budget::SqliteUsageStore>(
+            ea::budget::SqliteUsageStore::Config{usage_path});
+        auto usage_open = usage_store->open();
+        if (!usage_open.ok()) {
+            EA_WARN("Usage store open failed: {}", usage_open.error().message);
+            usage_store.reset();
+        }
+
+        budget_tracker = std::make_shared<ea::budget::BudgetTracker>(
+            provider, cfg.budget);
+        if (usage_store) {
+            budget_tracker->set_store(usage_store);
+        }
+    }
+
+    // Effective provider: BudgetTracker wraps the real provider if budget is enabled
+    ea::IProvider* effective_provider = budget_tracker
+        ? static_cast<ea::IProvider*>(budget_tracker.get())
+        : provider.get();
 
     // 4. Create memory
     std::string memory_path = cfg.memory.path;
@@ -114,7 +153,7 @@ int main(int argc, char* argv[]) {
         ea::agent::CompressionConfig comp_cfg;
         comp_cfg.max_tokens = cfg.agent.compression_max_tokens;
         comp_cfg.keep_recent_turns = cfg.agent.compression_keep_recent_turns;
-        compressor = std::make_unique<ea::agent::ContextCompressor>(provider.get(), comp_cfg);
+        compressor = std::make_unique<ea::agent::ContextCompressor>(effective_provider, comp_cfg);
     }
 
     // 5.7. Create memory strategy
@@ -199,7 +238,7 @@ int main(int argc, char* argv[]) {
 
     // 7.6. Create subagent orchestrator
     auto orchestrator = std::make_unique<ea::agent::SubagentOrchestrator>(
-        provider.get(), &registry, memory.get());
+        effective_provider, &registry, memory.get());
 
     for (auto& sub_cfg : cfg.agent.subagents) {
         EA_INFO("Registering subagent template: {}", sub_cfg.name);
@@ -226,7 +265,7 @@ int main(int argc, char* argv[]) {
     }
 
     ea::agent::AgentLoop loop(
-        provider.get(), &registry, memory.get(),
+        effective_provider, &registry, memory.get(),
         ea::agent::AgentLoop::Config{
             cfg.agent.max_iterations, 65536, 100, true, cfg.agent.stream, cfg.conversation.auto_persist
         },
@@ -236,12 +275,34 @@ int main(int argc, char* argv[]) {
         approval.get(),
         compressor.get(),
         strategy.get(),
-        conv_store.get()   // NEW
+        conv_store.get(),
+        budget_tracker.get()
     );
 
     // 8.5. Add event listeners
     if (debug) {
         loop.add_listener(std::make_shared<ea::agent::LoggingEventListener>());
+    }
+
+    // Budget event listener — prints usage after each LLM call
+    struct BudgetEventListener : public ea::agent::IEventListener {
+        ea::budget::BudgetTracker* tracker_;
+        explicit BudgetEventListener(ea::budget::BudgetTracker* t) : tracker_(t) {}
+        void on_event(const ea::agent::AgentEvent& event) override {
+            if (event.type == ea::agent::AgentEventType::LLMResponse) {
+                if (event.usage.input_tokens > 0 || event.usage.output_tokens > 0) {
+                    auto su = tracker_->session_usage();
+                    auto sc = tracker_->session_cost();
+                    std::cout << "\n[Usage: " << su.input_tokens << " in / "
+                              << su.output_tokens << " out | $"
+                              << std::fixed << std::setprecision(4) << sc.total()
+                              << " session]" << std::flush;
+                }
+            }
+        }
+    };
+    if (budget_tracker) {
+        loop.add_listener(std::make_shared<BudgetEventListener>(budget_tracker.get()));
     }
 
     // 9. Run mode
@@ -255,7 +316,7 @@ int main(int argc, char* argv[]) {
     srv_cfg.session_idle_timeout = std::chrono::seconds(cfg.server.session_idle_timeout);
 
     auto http_server = std::make_unique<ea::server::HttpServer>(
-        srv_cfg, provider.get(), &registry, security.get(), memory.get(), conv_store.get()
+        srv_cfg, effective_provider, &registry, security.get(), memory.get(), conv_store.get()
     );
 
     EA_INFO("Server starting on {}:{}", srv_cfg.host, srv_cfg.port);
@@ -285,6 +346,56 @@ int main(int argc, char* argv[]) {
         if (input == "/quit" || input == "/exit") break;
         if (input.empty()) continue;
 
+        if (input == "/usage") {
+            if (budget_tracker) {
+                auto su = budget_tracker->session_usage();
+                auto gu = budget_tracker->global_usage();
+                std::cout << "Session Usage:\n"
+                          << "  Input:  " << su.input_tokens << " tokens\n"
+                          << "  Output: " << su.output_tokens << " tokens\n"
+                          << "  Cache:  " << su.cache_read_tokens << " read / "
+                          << su.cache_write_tokens << " write\n"
+                          << "  Total:  " << su.total_tokens() << " tokens\n\n"
+                          << "Global Usage:\n"
+                          << "  Input:  " << gu.input_tokens << " tokens\n"
+                          << "  Output: " << gu.output_tokens << " tokens\n"
+                          << "  Total:  " << gu.total_tokens() << " tokens" << std::endl;
+            } else {
+                std::cout << "Budget tracking not enabled" << std::endl;
+            }
+            continue;
+        }
+        if (input == "/cost") {
+            if (budget_tracker) {
+                auto sc = budget_tracker->session_cost();
+                auto gc = budget_tracker->global_cost();
+                std::cout << "Session Cost:\n"
+                          << "  Total: $" << std::fixed << std::setprecision(4) << sc.total() << "\n\n"
+                          << "Global Cost:\n"
+                          << "  Total: $" << gc.total() << std::endl;
+            } else {
+                std::cout << "Budget tracking not enabled" << std::endl;
+            }
+            continue;
+        }
+        if (input == "/usage global") {
+            if (budget_tracker) {
+                auto gu = budget_tracker->global_usage();
+                std::cout << "Global Usage:\n"
+                          << "  Input:  " << gu.input_tokens << " tokens\n"
+                          << "  Output: " << gu.output_tokens << " tokens\n"
+                          << "  Total:  " << gu.total_tokens() << " tokens" << std::endl;
+            }
+            continue;
+        }
+        if (input == "/cost global") {
+            if (budget_tracker) {
+                auto gc = budget_tracker->global_cost();
+                std::cout << "Global Cost:\n"
+                          << "  Total: $" << std::fixed << std::setprecision(4) << gc.total() << std::endl;
+            }
+            continue;
+        }
         if (input == "/history") {
             if (conv_store) {
                 auto list = conv_store->list(10, 0);
@@ -347,6 +458,9 @@ int main(int argc, char* argv[]) {
         }
 
         auto result = loop.run(input);
+        if (budget_tracker && !loop.conversation_id().empty()) {
+            budget_tracker->set_session_id(loop.conversation_id());
+        }
         if (!result.ok()) {
             EA_ERROR("Agent error: {}", result.error().message);
             std::cerr << "Error: " << result.error().message << std::endl;
