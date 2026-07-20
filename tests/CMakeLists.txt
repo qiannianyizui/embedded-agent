@@ -49,6 +49,7 @@ add_executable(ea-tests
     test_session_manager.cpp
     test_http_server.cpp
     test_memory_strategy.cpp
+    test_conversation_store.cpp
 )
 target_link_libraries(ea-tests PRIVATE
     ea-common
