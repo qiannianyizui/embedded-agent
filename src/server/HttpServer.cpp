@@ -511,8 +511,17 @@ void HttpServer::setup_routes() {
     if (conv_store_) {
         // List conversations
         server_->Get("/api/conversations", [this](const httplib::Request& req, httplib::Response& res) {
-            int limit = std::stoi(req.get_param_value("limit").empty() ? "50" : req.get_param_value("limit"));
-            int offset = std::stoi(req.get_param_value("offset").empty() ? "0" : req.get_param_value("offset"));
+            int limit = 50;
+            int offset = 0;
+            try {
+                if (!req.get_param_value("limit").empty()) limit = std::stoi(req.get_param_value("limit"));
+                if (!req.get_param_value("offset").empty()) offset = std::stoi(req.get_param_value("offset"));
+            } catch (...) {
+                // Use defaults on parse error
+            }
+            if (limit < 1) limit = 1;
+            if (limit > 100) limit = 100;
+            if (offset < 0) offset = 0;
 
             auto list = conv_store_->list(limit, offset);
             json arr = json::array();
