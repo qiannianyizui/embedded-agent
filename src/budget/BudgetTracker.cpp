@@ -1,6 +1,5 @@
 #include "BudgetTracker.h"
 #include "common/io/Logger.h"
-#include <algorithm>
 
 namespace ea::budget {
 
@@ -104,10 +103,12 @@ bool BudgetTracker::is_over_limit() const {
 }
 
 void BudgetTracker::set_store(std::shared_ptr<IUsageStore> store) {
+    std::lock_guard<std::mutex> lock(mutex_);
     store_ = std::move(store);
 }
 
 void BudgetTracker::set_session_id(const std::string& session_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
     session_id_ = session_id;
 }
 
@@ -144,7 +145,14 @@ void BudgetTracker::record_usage(const Usage& usage, const std::string& model) {
         rec.cache_read_tokens = usage.cache_read_tokens;
         rec.cache_write_tokens = usage.cache_write_tokens;
         rec.cost_usd = cost.total();
-        store_->record(rec);
+        try {
+            auto rec_result = store_->record(rec);
+            if (!rec_result.ok()) {
+                EA_WARN("Failed to record usage: {}", rec_result.error().message);
+            }
+        } catch (const std::exception& e) {
+            EA_WARN("Exception recording usage: {}", e.what());
+        }
     }
 
     // Check budget thresholds
