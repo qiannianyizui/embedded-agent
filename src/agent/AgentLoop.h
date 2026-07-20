@@ -13,6 +13,7 @@
 #include "agent/ContextCompressor.h"
 #include "IMemoryStrategy.h"
 #include "conversation/IConversationStore.h"
+#include "budget/BudgetTracker.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -47,7 +48,8 @@ public:
               security::IApprovalHandler* approval = nullptr,
               ContextCompressor* compressor = nullptr,
               IMemoryStrategy* strategy = nullptr,
-              conversation::IConversationStore* conv_store = nullptr);
+              conversation::IConversationStore* conv_store = nullptr,
+              budget::BudgetTracker* budget_tracker = nullptr);
 
     Result<void> run(const std::string& user_input);
     void interrupt();
@@ -58,6 +60,9 @@ public:
     void restore_conversation(const std::string& conversation_id,
                               std::vector<Message> messages);
     const std::string& conversation_id() const { return conversation_id_; }
+
+    // Budget tracking
+    budget::BudgetTracker* budget_tracker() const { return budget_tracker_; }
 
     // Step chain customization
     void add_step(std::unique_ptr<ITurnStep> step);
@@ -84,6 +89,7 @@ private:
     ContextCompressor* compressor_;
     IMemoryStrategy* strategy_;
     conversation::IConversationStore* conv_store_;
+    budget::BudgetTracker* budget_tracker_;
 
     std::vector<Message> history_;
     std::string base_system_prompt_;

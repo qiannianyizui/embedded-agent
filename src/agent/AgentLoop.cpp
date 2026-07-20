@@ -24,7 +24,8 @@ AgentLoop::AgentLoop(IProvider* provider,
                      security::IApprovalHandler* approval,
                      ContextCompressor* compressor,
                      IMemoryStrategy* strategy,
-                     conversation::IConversationStore* conv_store)
+                     conversation::IConversationStore* conv_store,
+                     budget::BudgetTracker* budget_tracker)
     : provider_(provider)
     , registry_(registry)
     , memory_(memory)
@@ -36,6 +37,7 @@ AgentLoop::AgentLoop(IProvider* provider,
     , compressor_(compressor)
     , strategy_(strategy)
     , conv_store_(conv_store)
+    , budget_tracker_(budget_tracker)
 {
     // Build default step chain
     steps_.push_back(std::make_unique<HistoryPruneStep>(config_.max_messages));
@@ -94,6 +96,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         ctx.system_prompt = system_prompt_;
         ctx.stream_callback = stream_fn_;
         ctx.emit_fn = [this](const AgentEvent& e) { emit_event(e); };
+        ctx.budget_tracker = budget_tracker_;
 
         // Emit TurnStart
         emit(AgentEventType::TurnStart, ctx);
@@ -252,6 +255,10 @@ void AgentLoop::emit(AgentEventType type, const TurnContext& ctx) {
         break;
     case AgentEventType::TurnEnd:
         event.assistant_output = ctx.response.content;
+        if (ctx.budget_tracker) {
+            event.turn_usage = ctx.budget_tracker->session_usage();
+            event.turn_cost = ctx.budget_tracker->session_cost();
+        }
         break;
     case AgentEventType::LLMResponse:
         event.assistant_output = ctx.response.content;

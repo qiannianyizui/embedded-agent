@@ -1,6 +1,7 @@
 // AgentEvent — lifecycle event types for the agent loop
 #pragma once
 #include "core/Types.h"
+#include "budget/Types.h"
 #include <string>
 
 namespace ea::agent {
@@ -29,6 +30,8 @@ struct AgentEvent {
     bool tool_error = false;        // ToolCallEnd
     std::string error_message;      // Error
     Usage usage;                    // LLMResponse (token usage)
+    budget::UsageSnapshot turn_usage;     // TurnEnd
+    budget::CostSnapshot turn_cost;       // TurnEnd
 };
 
 }  // namespace ea::agent

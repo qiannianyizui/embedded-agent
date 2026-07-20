@@ -10,6 +10,8 @@
 #include <functional>
 #include <exception>
 
+namespace ea::budget { class BudgetTracker; }
+
 namespace ea::agent {
 
 // Thrown inside stream_chat on_chunk callback to break out of streaming
@@ -45,6 +47,7 @@ struct TurnContext {
     // Dependencies (non-owning)
     IProvider* provider = nullptr;
     tool::ToolRegistry* registry = nullptr;
+    budget::BudgetTracker* budget_tracker = nullptr;
 
     // System prompt (built once, reused)
     std::string system_prompt;
