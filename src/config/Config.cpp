@@ -144,6 +144,14 @@ Result<AppConfig> load(const std::string& config_path) {
             cfg.server.session_idle_timeout = toml::find_or<int>(server, "session_idle_timeout", cfg.server.session_idle_timeout);
         }
 
+        if (data.contains("conversation")) {
+            auto conv = toml::find(data, "conversation");
+            cfg.conversation.path = toml::find_or<std::string>(conv, "path", cfg.conversation.path);
+            cfg.conversation.auto_resume = toml::find_or<bool>(conv, "auto_resume", cfg.conversation.auto_resume);
+            cfg.conversation.auto_persist = toml::find_or<bool>(conv, "auto_persist", cfg.conversation.auto_persist);
+            cfg.conversation.max_conversations = toml::find_or<int>(conv, "max_conversations", cfg.conversation.max_conversations);
+        }
+
     } catch (const toml::syntax_error& e) {
         return Error::parse(std::string("TOML parse error: ") + e.what());
     } catch (const std::exception& e) {

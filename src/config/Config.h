@@ -75,10 +75,18 @@ struct MemoryStrategyConfig {
     bool enable_auto_summarize = true;
 };
 
+struct ConversationConfig {
+    std::string path;             // conversations.db path (empty = auto)
+    bool auto_resume = true;      // CLI: auto-resume last conversation
+    bool auto_persist = true;     // Auto-save messages each turn
+    int max_conversations = 1000; // Max stored conversations
+};
+
 struct AppConfig {
     ProviderConfig provider;
     MemoryConfig memory;
     MemoryStrategyConfig memory_strategy;
+    ConversationConfig conversation;
     SecurityConfig security;
     AgentConfig agent;
     std::vector<McpServerConfig> mcp_servers;
