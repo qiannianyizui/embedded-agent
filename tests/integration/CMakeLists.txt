@@ -1,9 +1,9 @@
 # tests/integration/CMakeLists.txt
 add_executable(ea-integration-tests
-    ${CMAKE_CURRENT_SOURCE_DIR}/../test_integration_agent_memory.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../test_integration_provider_tool.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../test_integration_full_pipeline.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../test_conversation_integration.cpp
+    test_agent_memory.cpp
+    test_provider_tool.cpp
+    test_full_pipeline.cpp
+    test_conversation_integration.cpp
 )
 target_link_libraries(ea-integration-tests PRIVATE
     ea-test-common

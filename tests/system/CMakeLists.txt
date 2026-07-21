@@ -1,6 +1,6 @@
 # tests/system/CMakeLists.txt
 add_executable(ea-system-tests
-    ${CMAKE_CURRENT_SOURCE_DIR}/../test_http_server.cpp
+    test_http_server.cpp
 )
 target_link_libraries(ea-system-tests PRIVATE
     ea-test-common
