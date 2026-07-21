@@ -52,11 +52,11 @@ namespace host {
 
 // Context passed to plugin during initialization
 struct PluginContext {
-    // Logging (always available)
-    void (*log_info)(const char* msg);
-    void (*log_warn)(const char* msg);
-    void (*log_error)(const char* msg);
-    void (*log_debug)(const char* msg);
+    // Logging (always available — host must set these before calling on_init)
+    void (*log_info)(const char* msg) = nullptr;
+    void (*log_warn)(const char* msg) = nullptr;
+    void (*log_error)(const char* msg) = nullptr;
+    void (*log_debug)(const char* msg) = nullptr;
 
     // Host services (null if not allowed by trust level)
     host::ToolRegistry* tool_registry = nullptr;
