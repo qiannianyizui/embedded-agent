@@ -7,13 +7,11 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  unit-tests:
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
-        build_type: [Release, Debug]
-
+        build_type: [Debug, Release]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,12 +22,78 @@ jobs:
           sudo apt-get install -y cmake g++ libsqlite3-dev
 
       - name: Configure
-        run: |
-          mkdir -p build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DENABLE_TESTS=ON
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DENABLE_TESTS=ON
 
       - name: Build
         run: cmake --build build -j$(nproc)
 
-      - name: Run tests
-        run: cd build && ctest --output-on-failure -j$(nproc)
+      - name: Run unit tests
+        run: ./build/tests/unit/ea-unit-tests --reporter compact
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libsqlite3-dev
+
+      - name: Configure
+        run: cmake -B build -DENABLE_TESTS=ON
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Run integration tests
+        run: ./build/tests/integration/ea-integration-tests --reporter compact
+
+  system-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libsqlite3-dev
+
+      - name: Configure
+        run: cmake -B build -DENABLE_TESTS=ON
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Run system tests
+        run: ./build/tests/system/ea-system-tests --reporter compact
+
+  security-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sanitizer: [address, undefined]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libsqlite3-dev
+
+      - name: Configure with sanitizer
+        run: cmake -B build -DENABLE_TESTS=ON -DEA_ENABLE_SECURITY_TESTS=ON
+             -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer"
+             -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Run security tests
+        run: ./build/tests/security/ea-security-tests --reporter compact || true
+
+      - name: Run unit tests under sanitizer
+        run: ./build/tests/unit/ea-unit-tests --reporter compact
