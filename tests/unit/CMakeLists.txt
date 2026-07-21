@@ -53,6 +53,7 @@ add_executable(ea-unit-tests
     test_plugin_tool_adapter.cpp
     test_plugin_host.cpp
     test_retry_policy.cpp
+    test_regression.cpp
 )
 target_link_libraries(ea-unit-tests PRIVATE
     ea-test-common

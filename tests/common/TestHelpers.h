@@ -33,7 +33,7 @@ inline LLMResponse make_tools(std::vector<ToolCall> calls) {
     return r;
 }
 
-inline LLMResponse make_error_response(const std::string& error_msg) {
+inline LLMResponse make_error_response(const std::string& /*error_msg*/) {
     LLMResponse r;
     r.content = "";
     r.stop_reason = "error";

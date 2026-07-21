@@ -4,6 +4,9 @@ add_executable(ea-integration-tests
     test_provider_tool.cpp
     test_full_pipeline.cpp
     test_conversation_integration.cpp
+    test_plugin_integration.cpp
+    test_budget_integration.cpp
+    test_fallback_integration.cpp
 )
 target_link_libraries(ea-integration-tests PRIVATE
     ea-test-common

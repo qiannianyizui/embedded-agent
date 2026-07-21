@@ -1,6 +1,9 @@
 # tests/system/CMakeLists.txt
 add_executable(ea-system-tests
     test_http_server.cpp
+    test_smoke.cpp
+    test_build_config_compat.cpp
+    test_usability.cpp
 )
 target_link_libraries(ea-system-tests PRIVATE
     ea-test-common
