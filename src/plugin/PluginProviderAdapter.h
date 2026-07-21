@@ -8,7 +8,7 @@ namespace ea::plugin {
 // Holds a shared_ptr<void> to the dlopen handle so the .so stays loaded.
 class PluginProviderAdapter : public IProvider {
 public:
-    PluginProviderAdapter(std::unique_ptr<IProvider> provider, std::shared_ptr<void> so_handle)
+    PluginProviderAdapter(std::shared_ptr<IProvider> provider, std::shared_ptr<void> so_handle)
         : provider_(std::move(provider)), so_handle_(std::move(so_handle)) {}
 
     std::string name() const override {
@@ -58,7 +58,7 @@ public:
     }
 
 private:
-    std::unique_ptr<IProvider> provider_;
+    std::shared_ptr<IProvider> provider_;
     std::shared_ptr<void> so_handle_;  // Keeps .so loaded
 };
 

@@ -2,6 +2,7 @@ add_library(ea-plugin OBJECT
     PluginModule.cpp
     PluginManifest.cpp
     PluginLoader.cpp
+    PluginHost.cpp
 )
 ea_target_compile_options(ea-plugin)
 target_include_directories(ea-plugin PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

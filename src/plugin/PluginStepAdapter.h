@@ -8,7 +8,7 @@ namespace ea::plugin {
 // Holds a shared_ptr<void> to the dlopen handle so the .so stays loaded.
 class PluginStepAdapter : public agent::ITurnStep {
 public:
-    PluginStepAdapter(std::unique_ptr<agent::ITurnStep> step, std::shared_ptr<void> so_handle)
+    PluginStepAdapter(std::shared_ptr<agent::ITurnStep> step, std::shared_ptr<void> so_handle)
         : step_(std::move(step)), so_handle_(std::move(so_handle)) {}
 
     Result<void> execute(agent::TurnContext& ctx) override {
@@ -27,7 +27,7 @@ public:
     }
 
 private:
-    std::unique_ptr<agent::ITurnStep> step_;
+    std::shared_ptr<agent::ITurnStep> step_;
     std::shared_ptr<void> so_handle_;  // Keeps .so loaded
 };
 

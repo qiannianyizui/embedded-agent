@@ -56,6 +56,7 @@ add_executable(ea-tests
     test_plugin_manifest.cpp
     test_plugin_loader.cpp
     test_plugin_tool_adapter.cpp
+    test_plugin_host.cpp
 )
 target_link_libraries(ea-tests PRIVATE
     ea-common

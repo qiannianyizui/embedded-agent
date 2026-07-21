@@ -2,10 +2,21 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <memory>
 
 #define EA_PLUGIN_API_VERSION 1
 
-namespace ea::plugin {
+namespace ea {
+
+class ITool;
+class IProvider;
+
+namespace agent {
+class ITurnStep;
+class IEventListener;
+}
+
+namespace plugin {
 
 enum class PluginState {
     Unloaded,       // Not loaded
@@ -86,6 +97,17 @@ public:
     virtual PluginResult on_activate() = 0;
     virtual void on_deactivate() = 0;
     virtual void on_destroy() {}
+
+    // Factory methods — called by the host during activation.
+    // Return objects to be registered with host services.
+    // Default: return empty (plugin provides nothing).
+    // Uses shared_ptr to avoid requiring complete type definitions
+    // in this header (plugins only need to include ITool.h etc. in their .cpp).
+    virtual std::vector<std::shared_ptr<ITool>> create_tools() { return {}; }
+    virtual std::vector<std::shared_ptr<IProvider>> create_providers() { return {}; }
+    virtual std::vector<std::shared_ptr<agent::ITurnStep>> create_steps() { return {}; }
+    virtual std::vector<std::shared_ptr<agent::IEventListener>> create_listeners() { return {}; }
 };
 
-}  // namespace ea::plugin
+}  // namespace plugin
+}  // namespace ea

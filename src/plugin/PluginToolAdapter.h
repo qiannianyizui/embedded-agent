@@ -9,7 +9,7 @@ namespace ea::plugin {
 // as long as any adapter instance exists.
 class PluginToolAdapter : public ITool {
 public:
-    PluginToolAdapter(std::unique_ptr<ITool> tool, std::shared_ptr<void> so_handle)
+    PluginToolAdapter(std::shared_ptr<ITool> tool, std::shared_ptr<void> so_handle)
         : tool_(std::move(tool)), so_handle_(std::move(so_handle)) {}
 
     std::string name() const override {
@@ -48,7 +48,7 @@ public:
     }
 
 private:
-    std::unique_ptr<ITool> tool_;
+    std::shared_ptr<ITool> tool_;
     std::shared_ptr<void> so_handle_;  // Keeps .so loaded via custom deleter (dlclose)
 };
 
