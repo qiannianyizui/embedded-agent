@@ -80,10 +80,9 @@ Session* SessionManager::create(IProvider* provider,
         budget_tracker_
     );
 
-    // Set session_id on BudgetTracker if budget tracking is enabled
-    if (budget_tracker_) {
-        budget_tracker_->set_session_id(session->id);
-    }
+    // Note: BudgetTracker is shared across all sessions in server mode.
+    // Per-session tracking is not supported; budget_tracker tracks global usage only.
+    // Do NOT call set_session_id here — it would overwrite other sessions' IDs.
 
     // Restore conversation if conversation_id provided
     if (!conversation_id.empty() && conv_store_) {

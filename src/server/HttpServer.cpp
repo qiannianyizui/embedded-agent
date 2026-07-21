@@ -590,11 +590,10 @@ void HttpServer::setup_routes() {
             if (limit < 1) limit = 1;
             if (limit > 1000) limit = 1000;
             if (offset < 0) offset = 0;
-            // Query from usage_store if available
+            // Usage history query is not yet fully implemented
             json arr = json::array();
-            // BudgetTracker has the store reference; for now return from in-memory
             set_cors_headers(&res);
-            res.set_content(json{{"records", arr}, {"limit", limit}, {"offset", offset}}.dump(), "application/json");
+            res.set_content(json{{"records", arr}, {"limit", limit}, {"offset", offset}, {"not_implemented", true}, {"message", "Usage history query is not yet supported"}}.dump(), "application/json");
         });
     }
 

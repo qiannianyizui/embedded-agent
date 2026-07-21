@@ -475,6 +475,9 @@ int main(int argc, char* argv[]) {
         }
 
         auto result = loop.run(input);
+        // TODO: First run's usage records have empty session_id because
+        // conversation_id is created inside AgentLoop::run(). Subsequent
+        // runs will have the correct session_id.
         if (budget_tracker && !loop.conversation_id().empty()) {
             budget_tracker->set_session_id(loop.conversation_id());
         }

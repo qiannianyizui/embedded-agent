@@ -5,7 +5,11 @@ namespace ea::budget {
 
 BudgetTracker::BudgetTracker(std::shared_ptr<IProvider> inner, BudgetConfig config)
     : inner_(std::move(inner))
-    , config_(std::move(config)) {}
+    , config_(std::move(config)) {
+    if (!inner_) {
+        throw std::invalid_argument("BudgetTracker requires non-null inner provider");
+    }
+}
 
 std::string BudgetTracker::name() const {
     return "budget:" + inner_->name();
@@ -117,8 +121,6 @@ void BudgetTracker::flush() {
 }
 
 void BudgetTracker::record_usage(const Usage& usage, const std::string& model) {
-    std::lock_guard<std::mutex> lock(mutex_);
-
     // Convert Usage -> UsageSnapshot
     UsageSnapshot snapshot;
     snapshot.input_tokens = usage.input_tokens;
@@ -126,19 +128,27 @@ void BudgetTracker::record_usage(const Usage& usage, const std::string& model) {
     snapshot.cache_read_tokens = usage.cache_read_tokens;
     snapshot.cache_write_tokens = usage.cache_write_tokens;
 
-    // Accumulate session and global counters
-    session_usage_ += snapshot;
-    global_usage_ += snapshot;
-
     // Calculate cost
     CostSnapshot cost = calculate_cost(snapshot, model);
-    session_cost_ += cost;
-    global_cost_ += cost;
 
-    // Persist if store is set
-    if (store_) {
+    // Copy data needed for store write, then update counters under lock
+    std::shared_ptr<IUsageStore> store;
+    std::string sid;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        session_usage_ += snapshot;
+        session_cost_ += cost;
+        global_usage_ += snapshot;
+        global_cost_ += cost;
+        store = store_;
+        sid = session_id_;
+        check_budget();
+    }
+
+    // Persist outside the lock to avoid holding mutex during I/O
+    if (store) {
         UsageRecord rec;
-        rec.session_id = session_id_;
+        rec.session_id = sid;
         rec.model = model;
         rec.input_tokens = usage.input_tokens;
         rec.output_tokens = usage.output_tokens;
@@ -146,7 +156,7 @@ void BudgetTracker::record_usage(const Usage& usage, const std::string& model) {
         rec.cache_write_tokens = usage.cache_write_tokens;
         rec.cost_usd = cost.total();
         try {
-            auto rec_result = store_->record(rec);
+            auto rec_result = store->record(rec);
             if (!rec_result.ok()) {
                 EA_WARN("Failed to record usage: {}", rec_result.error().message);
             }
@@ -154,9 +164,6 @@ void BudgetTracker::record_usage(const Usage& usage, const std::string& model) {
             EA_WARN("Exception recording usage: {}", e.what());
         }
     }
-
-    // Check budget thresholds
-    check_budget();
 }
 
 const ModelPricing* BudgetTracker::find_pricing(const std::string& model) const {
