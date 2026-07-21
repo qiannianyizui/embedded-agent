@@ -1,3 +1,5 @@
+add_subdirectory(common)
+
 add_executable(ea-tests
     test_common_result.cpp
     test_common_string.cpp
@@ -59,6 +61,7 @@ add_executable(ea-tests
     test_plugin_host.cpp
 )
 target_link_libraries(ea-tests PRIVATE
+    ea-test-common
     ea-common
     ea-config
     ea-memory
