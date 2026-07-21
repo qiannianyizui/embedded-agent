@@ -53,6 +53,7 @@ add_executable(ea-tests
     test_conversation_integration.cpp
     test_usage_store.cpp
     test_budget_tracker.cpp
+    test_plugin_manifest.cpp
 )
 target_link_libraries(ea-tests PRIVATE
     ea-common
@@ -67,6 +68,7 @@ target_link_libraries(ea-tests PRIVATE
     ea-platform
     ea-security
     ea-server
+    ea-plugin
     nlohmann_json::nlohmann_json
     httplib::httplib
     Catch2::Catch2WithMain
