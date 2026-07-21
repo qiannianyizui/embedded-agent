@@ -54,6 +54,7 @@ add_executable(ea-tests
     test_usage_store.cpp
     test_budget_tracker.cpp
     test_plugin_manifest.cpp
+    test_plugin_loader.cpp
 )
 target_link_libraries(ea-tests PRIVATE
     ea-common
@@ -72,10 +73,21 @@ target_link_libraries(ea-tests PRIVATE
     nlohmann_json::nlohmann_json
     httplib::httplib
     Catch2::Catch2WithMain
+    ${CMAKE_DL_LIBS}
 )
 target_include_directories(ea-tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_BINARY_DIR}/include
+)
+
+# Build the mock plugin .so for loader tests
+add_subdirectory(plugins/mock_plugin)
+
+# Configure the path to the mock plugin .so so tests can find it
+target_compile_definitions(ea-tests PRIVATE
+    EA_MOCK_PLUGIN_PATH="${CMAKE_BINARY_DIR}/tests/plugins/mock_plugin/ea_mock_plugin.so"
+    CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    CMAKE_BINARY_DIR="${CMAKE_BINARY_DIR}"
 )
 
 include(CTest)
