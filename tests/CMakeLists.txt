@@ -1,99 +1,33 @@
+# tests/CMakeLists.txt
+# NOTE: ENABLE_TESTS option, Catch2 FetchContent, and enable_testing() are
+# declared in the root CMakeLists.txt.  This file is only evaluated when
+# ENABLE_TESTS is ON.
+
+# Shared test infrastructure
 add_subdirectory(common)
 
-add_executable(ea-tests
-    test_common_result.cpp
-    test_common_string.cpp
-    test_common_json.cpp
-    test_common_sse.cpp
-    test_config.cpp
-    test_memory_sqlite.cpp
-    test_provider_openai.cpp
-    test_provider_anthropic.cpp
-    test_provider_ollama.cpp
-    test_tool_registry.cpp
-    test_toolset.cpp
-    test_tool_shell.cpp
-    test_tool_file.cpp
-    test_tool_memory.cpp
-    test_tool_web.cpp
-    test_tool_search.cpp
-    test_tool_output_config.cpp
-    test_agent_loop.cpp
-    test_system_prompt.cpp
-    test_security_policy.cpp
-    test_approval_handler.cpp
-    test_stdin_approval_handler.cpp
-    test_pending_approval_handler.cpp
-    test_retry_policy.cpp
-    test_core_types.cpp
-    test_filesystem.cpp
-    test_build_config.cpp
-    test_error_classifier.cpp
-    test_credential_pool.cpp
-    test_prompt_guided_tools.cpp
-    test_reliable_provider.cpp
-    test_router_provider.cpp
-    test_in_memory_backend.cpp
-    test_memory_factory.cpp
-    test_scoped_memory.cpp
-    test_memory_manager.cpp
-    test_turn_context.cpp
-    test_loop_detector.cpp
-    test_context_compressor.cpp
-    test_turn_steps.cpp
-    test_integration_agent_memory.cpp
-    test_integration_provider_tool.cpp
-    test_integration_full_pipeline.cpp
-    test_mcp_client.cpp
-    test_subagent.cpp
-    test_streaming.cpp
-    test_events.cpp
-    test_session_manager.cpp
-    test_http_server.cpp
-    test_memory_strategy.cpp
-    test_conversation_store.cpp
-    test_conversation_integration.cpp
-    test_usage_store.cpp
-    test_budget_tracker.cpp
-    test_plugin_manifest.cpp
-    test_plugin_loader.cpp
-    test_plugin_tool_adapter.cpp
-    test_plugin_host.cpp
-)
-target_link_libraries(ea-tests PRIVATE
-    ea-test-common
-    ea-common
-    ea-config
-    ea-memory
-    ea-conversation
-    ea-budget
-    ea-provider
-    ea-tool
-    ea-agent
-    ea-mcp
-    ea-platform
-    ea-security
-    ea-server
-    ea-plugin
-    nlohmann_json::nlohmann_json
-    httplib::httplib
-    Catch2::Catch2WithMain
-    ${CMAKE_DL_LIBS}
-)
-target_include_directories(ea-tests PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_BINARY_DIR}/include
-)
+# Layered test binaries
+option(EA_ENABLE_UNIT_TESTS       "Build unit tests"       ON)
+option(EA_ENABLE_INTEGRATION_TESTS "Build integration tests" ON)
+option(EA_ENABLE_SYSTEM_TESTS     "Build system tests"     ON)
+option(EA_ENABLE_BENCH_TESTS      "Build benchmark tests"  OFF)
+option(EA_ENABLE_SECURITY_TESTS   "Build security tests"   ON)
 
-# Build the mock plugin .so for loader tests
+if(EA_ENABLE_UNIT_TESTS)
+    add_subdirectory(unit)
+endif()
+if(EA_ENABLE_INTEGRATION_TESTS)
+    add_subdirectory(integration)
+endif()
+if(EA_ENABLE_SYSTEM_TESTS)
+    add_subdirectory(system)
+endif()
+if(EA_ENABLE_BENCH_TESTS)
+    add_subdirectory(bench)
+endif()
+if(EA_ENABLE_SECURITY_TESTS)
+    add_subdirectory(security)
+endif()
+
+# Mock plugin for loader tests
 add_subdirectory(plugins/mock_plugin)
-
-# Configure the path to the mock plugin .so so tests can find it
-target_compile_definitions(ea-tests PRIVATE
-    EA_MOCK_PLUGIN_PATH="${CMAKE_BINARY_DIR}/tests/plugins/mock_plugin/ea_mock_plugin.so"
-    CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
-    CMAKE_BINARY_DIR="${CMAKE_BINARY_DIR}"
-)
-
-include(CTest)
-add_test(NAME ea-tests COMMAND ea-tests)
