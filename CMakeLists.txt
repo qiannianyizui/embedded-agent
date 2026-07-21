@@ -21,6 +21,7 @@ option(EA_ENABLE_TOOLS_SHELL "Enable shell tool"           ON)
 option(EA_ENABLE_ROUTER     "Enable model router provider" OFF)
 option(EA_ENABLE_FALLBACK   "Enable provider fallback"     OFF)
 option(EA_ENABLE_MCP        "Enable MCP client"            ON)
+option(EA_ENABLE_PLUGINS   "Enable plugin system"         ON)
 
 # --- Embedded mode auto-configuration ---
 if(EA_MODE_EMBEDDED)
@@ -29,6 +30,7 @@ if(EA_MODE_EMBEDDED)
     set(EA_ENABLE_ROUTER OFF CACHE BOOL "Disable router for embedded" FORCE)
     set(EA_ENABLE_FALLBACK OFF CACHE BOOL "Disable fallback for embedded" FORCE)
     set(EA_ENABLE_MCP OFF CACHE BOOL "Disable MCP for embedded" FORCE)
+    set(EA_ENABLE_PLUGINS OFF CACHE BOOL "Disable plugins for embedded" FORCE)
 endif()
 
 if(EA_MODE_SERVER)
@@ -97,6 +99,7 @@ add_subdirectory(src/provider)
 add_subdirectory(src/tool)
 add_subdirectory(src/agent)
 add_subdirectory(src/mcp)
+add_subdirectory(src/plugin)
 add_subdirectory(src/server)
 
 option(ENABLE_TESTS "Build tests" OFF)
@@ -152,6 +155,7 @@ add_library(embedded-agent-core STATIC
     $<TARGET_OBJECTS:ea-config>
     $<TARGET_OBJECTS:ea-security>
     $<TARGET_OBJECTS:ea-server>
+    $<TARGET_OBJECTS:ea-plugin>
 )
 target_link_libraries(embedded-agent-core PUBLIC
     ea-core
@@ -172,3 +176,5 @@ target_include_directories(embedded-agent-core PUBLIC
 add_executable(embedded-agent src/main.cpp)
 ea_target_compile_options(embedded-agent)
 target_link_libraries(embedded-agent PRIVATE embedded-agent-core CLI11::CLI11)
+# Export symbols for dlopen-based plugin loading
+set_target_properties(embedded-agent PROPERTIES ENABLE_EXPORTS ON)

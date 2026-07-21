@@ -16,6 +16,7 @@ enum class ErrorCode {
     ToolError,
     ParseError,
     SecurityBlocked,
+    PluginError,
     ConfigError,
 };
 
@@ -51,6 +52,9 @@ struct Error {
     }
     static Error security(const std::string& msg) {
         return {ErrorCode::SecurityBlocked, msg, 0, {}};
+    }
+    static Error plugin(const std::string& msg) {
+        return {ErrorCode::PluginError, msg, 0, {}};
     }
     static Error io(const std::string& msg) {
         return {ErrorCode::IoError, msg, 0, {}};

@@ -13,3 +13,4 @@
 #cmakedefine EA_ENABLE_ROUTER
 #cmakedefine EA_ENABLE_FALLBACK
 #cmakedefine EA_ENABLE_MCP
+#cmakedefine EA_ENABLE_PLUGINS
