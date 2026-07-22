@@ -29,6 +29,9 @@
 #include "common/io/FileSystem.h"
 #include "common/net/HttpClient.h"
 #include "server/HttpServer.h"
+#ifdef EA_ENABLE_TUI
+#include "tui/TuiApp.h"
+#endif
 #include <CLI/CLI.hpp>
 #include <iostream>
 #include <string>
@@ -327,6 +330,48 @@ int main(int argc, char* argv[]) {
     EA_INFO("Server starting on {}:{}", srv_cfg.host, srv_cfg.port);
     http_server->start();
 #else
+#ifdef EA_ENABLE_TUI
+    // TUI mode: FTXUI-based interactive interface
+    ea::tui::TuiApp tui;
+
+    // Replace OutputFn and StreamFn with TUI callbacks
+    auto tui_output = tui.output_fn();
+    auto tui_stream = tui.stream_fn();
+
+    // Recreate AgentLoop with TUI callbacks
+    ea::agent::AgentLoop tui_loop(
+        effective_provider, &registry, memory.get(),
+        ea::agent::AgentLoop::Config{
+            cfg.agent.max_iterations, 65536, 100, true, cfg.agent.stream, cfg.conversation.auto_persist
+        },
+        tui_output,
+        tui_stream,
+        security.get(),
+        tui.approval_handler(),
+        compressor.get(),
+        strategy.get(),
+        conv_store.get(),
+        budget_tracker.get()
+    );
+
+    if (debug) {
+        tui_loop.add_listener(std::make_shared<ea::agent::LoggingEventListener>());
+    }
+
+    // Auto-resume last conversation
+    if (conv_store && cfg.conversation.auto_resume) {
+        auto recent = conv_store->list(1, 0);
+        if (recent.ok() && !recent.value().empty()) {
+            auto& meta = recent.value()[0];
+            auto msgs = conv_store->load(meta.id);
+            if (msgs.ok() && !msgs.value().empty()) {
+                tui_loop.restore_conversation(meta.id, std::move(msgs.value()));
+            }
+        }
+    }
+
+    tui.run(tui_loop, budget_tracker.get(), conv_store.get());
+#else
     // CLI mode: interactive loop
     std::string input;
     std::cout << "embedded-agent v0.1.0 (type /quit to exit)" << std::endl;
@@ -486,7 +531,8 @@ int main(int argc, char* argv[]) {
             std::cerr << "Error: " << result.error().message << std::endl;
         }
     }
-#endif
+#endif  // EA_ENABLE_TUI
+#endif  // EA_MODE_SERVER
 
     EA_INFO("embedded-agent shutting down");
     return 0;
