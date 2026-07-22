@@ -37,9 +37,11 @@ TEST_CASE("Property: AgentLoop never crashes on any input", "[property][greybox]
                    [&](const std::string& t) { output = t; }, nullptr, &policy);
 
     std::string random_input = fuzz.random_string(1, 100);
-    auto result = loop.run(random_input);
-    // Must not crash — result is either ok or error
-    REQUIRE((result.ok() || !result.ok()));
+    Result<void> result;
+    // Must not crash on any input — verify via REQUIRE_NOTHROW
+    REQUIRE_NOTHROW([&]() { result = loop.run(random_input); }());
+    // Result type is always either ok or error (never throws)
+    REQUIRE((result.ok() || result.error().code != ErrorCode{}));
 }
 
 // ── 2. Result is always ok or error ────────────────────────────────────────────
@@ -99,9 +101,9 @@ TEST_CASE("Property: SecurityPolicy.check_command returns Result for any string"
     }
     SECTION("Supervised") {
         SecurityPolicy policy(AutonomyLevel::Supervised);
-        auto result = policy.check_command(random_cmd);
+        Result<void> result;
+        REQUIRE_NOTHROW(result = policy.check_command(random_cmd));
         // Supervised may allow or block depending on content
-        REQUIRE((result.ok() || !result.ok()));
         if (!result.ok()) {
             REQUIRE(result.error().code == ErrorCode::SecurityBlocked);
         }
@@ -158,8 +160,7 @@ TEST_CASE("Property: JSON parse never crashes on arbitrary input", "[property][g
             // Any other exception is also acceptable (must not crash)
         }
     }
-    // If we reach here, no crash occurred
-    REQUIRE(true);
+    // Reaching here means no crash — Catch2 will report crash as test failure
 }
 
 // ── 7. SseParser never crashes on arbitrary input ──────────────────────────────
@@ -182,6 +183,5 @@ TEST_CASE("Property: SseParser never crashes on arbitrary input", "[property][gr
             FAIL("SseParser threw on random input");
         }
     }
-    // If we reach here, no crash occurred
-    REQUIRE(true);
+    // Reaching here means no crash — Catch2 will report crash as test failure
 }

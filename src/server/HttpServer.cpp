@@ -764,7 +764,7 @@ void HttpServer::start() {
             return;
         }
         if (!server_->listen_after_bind()) {
-            EA_ERROR("Server failed to listen after bind on {}:{}", config_.host, bound_port_);
+            EA_ERROR("Server failed to listen after bind on {}:{}", config_.host, bound_port_.load());
         }
     } else {
         if (!server_->listen(config_.host, config_.port)) {

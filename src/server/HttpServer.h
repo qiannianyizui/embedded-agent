@@ -15,6 +15,7 @@
 #include <chrono>
 #include <memory>
 #include <functional>
+#include <atomic>
 
 namespace httplib { class Server; }
 
@@ -53,7 +54,7 @@ private:
     conversation::IConversationStore* conv_store_;
     budget::BudgetTracker* budget_tracker_;
     std::chrono::steady_clock::time_point start_time_;
-    int bound_port_ = 0;
+    std::atomic<int> bound_port_{0};
 };
 
 }  // namespace ea::server

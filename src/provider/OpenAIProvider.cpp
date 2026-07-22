@@ -104,6 +104,9 @@ Result<LLMResponse> OpenAIProvider::parse_response(const json& body) const {
     }
 
     const auto& choice = body["choices"][0];
+    if (!choice.is_object()) {
+        return Error::parse("Invalid choice element: expected object");
+    }
     LLMResponse resp;
 
     // Content

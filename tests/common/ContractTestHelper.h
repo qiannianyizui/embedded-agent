@@ -43,22 +43,18 @@ public:
     }
 
     static void verify_capabilities(IProvider& provider) {
-        INFO("ProviderContract: capabilities() must return valid struct");
-        auto caps = provider.capabilities();
-        // No invalid state — booleans are always valid
-        // Just verify it doesn't crash
-        REQUIRE((caps.native_tool_calling == true || caps.native_tool_calling == false));
-        REQUIRE((caps.streaming == true || caps.streaming == false));
+        INFO("ProviderContract: capabilities() must not throw and return struct");
+        // capabilities() must be callable without throwing
+        REQUIRE_NOTHROW(provider.capabilities());
     }
 
     static void verify_chat_returns_result(IProvider& provider) {
-        INFO("ProviderContract: chat() must return Result (ok or error)");
+        INFO("ProviderContract: chat() must return Result (ok or error) without throwing");
         std::vector<Message> msgs = {
             Message{Role::User, "contract test", std::nullopt, std::nullopt, std::nullopt}
         };
         auto result = provider.chat(msgs, {}, "model");
-        // Must be either ok or error — no crash
-        REQUIRE((result.ok() || !result.ok()));
+        // Must return a valid Result — either ok with LLMResponse or error with ErrorCode
         if (!result.ok()) {
             REQUIRE(result.error().code != ErrorCode{});
         }
@@ -72,8 +68,10 @@ public:
         int chunk_count = 0;
         auto result = provider.stream_chat(msgs, {}, "model",
             [&](const StreamChunk&) { chunk_count++; }, {});
-        // Must be either ok or error — no crash
-        REQUIRE((result.ok() || !result.ok()));
+        // Must return a valid Result — either ok or error with ErrorCode
+        if (!result.ok()) {
+            REQUIRE(result.error().code != ErrorCode{});
+        }
     }
 
     static void verify_chat_no_throw(IProvider& provider) {
@@ -131,16 +129,13 @@ public:
     }
 
     static void verify_execute_returns_result(ITool& tool) {
-        INFO("ToolContract: execute() must return Result (ok or error)");
+        INFO("ToolContract: execute() must return Result (ok or error) without throwing");
         json args = json::object();
         auto result = tool.execute(args);
         // Must be either ok or error
-        REQUIRE((result.ok() || !result.ok()));
         if (result.ok()) {
-            // ToolResult has call_id, output, is_error
-            // At minimum, the result should be well-formed
-            REQUIRE((!result.value().output.empty() || result.value().is_error
-                     || !result.value().call_id.empty() || true));
+            // ToolResult should have meaningful output or be an error marker
+            REQUIRE((!result.value().output.empty() || result.value().is_error));
         }
     }
 
@@ -188,7 +183,6 @@ public:
     static void verify_store_returns_result(IMemory& memory) {
         INFO("MemoryContract: store() must return Result<string>");
         auto result = memory.store("contract test content", "contract", 5);
-        REQUIRE((result.ok() || !result.ok()));
         if (result.ok()) {
             REQUIRE_FALSE(result.value().empty());
         }
@@ -204,7 +198,10 @@ public:
         INFO("MemoryContract: forget() must return Result<bool>");
         // Forget non-existent ID
         auto result = memory.forget("nonexistent-id-contract-test");
-        REQUIRE((result.ok() || !result.ok()));
+        // Forget of non-existent ID should return ok(false) or error
+        if (result.ok()) {
+            REQUIRE_FALSE(result.value());  // didn't exist
+        }
     }
 
     static void verify_list_returns_result(IMemory& memory) {

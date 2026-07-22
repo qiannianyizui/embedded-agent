@@ -141,10 +141,18 @@ Result<LLMResponse> AnthropicProvider::parse_response(const json& body) const {
     LLMResponse resp;
 
     // Check for error
-    if (body.contains("error")) {
+    if (body.contains("error") && !body["error"].is_null()) {
         const auto& err = body["error"];
-        std::string msg = err.value("message", "Unknown Anthropic error");
-        int status = err.value("status_code", 400);
+        std::string msg;
+        int status = 400;
+        if (err.is_object()) {
+            msg = err.value("message", "Unknown Anthropic error");
+            status = err.value("status_code", 400);
+        } else if (err.is_string()) {
+            msg = err.get<std::string>();
+        } else {
+            msg = err.dump();
+        }
         return Error::net(msg, status);
     }
 

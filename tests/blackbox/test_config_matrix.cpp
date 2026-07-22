@@ -165,6 +165,7 @@ TEST_CASE("Config matrix: AgentLoop with streaming enabled", "[config-matrix][gr
 
     auto result = loop.run("test streaming enabled");
     REQUIRE(result.ok());
+    REQUIRE(stream_data == "streamed response");
 }
 
 // ── 8. AgentLoop with streaming disabled ───────────────────────────────────────

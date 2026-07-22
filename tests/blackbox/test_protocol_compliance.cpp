@@ -75,6 +75,23 @@ TEST_CASE("Protocol: OpenAI standard chat response", "[protocol][blackbox]") {
     REQUIRE(result.value().tool_calls.empty());
 }
 
+TEST_CASE("Protocol: OpenAI finish_reason=length (truncated output)", "[protocol][blackbox]") {
+    auto provider = make_openai();
+
+    json body = R"({
+        "choices": [{
+            "message": {"role": "assistant", "content": "This was truncated"},
+            "finish_reason": "length"
+        }],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 10}
+    })"_json;
+
+    auto result = provider.parse_response(body);
+    REQUIRE(result.ok());
+    REQUIRE(result.value().stop_reason == "length");
+    REQUIRE(result.value().content == "This was truncated");
+}
+
 TEST_CASE("Protocol: OpenAI tool_calls response", "[protocol][blackbox]") {
     auto provider = make_openai();
 
@@ -201,20 +218,34 @@ TEST_CASE("Protocol: Anthropic tool_use response", "[protocol][blackbox]") {
     REQUIRE(result.value().tool_calls[0].arguments["location"] == "Tokyo");
 }
 
-TEST_CASE("Protocol: Anthropic error response", "[protocol][blackbox]") {
+TEST_CASE("Protocol: Anthropic error response (string)", "[protocol][blackbox]") {
     auto provider = make_anthropic();
 
-    json body = R"({
-        "type": "error",
-        "error": {
-            "type": "overloaded_error",
-            "message": "Overloaded"
-        }
-    })"_json;
-
+    // Some Anthropic-compatible servers return error as a plain string
+    // rather than an object — must not crash (regression test)
+    json body = R"({"error": "Internal Server Error"})"_json;
+    REQUIRE_NOTHROW(provider.parse_response(body));
     auto result = provider.parse_response(body);
     REQUIRE_FALSE(result.ok());
-    REQUIRE(result.error().message.find("Overloaded") != std::string::npos);
+    REQUIRE(result.error().message.find("Internal Server Error") != std::string::npos);
+}
+
+TEST_CASE("Protocol: Anthropic error response (null)", "[protocol][blackbox]") {
+    auto provider = make_anthropic();
+
+    // error: null should be treated as no error (regression test)
+    json body = R"({
+        "id": "msg_nullerr",
+        "type": "message",
+        "role": "assistant",
+        "content": [{"type": "text", "text": "ok"}],
+        "stop_reason": "end_turn"
+    })"_json;
+    body["error"] = nullptr;
+    REQUIRE_NOTHROW(provider.parse_response(body));
+    auto result = provider.parse_response(body);
+    REQUIRE(result.ok());
+    REQUIRE(result.value().content == "ok");
 }
 
 TEST_CASE("Protocol: Anthropic cache usage tokens", "[protocol][blackbox]") {
@@ -238,6 +269,44 @@ TEST_CASE("Protocol: Anthropic cache usage tokens", "[protocol][blackbox]") {
     REQUIRE(result.ok());
     REQUIRE(result.value().usage.cache_read_tokens == 80);
     REQUIRE(result.value().usage.cache_write_tokens == 20);
+}
+
+TEST_CASE("Protocol: Anthropic stop_reason=max_tokens (truncated)", "[protocol][blackbox]") {
+    auto provider = make_anthropic();
+
+    json body = R"({
+        "id": "msg_maxtok",
+        "type": "message",
+        "role": "assistant",
+        "content": [{"type": "text", "text": "Output was truncated"}],
+        "stop_reason": "max_tokens",
+        "usage": {"input_tokens": 10, "output_tokens": 100}
+    })"_json;
+
+    auto result = provider.parse_response(body);
+    REQUIRE(result.ok());
+    REQUIRE(result.value().stop_reason == "max_tokens");
+}
+
+TEST_CASE("Protocol: Anthropic thinking block is silently ignored", "[protocol][blackbox]") {
+    auto provider = make_anthropic();
+
+    json body = R"({
+        "id": "msg_think",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+            {"type": "thinking", "thinking": "Let me reason about this..."},
+            {"type": "text", "text": "Final answer"}
+        ],
+        "stop_reason": "end_turn"
+    })"_json;
+
+    auto result = provider.parse_response(body);
+    REQUIRE(result.ok());
+    // Thinking block should be silently ignored (not crash, not in content)
+    REQUIRE(result.value().content == "Final answer");
+    REQUIRE(result.value().tool_calls.empty());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

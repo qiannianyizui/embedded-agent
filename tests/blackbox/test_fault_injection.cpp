@@ -76,9 +76,10 @@ TEST_CASE("Fault injection: provider partial JSON handled gracefully", "[fault][
 
     // PartialJson returns an LLMResponse with truncated content — loop should
     // not crash; it may treat it as a valid (if odd) response or error out.
-    auto result = loop.run("test partial json");
-    // The loop should complete (ok or error) without crashing
-    REQUIRE((result.ok() || !result.ok()));
+    Result<void> result;
+    REQUIRE_NOTHROW(result = loop.run("test partial json"));
+    // The loop should complete without crashing
+    REQUIRE((result.ok() || result.error().code != ErrorCode{}));
 }
 
 // ── 4. Provider empty body handled ─────────────────────────────────────────────
@@ -97,9 +98,10 @@ TEST_CASE("Fault injection: provider empty body handled", "[fault][greybox]") {
                    [&](const std::string& t) { output = t; }, nullptr, &policy);
 
     // EmptyBody returns LLMResponse with empty content and stop_reason="stop"
-    auto result = loop.run("test empty body");
+    Result<void> result;
+    REQUIRE_NOTHROW(result = loop.run("test empty body"));
     // Should not crash; may succeed with empty output or handle gracefully
-    REQUIRE((result.ok() || !result.ok()));
+    REQUIRE((result.ok() || result.error().code != ErrorCode{}));
 }
 
 // ── 5. Provider non-JSON body returns parse error ──────────────────────────────
@@ -163,9 +165,10 @@ TEST_CASE("Fault injection: memory open failure doesn't crash AgentLoop", "[faul
                    [&](const std::string& t) { output = t; }, nullptr, &policy);
 
     // AgentLoop should not crash even if memory open fails
-    auto result = loop.run("test memory open failure");
-    // May succeed or fail, but must not crash
-    REQUIRE((result.ok() || !result.ok()));
+    Result<void> result;
+    REQUIRE_NOTHROW(result = loop.run("test memory open failure"));
+    // Must complete without crashing (ok or error both acceptable)
+    REQUIRE((result.ok() || result.error().code != ErrorCode{}));
 }
 
 // ── 8. Memory store failure returns Error ──────────────────────────────────────
@@ -210,9 +213,10 @@ TEST_CASE("Fault injection: tool exception caught", "[fault][greybox]") {
                    [&](const std::string& t) { output = t; }, nullptr, &policy);
 
     // The loop should not crash from the tool exception
-    auto result = loop.run("test tool exception");
-    // May succeed or fail, but must not crash
-    REQUIRE((result.ok() || !result.ok()));
+    Result<void> result;
+    REQUIRE_NOTHROW(result = loop.run("test tool exception"));
+    // Must complete without crashing (ok or error both acceptable)
+    REQUIRE((result.ok() || result.error().code != ErrorCode{}));
 }
 
 // ── 10. Provider rate limit error ──────────────────────────────────────────────
@@ -277,10 +281,15 @@ TEST_CASE("Fault injection: parse_response with null array elements", "[fault][g
 
     try {
         auto result = openai.parse_response(body);
-        // Should not crash; may return error or empty response
-        REQUIRE((result.ok() || !result.ok()));
+        // If it doesn't throw, verify a valid Result was returned
+        REQUIRE((result.ok() || result.error().code != ErrorCode{}));
+        // null choice should result in empty content if ok, or a parse error
+        if (result.ok()) {
+            REQUIRE(result.value().content.empty());
+        }
     } catch (const json::exception&) {
-        // parse_response may throw on null elements — acceptable
+        // parse_response may throw on null elements — acceptable as long as
+        // it's a JSON exception, not undefined behavior
         REQUIRE(true);
     } catch (...) {
         // Must not crash with other exceptions
