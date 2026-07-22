@@ -150,7 +150,8 @@ TEST_CASE("Property: JSON parse never crashes on arbitrary input", "[property][g
     for (int i = 0; i < 10; ++i) {
         std::string random_str = fuzz.random_string(0, 256);
         try {
-            json::parse(random_str);
+            json discarded = json::parse(random_str);
+            (void)discarded;
         } catch (const json::exception&) {
             // Expected — invalid JSON should throw, not crash
         } catch (...) {

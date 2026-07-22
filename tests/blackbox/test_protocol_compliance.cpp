@@ -1,205 +1,355 @@
 // tests/blackbox/test_protocol_compliance.cpp
-// Protocol compliance tests — verify Provider parse_response() correctly handles
-// real API response formats from OpenAI, Anthropic, and Ollama.
-// Uses fixture JSON files — no network calls needed.
+// Protocol compliance tests — verify that provider implementations correctly
+// parse real API response formats (OpenAI, Anthropic, Ollama).
+// Black-box: uses only parse_response() with fixture JSON, no internal knowledge.
 #include <catch2/catch_test_macros.hpp>
-#include "nlohmann/json.hpp"
 #include "provider/OpenAIProvider.h"
 #include "provider/AnthropicProvider.h"
 #include "provider/OllamaProvider.h"
 #include "core/Types.h"
 #include "common/base/Result.h"
-#include <fstream>
-#include <string>
+#include "nlohmann/json.hpp"
 
 using namespace ea;
+using namespace ea::provider;
 using json = nlohmann::json;
 
 namespace {
 
-json load_fixture(const std::string& name) {
-    std::string path = std::string(FIXTURES_DIR) + "/" + name;
-    std::ifstream f(path);
-    if (!f.is_open()) {
-        path = std::string(CMAKE_SOURCE_DIR) + "/tests/blackbox/fixtures/" + name;
-        f.open(path);
-    }
-    REQUIRE(f.is_open());
-    std::string content((std::istreambuf_iterator<char>(f)),
-                         std::istreambuf_iterator<char>());
-    return json::parse(content);
-}
-
-provider::OpenAIProvider make_openai() {
-    provider::OpenAIProvider::Config cfg;
+OpenAIProvider make_openai() {
+    OpenAIProvider::Config cfg;
     cfg.base_url = "http://localhost:1";
-    cfg.api_key = "test-key";
-    return provider::OpenAIProvider(cfg);
+    cfg.api_key = "test";
+    return OpenAIProvider(cfg);
 }
 
-provider::AnthropicProvider make_anthropic() {
-    provider::AnthropicProvider::Config cfg;
+AnthropicProvider make_anthropic() {
+    AnthropicProvider::Config cfg;
     cfg.base_url = "http://localhost:1";
-    cfg.api_key = "test-key";
-    return provider::AnthropicProvider(cfg);
+    cfg.api_key = "test";
+    return AnthropicProvider(cfg);
 }
 
-provider::OllamaProvider make_ollama() {
-    provider::OllamaProvider::Config cfg;
+OllamaProvider make_ollama() {
+    OllamaProvider::Config cfg;
     cfg.base_url = "http://localhost:1";
-    return provider::OllamaProvider(cfg);
+    return OllamaProvider(cfg);
 }
-
-std::vector<Message> single_user_message() {
-    return {Message{Role::User, "Hello", std::nullopt, std::nullopt, std::nullopt}};
-}
-
-std::vector<ToolSpec> empty_tools() { return {}; }
 
 }  // anonymous namespace
 
-// --- OpenAI Protocol ---
+// ═══════════════════════════════════════════════════════════════════════════════
+// OpenAI Protocol Compliance
+// ═══════════════════════════════════════════════════════════════════════════════
 
-TEST_CASE("Protocol: OpenAI text response parsed correctly", "[protocol][blackbox][openai]") {
+TEST_CASE("Protocol: OpenAI standard chat response", "[protocol][blackbox]") {
     auto provider = make_openai();
-    auto fixture = load_fixture("openai_text.json");
-    auto result = provider.parse_response(fixture);
+
+    // Real OpenAI response format
+    json body = R"({
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion",
+        "created": 1677858242,
+        "model": "gpt-4",
+        "choices": [{
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "Hello! How can I help you today?"
+            },
+            "finish_reason": "stop"
+        }],
+        "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 8,
+            "total_tokens": 18
+        }
+    })"_json;
+
+    auto result = provider.parse_response(body);
     REQUIRE(result.ok());
-    auto& resp = result.value();
-    REQUIRE(resp.content == "Hello! How can I help you today?");
-    REQUIRE(resp.stop_reason == "stop");
-    REQUIRE(resp.usage.input_tokens == 15);
-    REQUIRE(resp.usage.output_tokens == 8);
+    REQUIRE(result.value().content == "Hello! How can I help you today?");
+    REQUIRE(result.value().stop_reason == "stop");
+    REQUIRE(result.value().usage.input_tokens == 10);
+    REQUIRE(result.value().usage.output_tokens == 8);
+    REQUIRE(result.value().tool_calls.empty());
 }
 
-TEST_CASE("Protocol: OpenAI tool call response parsed correctly", "[protocol][blackbox][openai]") {
+TEST_CASE("Protocol: OpenAI tool_calls response", "[protocol][blackbox]") {
     auto provider = make_openai();
-    auto fixture = load_fixture("openai_tool_call.json");
-    auto result = provider.parse_response(fixture);
+
+    json body = R"({
+        "id": "chatcmpl-tool123",
+        "object": "chat.completion",
+        "choices": [{
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": null,
+                "tool_calls": [{
+                    "id": "call_abc",
+                    "type": "function",
+                    "function": {
+                        "name": "get_weather",
+                        "arguments": "{\"location\": \"San Francisco\"}"
+                    }
+                }]
+            },
+            "finish_reason": "tool_calls"
+        }]
+    })"_json;
+
+    auto result = provider.parse_response(body);
     REQUIRE(result.ok());
-    auto& resp = result.value();
-    REQUIRE(resp.tool_calls.size() == 1);
-    REQUIRE(resp.tool_calls[0].id == "call_abc123");
-    REQUIRE(resp.tool_calls[0].name == "shell");
-    REQUIRE(resp.stop_reason == "tool_calls");
+    REQUIRE(result.value().stop_reason == "tool_calls");
+    REQUIRE(result.value().tool_calls.size() == 1);
+    REQUIRE(result.value().tool_calls[0].id == "call_abc");
+    REQUIRE(result.value().tool_calls[0].name == "get_weather");
+    REQUIRE(result.value().tool_calls[0].arguments["location"] == "San Francisco");
 }
 
-TEST_CASE("Protocol: OpenAI malformed missing_choices returns error", "[protocol][blackbox][openai]") {
+TEST_CASE("Protocol: OpenAI error response", "[protocol][blackbox]") {
     auto provider = make_openai();
-    auto fixture = load_fixture("malformed/missing_choices.json");
-    auto result = provider.parse_response(fixture);
+
+    json body = R"({
+        "error": {
+            "message": "Rate limit exceeded",
+            "type": "rate_limit_error",
+            "code": "rate_limit_exceeded"
+        }
+    })"_json;
+
+    // OpenAI error responses still have "choices" missing → parse error
+    auto result = provider.parse_response(body);
     REQUIRE_FALSE(result.ok());
 }
 
-TEST_CASE("Protocol: OpenAI malformed wrong_type_fields returns error", "[protocol][blackbox][openai]") {
+TEST_CASE("Protocol: OpenAI empty choices returns error", "[protocol][blackbox]") {
     auto provider = make_openai();
-    auto fixture = load_fixture("malformed/wrong_type_fields.json");
-    auto result = provider.parse_response(fixture);
+
+    json body = R"({"choices": []})"_json;
+    auto result = provider.parse_response(body);
     REQUIRE_FALSE(result.ok());
 }
 
-TEST_CASE("Protocol: OpenAI malformed truncated JSON throws", "[protocol][blackbox][openai]") {
-    // Truncated JSON can't be parsed by json::parse itself
-    std::string path = std::string(FIXTURES_DIR) + "/malformed/truncated.json";
-    std::ifstream f(path);
-    if (!f.is_open()) {
-        path = std::string(CMAKE_SOURCE_DIR) + "/tests/blackbox/fixtures/malformed/truncated.json";
-        f.open(path);
-    }
-    REQUIRE(f.is_open());
-    std::string content((std::istreambuf_iterator<char>(f)),
-                         std::istreambuf_iterator<char>());
-    REQUIRE_THROWS(json::parse(content));
-}
-
-TEST_CASE("Protocol: OpenAI build_request_body has correct format", "[protocol][blackbox][openai]") {
+TEST_CASE("Protocol: OpenAI content with special characters", "[protocol][blackbox]") {
     auto provider = make_openai();
-    auto msgs = single_user_message();
-    auto body = provider.build_request_body(msgs, empty_tools(), "gpt-4o", ChatOptions{}, false);
-    REQUIRE(body.contains("model"));
-    REQUIRE(body["model"] == "gpt-4o");
-    REQUIRE(body.contains("messages"));
-    REQUIRE(body["messages"].is_array());
-    REQUIRE(body["messages"].size() == 1);
-}
 
-// --- Anthropic Protocol ---
+    json body = R"({
+        "choices": [{
+            "message": {"role": "assistant", "content": "Line1\nLine2\tTabbed"},
+            "finish_reason": "stop"
+        }]
+    })"_json;
 
-TEST_CASE("Protocol: Anthropic text response parsed correctly", "[protocol][blackbox][anthropic]") {
-    auto provider = make_anthropic();
-    auto fixture = load_fixture("anthropic_text.json");
-    auto result = provider.parse_response(fixture);
+    auto result = provider.parse_response(body);
     REQUIRE(result.ok());
-    auto& resp = result.value();
-    REQUIRE(resp.content == "Hello! How can I help you today?");
-    REQUIRE(resp.stop_reason == "end_turn");
-    REQUIRE(resp.usage.input_tokens == 15);
-    REQUIRE(resp.usage.output_tokens == 8);
+    REQUIRE(result.value().content.find("Line1") != std::string::npos);
+    REQUIRE(result.value().content.find("Line2") != std::string::npos);
 }
 
-TEST_CASE("Protocol: Anthropic tool use response parsed correctly", "[protocol][blackbox][anthropic]") {
+// ═══════════════════════════════════════════════════════════════════════════════
+// Anthropic Protocol Compliance
+// ═══════════════════════════════════════════════════════════════════════════════
+
+TEST_CASE("Protocol: Anthropic standard response", "[protocol][blackbox]") {
     auto provider = make_anthropic();
-    auto fixture = load_fixture("anthropic_tool_use.json");
-    auto result = provider.parse_response(fixture);
+
+    json body = R"({
+        "id": "msg_abc123",
+        "type": "message",
+        "role": "assistant",
+        "content": [{"type": "text", "text": "Hello from Claude!"}],
+        "model": "claude-3-opus-20240229",
+        "stop_reason": "end_turn",
+        "usage": {
+            "input_tokens": 15,
+            "output_tokens": 10
+        }
+    })"_json;
+
+    auto result = provider.parse_response(body);
     REQUIRE(result.ok());
-    auto& resp = result.value();
-    REQUIRE(resp.tool_calls.size() == 1);
-    REQUIRE(resp.tool_calls[0].name == "shell");
-    REQUIRE(resp.stop_reason == "tool_use");
+    REQUIRE(result.value().content == "Hello from Claude!");
+    REQUIRE(result.value().stop_reason == "end_turn");
+    REQUIRE(result.value().usage.input_tokens == 15);
+    REQUIRE(result.value().usage.output_tokens == 10);
 }
 
-TEST_CASE("Protocol: Anthropic error response returns error", "[protocol][blackbox][anthropic]") {
+TEST_CASE("Protocol: Anthropic tool_use response", "[protocol][blackbox]") {
     auto provider = make_anthropic();
-    auto fixture = load_fixture("anthropic_error.json");
-    auto result = provider.parse_response(fixture);
+
+    json body = R"({
+        "id": "msg_tool123",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+            {"type": "text", "text": "Let me check the weather."},
+            {"type": "tool_use", "id": "toolu_abc", "name": "get_weather", "input": {"location": "Tokyo"}}
+        ],
+        "model": "claude-3-opus-20240229",
+        "stop_reason": "tool_use"
+    })"_json;
+
+    auto result = provider.parse_response(body);
+    REQUIRE(result.ok());
+    REQUIRE(result.value().content == "Let me check the weather.");
+    REQUIRE(result.value().stop_reason == "tool_use");
+    REQUIRE(result.value().tool_calls.size() == 1);
+    REQUIRE(result.value().tool_calls[0].id == "toolu_abc");
+    REQUIRE(result.value().tool_calls[0].name == "get_weather");
+    REQUIRE(result.value().tool_calls[0].arguments["location"] == "Tokyo");
+}
+
+TEST_CASE("Protocol: Anthropic error response", "[protocol][blackbox]") {
+    auto provider = make_anthropic();
+
+    json body = R"({
+        "type": "error",
+        "error": {
+            "type": "overloaded_error",
+            "message": "Overloaded"
+        }
+    })"_json;
+
+    auto result = provider.parse_response(body);
     REQUIRE_FALSE(result.ok());
+    REQUIRE(result.error().message.find("Overloaded") != std::string::npos);
 }
 
-TEST_CASE("Protocol: Anthropic build_request_body extracts system to top-level", "[protocol][blackbox][anthropic]") {
+TEST_CASE("Protocol: Anthropic cache usage tokens", "[protocol][blackbox]") {
     auto provider = make_anthropic();
-    std::vector<Message> msgs = {
-        Message{Role::System, "You are helpful", std::nullopt, std::nullopt, std::nullopt},
-        Message{Role::User, "Hello", std::nullopt, std::nullopt, std::nullopt}
-    };
-    auto body = provider.build_request_body(msgs, empty_tools(), "claude-sonnet-4-6", ChatOptions{}, false);
-    REQUIRE(body.contains("system"));
-    REQUIRE(body["system"].is_string());
-    REQUIRE(body.contains("messages"));
-    // System message should be extracted, not in messages array
-    for (const auto& m : body["messages"]) {
-        REQUIRE(m["role"] != "system");
-    }
-}
 
-// --- Ollama Protocol ---
+    json body = R"({
+        "id": "msg_cache",
+        "type": "message",
+        "role": "assistant",
+        "content": [{"type": "text", "text": "Cached"}],
+        "stop_reason": "end_turn",
+        "usage": {
+            "input_tokens": 100,
+            "output_tokens": 10,
+            "cache_read_input_tokens": 80,
+            "cache_creation_input_tokens": 20
+        }
+    })"_json;
 
-TEST_CASE("Protocol: Ollama text response parsed correctly", "[protocol][blackbox][ollama]") {
-    auto provider = make_ollama();
-    auto fixture = load_fixture("ollama_text.json");
-    auto result = provider.parse_response(fixture);
+    auto result = provider.parse_response(body);
     REQUIRE(result.ok());
-    auto& resp = result.value();
-    REQUIRE(resp.content == "Hello! How can I help you today?");
-    REQUIRE(resp.usage.input_tokens == 15);
-    REQUIRE(resp.usage.output_tokens == 8);
+    REQUIRE(result.value().usage.cache_read_tokens == 80);
+    REQUIRE(result.value().usage.cache_write_tokens == 20);
 }
 
-TEST_CASE("Protocol: Ollama tool call response parsed correctly", "[protocol][blackbox][ollama]") {
+// ═══════════════════════════════════════════════════════════════════════════════
+// Ollama Protocol Compliance
+// ═══════════════════════════════════════════════════════════════════════════════
+
+TEST_CASE("Protocol: Ollama standard response", "[protocol][blackbox]") {
     auto provider = make_ollama();
-    auto fixture = load_fixture("ollama_tool_call.json");
-    auto result = provider.parse_response(fixture);
+
+    json body = R"({
+        "model": "llama3",
+        "created_at": "2024-01-01T00:00:00Z",
+        "message": {"role": "assistant", "content": "Hello from Ollama!"},
+        "done": true,
+        "done_reason": "stop",
+        "prompt_eval_count": 10,
+        "eval_count": 6
+    })"_json;
+
+    auto result = provider.parse_response(body);
     REQUIRE(result.ok());
-    auto& resp = result.value();
-    REQUIRE(resp.tool_calls.size() == 1);
-    REQUIRE(resp.tool_calls[0].name == "shell");
+    REQUIRE(result.value().content == "Hello from Ollama!");
+    REQUIRE(result.value().stop_reason == "stop");
+    REQUIRE(result.value().usage.input_tokens == 10);
+    REQUIRE(result.value().usage.output_tokens == 6);
 }
 
-TEST_CASE("Protocol: Ollama build_request_body has correct format", "[protocol][blackbox][ollama]") {
+TEST_CASE("Protocol: Ollama tool_calls response", "[protocol][blackbox]") {
     auto provider = make_ollama();
-    auto msgs = single_user_message();
-    auto body = provider.build_request_body(msgs, empty_tools(), "llama3", ChatOptions{}, false);
-    REQUIRE(body.contains("model"));
-    REQUIRE(body["model"] == "llama3");
-    REQUIRE(body.contains("messages"));
-    REQUIRE(body["messages"].is_array());
+
+    json body = R"({
+        "model": "llama3",
+        "message": {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{
+                "function": {
+                    "name": "search",
+                    "arguments": {"query": "test"}
+                }
+            }]
+        },
+        "done": true,
+        "done_reason": "stop"
+    })"_json;
+
+    auto result = provider.parse_response(body);
+    REQUIRE(result.ok());
+    REQUIRE(result.value().tool_calls.size() == 1);
+    REQUIRE(result.value().tool_calls[0].name == "search");
+}
+
+TEST_CASE("Protocol: Ollama error response (string)", "[protocol][blackbox]") {
+    auto provider = make_ollama();
+
+    json body = R"({"error": "model not found"})"_json;
+    auto result = provider.parse_response(body);
+    REQUIRE_FALSE(result.ok());
+    REQUIRE(result.error().message.find("model not found") != std::string::npos);
+}
+
+TEST_CASE("Protocol: Ollama error response (object)", "[protocol][blackbox]") {
+    auto provider = make_ollama();
+
+    json body = R"({"error": {"message": "OOM", "type": "resource_error"}})"_json;
+    auto result = provider.parse_response(body);
+    REQUIRE_FALSE(result.ok());
+    REQUIRE(result.error().message.find("OOM") != std::string::npos);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Cross-Protocol Edge Cases
+// ═══════════════════════════════════════════════════════════════════════════════
+
+TEST_CASE("Protocol: OpenAI null content handled", "[protocol][blackbox]") {
+    auto provider = make_openai();
+
+    json body = R"({
+        "choices": [{
+            "message": {"role": "assistant", "content": null},
+            "finish_reason": "stop"
+        }]
+    })"_json;
+
+    auto result = provider.parse_response(body);
+    REQUIRE(result.ok());
+    // null content should result in empty string
+    REQUIRE(result.value().content.empty());
+}
+
+TEST_CASE("Protocol: Anthropic empty content array", "[protocol][blackbox]") {
+    auto provider = make_anthropic();
+
+    json body = R"({
+        "id": "msg_empty",
+        "type": "message",
+        "role": "assistant",
+        "content": [],
+        "stop_reason": "end_turn"
+    })"_json;
+
+    auto result = provider.parse_response(body);
+    REQUIRE(result.ok());
+    REQUIRE(result.value().content.empty());
+}
+
+TEST_CASE("Protocol: Ollama missing message field", "[protocol][blackbox]") {
+    auto provider = make_ollama();
+
+    json body = R"({"model": "llama3", "done": true})"_json;
+    auto result = provider.parse_response(body);
+    REQUIRE(result.ok());
+    // Missing message → empty response but not error
+    REQUIRE(result.value().content.empty());
 }

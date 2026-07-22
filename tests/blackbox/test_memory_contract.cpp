@@ -102,12 +102,9 @@ TEST_CASE("ScopedMemory filters reads by scope", "[contract][greybox][memory]") 
     raw2->store("agent-C own content", "agent-C:own", 5);
     raw2->store("unscoped content", "general", 5);
 
-    ea::memory::MemoryScope scope_c;
-    scope_c.agent_id = "agent-C";
-    scope_c.read_allowlist = std::set<std::string>{"agent-B"};
     ea::memory::ScopedMemory memory_c(
         std::move(backend2),
-        scope_c);
+        ea::memory::MemoryScope{"agent-C", "", {"agent-B"}});
 
     memory_c.open();
 

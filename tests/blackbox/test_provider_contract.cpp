@@ -44,11 +44,12 @@ provider::OllamaProvider make_ollama() {
     return provider::OllamaProvider(cfg);
 }
 
-std::vector<Message> single_user_message() {
+// Helper functions kept for potential future use in extended contract tests
+[[maybe_unused]] std::vector<Message> single_user_message() {
     return {Message{Role::User, "Hello", std::nullopt, std::nullopt, std::nullopt}};
 }
 
-std::vector<ToolSpec> empty_tools() { return {}; }
+[[maybe_unused]] std::vector<ToolSpec> empty_tools() { return {}; }
 
 }  // anonymous namespace
 

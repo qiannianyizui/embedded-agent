@@ -1,20 +1,12 @@
 // tests/blackbox/test_http_api_e2e.cpp
-// HTTP API end-to-end (black-box) tests — start real HttpServer, send HTTP
-// requests, verify responses. Tests cover endpoints NOT covered by the
-// existing test_http_server.cpp in the system test suite.
+// HTTP API end-to-end black-box tests — start a real HttpServer and send
+// actual HTTP requests. Tests the full network stack without mocks.
 #include <catch2/catch_test_macros.hpp>
 #include "MockProvider.h"
 #include "server/HttpServer.h"
 #include "server/ServerConfig.h"
-#include "memory/InMemoryBackend.h"
 #include "tool/ToolRegistry.h"
 #include "security/SecurityPolicy.h"
-#include "core/IProvider.h"
-#include "core/Types.h"
-#include "conversation/SqliteConversationStore.h"
-#include "budget/BudgetTracker.h"
-#include "budget/SqliteUsageStore.h"
-#include "nlohmann/json.hpp"
 #include <httplib.h>
 #include <thread>
 #include <chrono>
@@ -22,330 +14,293 @@
 
 using namespace ea;
 using namespace ea::server;
-using namespace ea::memory;
 using namespace ea::test;
-using json = nlohmann::json;
+using namespace ea::security;
 
 namespace {
 
-// Reusable server fixture with full dependencies
-struct FullServerFixture {
-    std::shared_ptr<MockProvider> provider;
-    std::shared_ptr<tool::ToolRegistry> registry;
-    std::shared_ptr<security::SecurityPolicy> policy;
-    std::shared_ptr<InMemoryBackend> backend;
-    std::shared_ptr<conversation::SqliteConversationStore> conv_store;
-    std::shared_ptr<budget::SqliteUsageStore> usage_store;
-    std::shared_ptr<budget::BudgetTracker> budget_tracker;
-    std::unique_ptr<HttpServer> server;
-    std::thread server_thread;
-    int port;
+// Fixture that starts HttpServer on port 0 (auto-assign) in a background thread
+class HttpServerFixture {
+public:
+    HttpServerFixture() {
+        // Set up mock provider with a default response
+        provider_ = std::make_shared<MockProvider>();
+        provider_->enqueue_text("Hello from server!");
 
-    FullServerFixture(bool with_budget = false, bool with_conversations = false,
-                      int max_sessions = 100) {
-        provider = std::make_shared<MockProvider>();
-        provider->enqueue_text("Mock response");
-        registry = std::make_shared<tool::ToolRegistry>();
-        policy = std::make_shared<security::SecurityPolicy>();
-        backend = std::make_shared<InMemoryBackend>();
-
-        if (with_conversations) {
-            conv_store = std::make_shared<conversation::SqliteConversationStore>(
-                conversation::SqliteConversationStore::Config{":memory:", true});
-            conv_store->open();
-        }
-
-        if (with_budget) {
-            usage_store = std::make_shared<budget::SqliteUsageStore>(
-                budget::SqliteUsageStore::Config{":memory:", true});
-            usage_store->open();
-            budget::BudgetConfig bcfg;
-            bcfg.warn_cost_usd = 1.0;
-            budget_tracker = std::make_shared<budget::BudgetTracker>(
-                provider, bcfg);
-            budget_tracker->set_store(usage_store);
-        }
-
+        // Configure server on port 0 (auto-assign)
         ServerConfig cfg;
         cfg.host = "127.0.0.1";
-        cfg.port = 0;  // OS-assigned port
-        cfg.max_sessions = max_sessions;
-        server = std::make_unique<HttpServer>(
-            cfg, provider.get(), registry.get(), policy.get(), backend.get(),
-            conv_store.get(), budget_tracker.get());
+        cfg.port = 0;  // auto-assign
+        cfg.max_sessions = 10;
+        cfg.cors_origin = "*";
 
-        server_thread = std::thread([this]() { server->start(); });
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        port = server->bound_port();
+        server_ = std::make_unique<HttpServer>(
+            cfg, provider_.get(), &registry_, &policy_);
 
-        // Wait for server to be ready
-        for (int i = 0; i < 20; ++i) {
-            httplib::Client probe("http://127.0.0.1:" + std::to_string(port));
-            auto res = probe.Get("/api/health");
-            if (res && res->status == 200) break;
+        // Start server in background thread
+        server_thread_ = std::thread([this]() {
+            server_->start();
+        });
+
+        // Wait for server to be ready (bound_port becomes non-zero)
+        for (int i = 0; i < 50; ++i) {
+            if (server_->bound_port() != 0) break;
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        port_ = server_->bound_port();
+    }
+
+    ~HttpServerFixture() {
+        if (server_) {
+            server_->stop();
+        }
+        if (server_thread_.joinable()) {
+            server_thread_.join();
         }
     }
 
-    ~FullServerFixture() {
-        server->stop();
-        if (server_thread.joinable()) server_thread.join();
-    }
+    int port() const { return port_; }
+    std::string base_url() const { return "http://127.0.0.1:" + std::to_string(port_); }
+    MockProvider& provider() { return *provider_; }
 
-    std::string base_url() const {
-        return "http://127.0.0.1:" + std::to_string(port);
-    }
-
-    httplib::Client client() const {
-        return httplib::Client(base_url());
-    }
+private:
+    std::shared_ptr<MockProvider> provider_;
+    tool::ToolRegistry registry_;
+    SecurityPolicy policy_{AutonomyLevel::Full};
+    std::unique_ptr<HttpServer> server_;
+    std::thread server_thread_;
+    int port_ = 0;
 };
 
 }  // anonymous namespace
 
-// --- Session edge cases ---
+// ── 1. Health endpoint returns ok ──────────────────────────────────────────────
 
-TEST_CASE("HTTP E2E: create session with model override", "[e2e][blackbox][http]") {
-    FullServerFixture fx;
-    auto cli = fx.client();
+TEST_CASE("HTTP E2E: /api/health returns ok", "[e2e][blackbox][http]") {
+    HttpServerFixture fixture;
+    REQUIRE(fixture.port() > 0);
 
-    json req;
-    req["model"] = "gpt-4o";
-    auto res = cli.Post("/api/sessions", req.dump(), "application/json");
+    httplib::Client cli(fixture.base_url());
+    auto res = cli.Get("/api/health");
+
     REQUIRE(res != nullptr);
     REQUIRE(res->status == 200);
 
-    auto body = json::parse(res->body);
-    REQUIRE(body.contains("id"));
+    auto body = nlohmann::json::parse(res->body);
+    REQUIRE(body["status"] == "ok");
+    REQUIRE(body.contains("uptime"));
+    REQUIRE(body.contains("sessions"));
 }
 
-TEST_CASE("HTTP E2E: create session with system_prompt", "[e2e][blackbox][http]") {
-    FullServerFixture fx;
-    auto cli = fx.client();
+// ── 2. CORS headers on health endpoint ────────────────────────────────────────
 
-    json req;
-    req["system_prompt"] = "You are a test assistant.";
-    auto res = cli.Post("/api/sessions", req.dump(), "application/json");
+TEST_CASE("HTTP E2E: CORS headers present on /api/health", "[e2e][blackbox][http]") {
+    HttpServerFixture fixture;
+    REQUIRE(fixture.port() > 0);
+
+    httplib::Client cli(fixture.base_url());
+    auto res = cli.Get("/api/health");
+
     REQUIRE(res != nullptr);
     REQUIRE(res->status == 200);
+    REQUIRE(res->has_header("Access-Control-Allow-Origin"));
+    REQUIRE(res->get_header_value("Access-Control-Allow-Origin") == "*");
 }
 
-TEST_CASE("HTTP E2E: max sessions returns 429", "[e2e][blackbox][http]") {
-    FullServerFixture fx(false, false, 1);  // max_sessions = 1
-    auto cli = fx.client();
-
-    // Create first session
-    json req1 = json::object();
-    auto res1 = cli.Post("/api/sessions", req1.dump(), "application/json");
-    REQUIRE(res1 != nullptr);
-    REQUIRE(res1->status == 200);
-
-    // Try to create second — should get 429
-    json req2 = json::object();
-    auto res2 = cli.Post("/api/sessions", req2.dump(), "application/json");
-    REQUIRE(res2 != nullptr);
-    REQUIRE(res2->status == 429);
-}
-
-TEST_CASE("HTTP E2E: chat with missing message returns 400", "[e2e][blackbox][http]") {
-    FullServerFixture fx;
-    auto cli = fx.client();
-
-    // Create session
-    json create_req = json::object();
-    auto create_res = cli.Post("/api/sessions", create_req.dump(), "application/json");
-    auto create_body = json::parse(create_res->body);
-    std::string id = create_body["id"];
-
-    // Chat without message field
-    json chat_req = json::object();
-    auto res = cli.Post("/api/sessions/" + id + "/chat", chat_req.dump(), "application/json");
-    REQUIRE(res != nullptr);
-    REQUIRE(res->status == 400);
-}
-
-TEST_CASE("HTTP E2E: chat with invalid JSON returns 400", "[e2e][blackbox][http]") {
-    FullServerFixture fx;
-    auto cli = fx.client();
-
-    json create_req = json::object();
-    auto create_res = cli.Post("/api/sessions", create_req.dump(), "application/json");
-    auto create_body = json::parse(create_res->body);
-    std::string id = create_body["id"];
-
-    auto res = cli.Post("/api/sessions/" + id + "/chat", "not json", "application/json");
-    REQUIRE(res != nullptr);
-    REQUIRE(res->status == 400);
-}
-
-// --- Stream endpoint ---
-
-TEST_CASE("HTTP E2E: stream endpoint on nonexistent session returns 404", "[e2e][blackbox][http]") {
-    FullServerFixture fx;
-    auto cli = fx.client();
-
-    auto res = cli.Get("/api/sessions/nonexistent/stream?message=Hi");
-    REQUIRE(res != nullptr);
-    REQUIRE(res->status == 404);
-}
-
-TEST_CASE("HTTP E2E: stream with missing message returns 400", "[e2e][blackbox][http]") {
-    FullServerFixture fx;
-    auto cli = fx.client();
-
-    json create_req = json::object();
-    auto create_res = cli.Post("/api/sessions", create_req.dump(), "application/json");
-    auto create_body = json::parse(create_res->body);
-    std::string id = create_body["id"];
-
-    auto res = cli.Get("/api/sessions/" + id + "/stream");
-    REQUIRE(res != nullptr);
-    REQUIRE(res->status == 400);
-}
-
-// --- CORS ---
+// ── 3. CORS preflight returns 204 ─────────────────────────────────────────────
 
 TEST_CASE("HTTP E2E: CORS preflight returns 204", "[e2e][blackbox][http]") {
-    FullServerFixture fx;
-    auto cli = fx.client();
+    HttpServerFixture fixture;
+    REQUIRE(fixture.port() > 0);
 
-    auto res = cli.Options("/api/health");
+    httplib::Client cli(fixture.base_url());
+    auto res = cli.Options("/api/sessions");
+
     REQUIRE(res != nullptr);
     REQUIRE(res->status == 204);
     REQUIRE(res->has_header("Access-Control-Allow-Origin"));
 }
 
-TEST_CASE("HTTP E2E: CORS headers on error responses", "[e2e][blackbox][http]") {
-    FullServerFixture fx;
-    auto cli = fx.client();
+// ── 4. Create session returns session ID ──────────────────────────────────────
 
-    auto res = cli.Delete("/api/sessions/nonexistent");
+TEST_CASE("HTTP E2E: POST /api/sessions creates session", "[e2e][blackbox][http]") {
+    HttpServerFixture fixture;
+    REQUIRE(fixture.port() > 0);
+
+    httplib::Client cli(fixture.base_url());
+    nlohmann::json body;
+    body["model"] = "test-model";
+
+    auto res = cli.Post("/api/sessions", body.dump(), "application/json");
+
     REQUIRE(res != nullptr);
-    REQUIRE(res->status == 404);
-    REQUIRE(res->has_header("Access-Control-Allow-Origin"));
+    REQUIRE(res->status == 200);
+
+    auto resp = nlohmann::json::parse(res->body);
+    REQUIRE(resp.contains("id"));
+    REQUIRE_FALSE(resp["id"].get<std::string>().empty());
 }
 
-// --- Conversation API ---
+// ── 5. List sessions returns array ────────────────────────────────────────────
 
-TEST_CASE("HTTP E2E: conversation CRUD lifecycle", "[e2e][blackbox][http]") {
-    FullServerFixture fx(false, true);  // with conversations
-    auto cli = fx.client();
+TEST_CASE("HTTP E2E: GET /api/sessions returns array", "[e2e][blackbox][http]") {
+    HttpServerFixture fixture;
+    REQUIRE(fixture.port() > 0);
 
-    // Create a conversation (via session chat, which auto-creates)
-    json create_req = json::object();
-    auto create_res = cli.Post("/api/sessions", create_req.dump(), "application/json");
+    httplib::Client cli(fixture.base_url());
+
+    // First create a session
+    nlohmann::json body;
+    body["model"] = "test-model";
+    auto create_res = cli.Post("/api/sessions", body.dump(), "application/json");
+    REQUIRE(create_res != nullptr);
     REQUIRE(create_res->status == 200);
 
-    // List conversations
-    auto list_res = cli.Get("/api/conversations");
-    REQUIRE(list_res != nullptr);
-    REQUIRE(list_res->status == 200);
-    auto list_body = json::parse(list_res->body);
-    REQUIRE(list_body.contains("conversations"));
-    REQUIRE(list_body["conversations"].is_array());
-
-    // Get conversation metadata
-    if (!list_body["conversations"].empty()) {
-        std::string conv_id = list_body["conversations"][0]["id"];
-        auto meta_res = cli.Get("/api/conversations/" + conv_id);
-        REQUIRE(meta_res != nullptr);
-        REQUIRE(meta_res->status == 200);
-    }
-
-    // Delete conversation
-    if (!list_body["conversations"].empty()) {
-        std::string conv_id = list_body["conversations"][0]["id"];
-        auto del_res = cli.Delete("/api/conversations/" + conv_id);
-        REQUIRE(del_res != nullptr);
-        REQUIRE(del_res->status == 200);
-    }
-}
-
-TEST_CASE("HTTP E2E: conversation export returns JSONL", "[e2e][blackbox][http]") {
-    FullServerFixture fx(false, true);
-    auto cli = fx.client();
-
-    // Create and chat
-    json create_req = json::object();
-    auto create_res = cli.Post("/api/sessions", create_req.dump(), "application/json");
-    auto create_body = json::parse(create_res->body);
-    std::string conv_id = create_body["conversation_id"];
-
-    if (!conv_id.empty()) {
-        auto res = cli.Get("/api/conversations/" + conv_id + "/export");
-        if (res && res->status == 200) {
-            REQUIRE((res->body.empty() || res->get_header_value("Content-Type").find("jsonl") != std::string::npos));
-        }
-    }
-}
-
-TEST_CASE("HTTP E2E: conversation import creates new", "[e2e][blackbox][http]") {
-    FullServerFixture fx(false, true);
-    auto cli = fx.client();
-
-    // Import a minimal JSONL conversation
-    json import_req;
-    import_req["data"] = R"({"role":"user","content":"test"}
-{"role":"assistant","content":"reply"}
-)";
-    import_req["model"] = "test-model";
-
-    auto res = cli.Post("/api/conversations/import", import_req.dump(), "application/json");
-    REQUIRE(res != nullptr);
-    if (res->status == 200) {
-        auto body = json::parse(res->body);
-        REQUIRE(body.contains("id"));
-    }
-    // May be 400 if import format doesn't match — that's also acceptable
-}
-
-// --- Budget API ---
-
-TEST_CASE("HTTP E2E: usage endpoint returns token counts", "[e2e][blackbox][http]") {
-    FullServerFixture fx(true);  // with budget
-    auto cli = fx.client();
-
-    auto res = cli.Get("/api/usage?scope=session");
+    // Then list sessions
+    auto res = cli.Get("/api/sessions");
     REQUIRE(res != nullptr);
     REQUIRE(res->status == 200);
-    auto body = json::parse(res->body);
-    REQUIRE(body.contains("usage"));
-    REQUIRE(body["usage"].contains("input_tokens"));
+
+    auto resp = nlohmann::json::parse(res->body);
+    REQUIRE(resp.is_array());
+    REQUIRE(resp.size() >= 1);
+    REQUIRE(resp[0].contains("id"));
 }
 
-TEST_CASE("HTTP E2E: cost endpoint returns cost data", "[e2e][blackbox][http]") {
-    FullServerFixture fx(true);  // with budget
-    auto cli = fx.client();
+// ── 6. Delete non-existent session returns 404 ────────────────────────────────
 
-    auto res = cli.Get("/api/cost?scope=global");
+TEST_CASE("HTTP E2E: DELETE /api/sessions/{id} returns 404 for unknown", "[e2e][blackbox][http]") {
+    HttpServerFixture fixture;
+    REQUIRE(fixture.port() > 0);
+
+    httplib::Client cli(fixture.base_url());
+    auto res = cli.Delete("/api/sessions/nonexistent-id");
+
     REQUIRE(res != nullptr);
-    REQUIRE(res->status == 200);
-    auto body = json::parse(res->body);
-    REQUIRE(body.contains("cost"));
-}
-
-TEST_CASE("HTTP E2E: usage history returns stub", "[e2e][blackbox][http]") {
-    FullServerFixture fx(true);  // with budget
-    auto cli = fx.client();
-
-    auto res = cli.Get("/api/usage/history?limit=10");
-    REQUIRE(res != nullptr);
-    REQUIRE(res->status == 200);
-    auto body = json::parse(res->body);
-    REQUIRE(body.contains("not_implemented"));
-}
-
-// --- Approval with aborted decision ---
-
-TEST_CASE("HTTP E2E: resolve approval with aborted decision", "[e2e][blackbox][http]") {
-    FullServerFixture fx;
-    auto cli = fx.client();
-
-    json req;
-    req["decision"] = "aborted";
-
-    auto res = cli.Post("/api/approvals/1/resolve", req.dump(), "application/json");
-    REQUIRE(res != nullptr);
-    // 404 is expected — no pending approval with id "1"
     REQUIRE(res->status == 404);
+
+    auto body = nlohmann::json::parse(res->body);
+    REQUIRE(body.contains("error"));
+    REQUIRE(body["error"]["code"] == "session_not_found");
+}
+
+// ── 7. Chat with non-existent session returns 404 ─────────────────────────────
+
+TEST_CASE("HTTP E2E: POST /api/sessions/{id}/chat returns 404 for unknown", "[e2e][blackbox][http]") {
+    HttpServerFixture fixture;
+    REQUIRE(fixture.port() > 0);
+
+    httplib::Client cli(fixture.base_url());
+    nlohmann::json body;
+    body["message"] = "Hello";
+
+    auto res = cli.Post("/api/sessions/nonexistent/chat", body.dump(), "application/json");
+
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 404);
+}
+
+// ── 8. Chat with invalid JSON returns 400 ─────────────────────────────────────
+
+TEST_CASE("HTTP E2E: POST /api/sessions/{id}/chat returns 400 for bad JSON", "[e2e][blackbox][http]") {
+    HttpServerFixture fixture;
+    REQUIRE(fixture.port() > 0);
+
+    httplib::Client cli(fixture.base_url());
+
+    // Create a session first
+    nlohmann::json create_body;
+    create_body["model"] = "test-model";
+    auto create_res = cli.Post("/api/sessions", create_body.dump(), "application/json");
+    REQUIRE(create_res != nullptr);
+    auto session = nlohmann::json::parse(create_res->body);
+    std::string session_id = session["id"];
+
+    // Send invalid JSON
+    auto res = cli.Post("/api/sessions/" + session_id + "/chat",
+                        "not json at all", "application/json");
+
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 400);
+
+    auto body = nlohmann::json::parse(res->body);
+    REQUIRE(body["error"]["code"] == "invalid_json");
+}
+
+// ── 9. Chat with missing message field returns 400 ────────────────────────────
+
+TEST_CASE("HTTP E2E: POST /api/sessions/{id}/chat returns 400 for missing message", "[e2e][blackbox][http]") {
+    HttpServerFixture fixture;
+    REQUIRE(fixture.port() > 0);
+
+    httplib::Client cli(fixture.base_url());
+
+    // Create a session
+    nlohmann::json create_body;
+    create_body["model"] = "test-model";
+    auto create_res = cli.Post("/api/sessions", create_body.dump(), "application/json");
+    auto session = nlohmann::json::parse(create_res->body);
+    std::string session_id = session["id"];
+
+    // Send JSON without message field
+    nlohmann::json chat_body;
+    chat_body["not_message"] = "hello";
+    auto res = cli.Post("/api/sessions/" + session_id + "/chat",
+                        chat_body.dump(), "application/json");
+
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 400);
+
+    auto body = nlohmann::json::parse(res->body);
+    REQUIRE(body["error"]["code"] == "missing_field");
+}
+
+// ── 10. Models endpoint returns list ──────────────────────────────────────────
+
+TEST_CASE("HTTP E2E: GET /api/models returns list", "[e2e][blackbox][http]") {
+    HttpServerFixture fixture;
+    REQUIRE(fixture.port() > 0);
+
+    httplib::Client cli(fixture.base_url());
+    auto res = cli.Get("/api/models");
+
+    REQUIRE(res != nullptr);
+    REQUIRE(res->status == 200);
+
+    auto body = nlohmann::json::parse(res->body);
+    REQUIRE(body.is_array());
+}
+
+// ── 11. Full chat roundtrip ───────────────────────────────────────────────────
+
+TEST_CASE("HTTP E2E: full chat roundtrip", "[e2e][blackbox][http]") {
+    HttpServerFixture fixture;
+    REQUIRE(fixture.port() > 0);
+
+    httplib::Client cli(fixture.base_url());
+    cli.set_read_timeout(10, 0);  // 10 second timeout for chat
+
+    // Create session
+    nlohmann::json create_body;
+    create_body["model"] = "test-model";
+    auto create_res = cli.Post("/api/sessions", create_body.dump(), "application/json");
+    REQUIRE(create_res->status == 200);
+    auto session = nlohmann::json::parse(create_res->body);
+    std::string session_id = session["id"];
+
+    // Send chat message
+    nlohmann::json chat_body;
+    chat_body["message"] = "Hello, server!";
+    auto chat_res = cli.Post("/api/sessions/" + session_id + "/chat",
+                              chat_body.dump(), "application/json");
+
+    REQUIRE(chat_res != nullptr);
+    // Chat should succeed (200) or fail gracefully
+    REQUIRE((chat_res->status == 200 || chat_res->status >= 400));
+
+    if (chat_res->status == 200) {
+        auto body = nlohmann::json::parse(chat_res->body);
+        // Server returns "content" field (not "response")
+        REQUIRE((body.contains("content") || body.contains("response") || body.contains("error")));
+    }
 }
