@@ -1,0 +1,10 @@
+{
+  "message": {
+    "role": "assistant",
+    "content": "Hello! How can I help you today?"
+  },
+  "done_reason": "stop",
+  "done": true,
+  "prompt_eval_count": 15,
+  "eval_count": 8
+}

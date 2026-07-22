@@ -29,5 +29,10 @@ if(EA_ENABLE_SECURITY_TESTS)
     add_subdirectory(security)
 endif()
 
+option(EA_ENABLE_BLACKBOX_TESTS "Build black-box and grey-box tests" ON)
+if(EA_ENABLE_BLACKBOX_TESTS)
+    add_subdirectory(blackbox)
+endif()
+
 # Mock plugin for loader tests
 add_subdirectory(plugins/mock_plugin)

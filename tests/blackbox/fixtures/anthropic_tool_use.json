@@ -1,0 +1,21 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "I'll run that command for you."
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01abc",
+      "name": "shell",
+      "input": {
+        "command": "ls -la"
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "usage": {
+    "input_tokens": 25,
+    "output_tokens": 18
+  }
+}
