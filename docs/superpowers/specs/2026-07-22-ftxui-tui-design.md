@@ -65,10 +65,19 @@ while (true) { std::cout << "> "; std::getline(std::cin, input); ... }
 #endif
 
 // 之后
-#else
 #if EA_ENABLE_TUI
-    ea::tui::TuiApp tui(loop, budget_tracker.get(), conv_store.get());
-    tui.run();
+    // TuiApp 提供 OutputFn/StreamFn 回调，在构造 AgentLoop 时传入
+    ea::tui::TuiApp tui;
+    ea::agent::AgentLoop loop(
+        effective_provider, &registry, memory.get(),
+        ea::agent::AgentLoop::Config{...},
+        tui.output_fn(),      // 替代 [](text) { cout << text; }
+        tui.stream_fn(),      // 替代原始 stream lambda
+        security.get(),
+        tui.approval_handler(),  // 替代 StdinApprovalHandler
+        compressor.get(), strategy.get(), conv_store.get(), budget_tracker.get()
+    );
+    tui.run(loop, budget_tracker.get(), conv_store.get());
 #else
     // 原始 std::cout + getline 回退
     while (true) { ... }
