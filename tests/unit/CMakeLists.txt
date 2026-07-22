@@ -80,14 +80,20 @@ if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
     add_executable(ea-tui-tests
         test_tui_chat_area.cpp
         test_tui_approval_handler.cpp
+        test_tui_event_listener.cpp
+        test_tui_command_palette.cpp
     )
     target_link_libraries(ea-tui-tests PRIVATE
         ea-test-common
         ea-common ea-config ea-core ea-security
+        ea-agent ea-conversation ea-budget
+        ea-provider ea-tool ea-mcp ea-platform
         ea-tui
         ftxui::component
         nlohmann_json::nlohmann_json
+        httplib::httplib
         Catch2::Catch2WithMain
+        ${CMAKE_DL_LIBS}
     )
     target_include_directories(ea-tui-tests PRIVATE
         ${CMAKE_SOURCE_DIR}/src
