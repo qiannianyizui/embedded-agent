@@ -54,7 +54,11 @@ public:
 
     provider::ProviderCapabilities capabilities() const override {
         try { return provider_->capabilities(); }
-        catch (...) { return {}; }  // All false — safest default
+        catch (...) {
+            // Safest default: all capabilities disabled. A crashed plugin
+            // must not falsely claim it supports streaming or native tool calling.
+            return provider::ProviderCapabilities{false, false, false, false, false};
+        }
     }
 
 private:
