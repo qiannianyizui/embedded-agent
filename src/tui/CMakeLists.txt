@@ -15,4 +15,4 @@ target_include_directories(ea-tui PUBLIC
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_BINARY_DIR}/include
 )
-target_link_libraries(ea-tui PUBLIC ftxui::component ea-core)
+target_link_libraries(ea-tui PUBLIC ftxui::component ea-core ea-security)

@@ -79,10 +79,11 @@ target_compile_definitions(ea-unit-tests PRIVATE
 if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
     add_executable(ea-tui-tests
         test_tui_chat_area.cpp
+        test_tui_approval_handler.cpp
     )
     target_link_libraries(ea-tui-tests PRIVATE
         ea-test-common
-        ea-common ea-config ea-core
+        ea-common ea-config ea-core ea-security
         ea-tui
         ftxui::component
         nlohmann_json::nlohmann_json
