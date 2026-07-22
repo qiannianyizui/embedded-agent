@@ -6,6 +6,7 @@
 #include "MockTool.h"
 #include "agent/AgentLoop.h"
 #include "tool/ToolRegistry.h"
+#include "common/net/SseParser.h"
 
 using namespace ea;
 using namespace ea::test;
@@ -69,9 +70,18 @@ TEST_CASE("Fuzz: SSE parser handles random streams without crashing",
     FuzzGenerator gen(987);
     for (int i = 0; i < 100; ++i) {
         std::string stream = gen.random_sse_stream(10);
-        // SSE parsing must not crash
-        // (If SseParser has a public API, call it here)
-        (void)stream;
+        net::SseParser parser;
+        int event_count = 0;
+        // Feed the random SSE stream to the parser and count events.
+        // Must not crash regardless of input content.
+        parser.feed(stream, [&](const net::SseEvent& event) {
+            (void)event;
+            event_count++;
+        });
+        // Verify the parser consumed the stream without crashing.
+        // The event count may vary since random content may or may not
+        // produce valid SSE events, but the parser must not crash.
+        (void)event_count;
     }
     REQUIRE(true);
 }

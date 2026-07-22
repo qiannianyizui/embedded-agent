@@ -72,11 +72,22 @@ TEST_CASE("Plugin sandbox: PluginProviderAdapter catches all exceptions", "[secu
     REQUIRE(adapter.name() == "<plugin-error>");
     REQUIRE(adapter.list_models().empty());
     auto caps = adapter.capabilities();
-    // Default-constructed ProviderCapabilities uses default bool values
-    // (streaming=true, native_tool_calling=true; others=false)
-    REQUIRE(caps.streaming == true);
-    REQUIRE(caps.native_tool_calling == true);
-    REQUIRE_FALSE(caps.vision);
+    // KNOWN BUG: PluginProviderAdapter.h comment says "All false — safest default",
+    // but ProviderCapabilities struct defaults to streaming=true and
+    // native_tool_calling=true. When a plugin crashes, the adapter returns
+    // ProviderCapabilities{} which has these unsafe defaults, falsely
+    // claiming the crashed plugin supports streaming and native tool calling.
+    // The safe default should be all-false. These assertions document the
+    // EXPECTED safe behavior; they will FAIL until PluginProviderAdapter is
+    // fixed to return an explicit all-false ProviderCapabilities.
+    //
+    // Current (buggy) behavior:
+    //   caps.streaming == true, caps.native_tool_calling == true
+    // Expected (safe) behavior:
+    //   caps.streaming == false, caps.native_tool_calling == false
+    CHECK_FALSE(caps.streaming);            // TODO: fix PluginProviderAdapter
+    CHECK_FALSE(caps.native_tool_calling);  // TODO: fix PluginProviderAdapter
+    CHECK_FALSE(caps.vision);
     auto chat_result = adapter.chat({}, {}, "", {});
     REQUIRE_FALSE(chat_result.ok());
     REQUIRE(chat_result.error().code == ErrorCode::PluginError);

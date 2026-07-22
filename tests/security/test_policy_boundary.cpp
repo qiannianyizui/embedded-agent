@@ -107,6 +107,19 @@ TEST_CASE("Policy boundary: Supervised blocks command injection in whitelisted c
     SecurityAssertions::assert_command_blocked(policy, "ls `rm -rf /`");
 }
 
+TEST_CASE("Policy limitation: shell substitution not detected", "[security][policy][limitation]") {
+    SecurityPolicy policy(AutonomyLevel::Supervised);
+    policy.set_allowed_commands({"ls", "cat"});
+    // Known limitation: $(substitution) and backtick injection are not detected
+    // because SecurityPolicy uses substring matching, not shell parsing.
+    // A production system needs a proper shell parser or command allowlist.
+    auto result1 = policy.check_command("cat $(malicious)");
+    CHECK(result1.ok());  // Currently passes — this is a known gap
+    auto result2 = policy.check_command("ls `rm -rf /`");
+    // This one IS caught because `rm -rf /` is in DANGEROUS_COMMANDS
+    CHECK_FALSE(result2.ok());
+}
+
 TEST_CASE("Policy boundary: Supervised workspace path restriction", "[security][policy]") {
     SecurityPolicy policy(AutonomyLevel::Supervised);
     policy.set_workspace("/workspace");
