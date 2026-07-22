@@ -74,5 +74,25 @@ target_compile_definitions(ea-unit-tests PRIVATE
     CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     CMAKE_BINARY_DIR="${CMAKE_BINARY_DIR}"
 )
+
+# TUI unit tests (only when TUI is enabled)
+if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
+    add_executable(ea-tui-tests
+        test_tui_chat_area.cpp
+    )
+    target_link_libraries(ea-tui-tests PRIVATE
+        ea-test-common
+        ea-common ea-config ea-core
+        ea-tui
+        ftxui::component
+        nlohmann_json::nlohmann_json
+        Catch2::Catch2WithMain
+    )
+    target_include_directories(ea-tui-tests PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_BINARY_DIR}/include
+    )
+    add_test(NAME ea-tui-tests COMMAND ea-tui-tests)
+endif()
 include(CTest)
 add_test(NAME ea-unit-tests COMMAND ea-unit-tests)
