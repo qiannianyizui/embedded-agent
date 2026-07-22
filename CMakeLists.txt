@@ -22,6 +22,7 @@ option(EA_ENABLE_ROUTER     "Enable model router provider" OFF)
 option(EA_ENABLE_FALLBACK   "Enable provider fallback"     OFF)
 option(EA_ENABLE_MCP        "Enable MCP client"            ON)
 option(EA_ENABLE_PLUGINS   "Enable plugin system"         ON)
+option(EA_ENABLE_TUI       "Enable FTXUI-based TUI for CLI mode" ON)
 
 # --- Embedded mode auto-configuration ---
 if(EA_MODE_EMBEDDED)
@@ -31,6 +32,7 @@ if(EA_MODE_EMBEDDED)
     set(EA_ENABLE_FALLBACK OFF CACHE BOOL "Disable fallback for embedded" FORCE)
     set(EA_ENABLE_MCP OFF CACHE BOOL "Disable MCP for embedded" FORCE)
     set(EA_ENABLE_PLUGINS OFF CACHE BOOL "Disable plugins for embedded" FORCE)
+    set(EA_ENABLE_TUI OFF CACHE BOOL "Disable TUI for embedded" FORCE)
 endif()
 
 if(EA_MODE_SERVER)
@@ -87,6 +89,14 @@ FetchContent_Declare(mbedtls
 
 FetchContent_MakeAvailable(json toml11 spdlog cli11 httplib mbedtls)
 
+# --- FTXUI (TUI library for CLI mode) ---
+if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
+    FetchContent_Declare(ftxui
+        URL https://github.com/ArthurSonzogni/FTXUI/archive/v7.0.1.tar.gz
+    )
+    FetchContent_MakeAvailable(ftxui)
+endif()
+
 add_subdirectory(src/common)
 add_subdirectory(src/config)
 add_subdirectory(src/core)
@@ -101,6 +111,10 @@ add_subdirectory(src/agent)
 add_subdirectory(src/mcp)
 add_subdirectory(src/plugin)
 add_subdirectory(src/server)
+
+if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
+    add_subdirectory(src/tui)
+endif()
 
 option(ENABLE_TESTS "Build tests" OFF)
 if(ENABLE_TESTS)
@@ -175,6 +189,12 @@ target_include_directories(embedded-agent-core PUBLIC
 
 add_executable(embedded-agent src/main.cpp)
 ea_target_compile_options(embedded-agent)
-target_link_libraries(embedded-agent PRIVATE embedded-agent-core CLI11::CLI11)
+if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
+    target_link_libraries(embedded-agent PRIVATE
+        embedded-agent-core CLI11::CLI11 ea-tui ftxui::component)
+else()
+    target_link_libraries(embedded-agent PRIVATE
+        embedded-agent-core CLI11::CLI11)
+endif()
 # Export symbols for dlopen-based plugin loading
 set_target_properties(embedded-agent PROPERTIES ENABLE_EXPORTS ON)
