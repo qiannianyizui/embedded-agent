@@ -1,5 +1,6 @@
-// CommandPalette — slash command menu using FTXUI Menu + Modal
+// CommandPalette — slash command menu with Hermes color scheme
 #include "CommandPalette.h"
+#include "Theme.h"
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/event.hpp>
 
@@ -47,6 +48,7 @@ void CommandPalette::set_on_command(std::function<void(const std::string&)> fn) 
 
 ftxui::Element CommandPalette::render() {
     using namespace ftxui;
+    auto& theme = default_theme();
 
     if (!showing_) {
         return text("");
@@ -55,18 +57,28 @@ ftxui::Element CommandPalette::render() {
     std::vector<Element> entries;
     for (int i = 0; i < static_cast<int>(commands_.size()); ++i) {
         const auto& entry = commands_[i];
-        auto line = text(entry.name + " - " + entry.description);
         if (i == selected_) {
-            line = line | inverted | focus;
+            // Selected: ▸ prefix + inverted + bold + accent
+            entries.push_back(hbox({
+                text("▸ ") | color(theme.color.accent) | bold,
+                text(entry.name) | inverted | bold | color(theme.color.accent),
+                text(" - " + entry.description) | inverted | color(theme.color.text),
+            }));
+        } else {
+            // Normal: muted
+            entries.push_back(hbox({
+                text("  "),
+                text(entry.name) | color(theme.color.text),
+                text(" - " + entry.description) | color(theme.color.muted) | dim,
+            }));
         }
-        entries.push_back(std::move(line));
     }
 
     return vbox({
-        text("Commands") | bold,
+        text("  Commands") | bold | color(theme.color.primary),
         separator(),
         vbox(std::move(entries)),
-    }) | border | size(WIDTH, LESS_THAN, 50);
+    }) | borderRounded | color(theme.color.border) | size(WIDTH, LESS_THAN, 55);
 }
 
 bool CommandPalette::on_event(ftxui::Event event) {

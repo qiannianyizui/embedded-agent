@@ -1,5 +1,6 @@
-// SessionSidebar — collapsible sidebar showing conversation list
+// SessionSidebar — collapsible sidebar with Hermes color scheme
 #include "SessionSidebar.h"
+#include "Theme.h"
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/event.hpp>
 
@@ -46,6 +47,7 @@ void SessionSidebar::set_on_resume(std::function<void(std::string)> fn) {
 
 ftxui::Element SessionSidebar::render() {
     using namespace ftxui;
+    auto& theme = default_theme();
 
     if (!showing_) {
         return text("") | size(WIDTH, EQUAL, 0);
@@ -53,7 +55,7 @@ ftxui::Element SessionSidebar::render() {
 
     std::vector<Element> entries;
     if (sessions_.empty()) {
-        entries.push_back(text("  (no sessions)") | dim);
+        entries.push_back(text("  (no sessions)") | color(theme.color.muted) | dim);
     } else {
         for (int i = 0; i < static_cast<int>(sessions_.size()); ++i) {
             const auto& session = sessions_[i];
@@ -63,21 +65,28 @@ ftxui::Element SessionSidebar::render() {
             }
             // Truncate long titles
             if (label.size() > 30) {
-                label = label.substr(0, 27) + "...";
+                label = label.substr(0, 27) + "…";
             }
-            auto line = text("  " + label);
             if (i == selected_) {
-                line = line | inverted | focus;
+                // Selected: ▸ prefix + inverted + bold + accent
+                entries.push_back(hbox({
+                    text("▸ ") | color(theme.color.accent) | bold,
+                    text(label) | inverted | bold | color(theme.color.accent),
+                }));
+            } else {
+                entries.push_back(hbox({
+                    text("  "),
+                    text(label) | color(theme.color.text),
+                }));
             }
-            entries.push_back(std::move(line));
         }
     }
 
     return vbox({
-        text("Sessions") | bold,
+        text("  Sessions") | bold | color(theme.color.primary),
         separator(),
         vbox(std::move(entries)) | flex,
-    }) | border | size(WIDTH, LESS_THAN, 35);
+    }) | borderRounded | color(theme.color.border) | size(WIDTH, LESS_THAN, 35);
 }
 
 bool SessionSidebar::on_event(ftxui::Event event) {

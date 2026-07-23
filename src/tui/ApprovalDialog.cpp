@@ -1,5 +1,6 @@
-// ApprovalDialog — implementation
+// ApprovalDialog — implementation with Hermes color scheme
 #include "ApprovalDialog.h"
+#include "Theme.h"
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
@@ -43,6 +44,7 @@ ftxui::Component ApprovalDialog::component() {
 
 ftxui::Element ApprovalDialog::render() {
     using namespace ftxui;
+    auto& theme = default_theme();
 
     auto* req = handler_.current_request();
     if (!req) {
@@ -51,21 +53,42 @@ ftxui::Element ApprovalDialog::render() {
 
     std::string args_str = req->arguments.dump(2);
 
+    // All approval requests are potentially dangerous — use warn styling
+    // Check if the tool name suggests high risk (shell, execute, delete, etc.)
+    static const char* high_risk_tools[] = {
+        "shell", "execute_code", "run_command", "delete_file", "terminal"
+    };
+    bool dangerous = false;
+    for (const auto& t : high_risk_tools) {
+        if (req->tool_name.find(t) != std::string::npos) {
+            dangerous = true;
+            break;
+        }
+    }
+
     auto content = vbox({
-        text("  Dangerous tool call") | bold | color(Color::Red),
+        text(dangerous ? "  ⚠  Dangerous tool call" : "  ⚡  Tool call requires approval")
+            | bold | color(dangerous ? theme.color.warn : theme.color.accent),
         text(""),
-        text("  Tool: " + req->tool_name) | bold,
-        text("  Args: " + args_str) | dim,
-        text("  Desc: " + req->description) | dim,
+        text("  Tool: " + req->tool_name) | bold | color(theme.color.text),
+        text("  Args: " + args_str) | color(theme.color.muted) | dim,
+        text("  Desc: " + req->description) | color(theme.color.muted) | dim,
         separator(),
         hbox({
             component_->Render() | center,
         }),
     });
 
-    return window(text(" Approval Required "), clear_under(content))
-        | border
-        | center;
+    // Dangerous: double border + warn color; normal: rounded border + border color
+    if (dangerous) {
+        return window(text(" Approval Required ") | color(theme.color.warn),
+                      clear_under(content))
+            | borderDouble | color(theme.color.warn) | center;
+    } else {
+        return window(text(" Approval Required ") | color(theme.color.border),
+                      clear_under(content))
+            | borderRounded | color(theme.color.border) | center;
+    }
 }
 
 bool ApprovalDialog::on_event(ftxui::Event event) {
