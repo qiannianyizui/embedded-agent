@@ -2,6 +2,7 @@
 #include "TuiEventListener.h"
 #include "ChatArea.h"
 #include "StatusBar.h"
+#include "FormatUtils.h"
 
 namespace ea::tui {
 
@@ -12,7 +13,9 @@ TuiEventListener::TuiEventListener(ChatArea& chat_area, StatusBar& status_bar,
 void TuiEventListener::on_event(const ea::agent::AgentEvent& event) {
     switch (event.type) {
         case ea::agent::AgentEventType::TurnStart:
-            post_fn_([this] { status_bar_.set_busy(true); });
+            post_fn_([this] {
+                status_bar_.set_busy(true);
+            });
             break;
 
         case ea::agent::AgentEventType::LLMResponse:
@@ -35,7 +38,18 @@ void TuiEventListener::on_event(const ea::agent::AgentEvent& event) {
             break;
 
         case ea::agent::AgentEventType::TurnEnd:
-            post_fn_([this] { status_bar_.set_busy(false); });
+            post_fn_([this, turn_usage = event.turn_usage, turn_cost = event.turn_cost] {
+                status_bar_.set_busy(false);
+                // Update usage from turn_usage if available
+                if (turn_usage.input_tokens > 0 || turn_usage.output_tokens > 0) {
+                    status_bar_.update_usage(
+                        turn_usage.input_tokens, turn_usage.output_tokens);
+                }
+                // Update cost from turn_cost if available
+                if (turn_cost.total() > 0.0) {
+                    status_bar_.update_cost(turn_cost.total());
+                }
+            });
             break;
 
         case ea::agent::AgentEventType::Error:

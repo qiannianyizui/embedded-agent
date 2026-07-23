@@ -6,6 +6,8 @@
 #include "ChatArea.h"
 #include "InputBar.h"
 #include "StatusBar.h"
+#include "Spinner.h"
+#include "Banner.h"
 #include "ApprovalDialog.h"
 #include "CommandPalette.h"
 #include "SessionSidebar.h"
@@ -39,6 +41,7 @@ private:
     ChatArea chat_area_;
     InputBar input_bar_;
     StatusBar status_bar_;
+    SpinnerState spinner_state_;  // Shared spinner state
     TuiApprovalHandler approval_handler_;
     ApprovalDialog approval_dialog_;
     CommandPalette command_palette_;
@@ -54,6 +57,7 @@ private:
 
     // Component tree
     ftxui::Component root_component_;
+    ftxui::Component spinner_component_;  // Spinner component for animation
     int sidebar_width_ = 0;  // 0 = hidden
     bool approval_showing_ = false;   // Modal state for approval dialog
     bool palette_showing_ = false;    // Modal state for command palette
@@ -62,6 +66,7 @@ private:
     void submit_input(const std::string& input);
     void execute_command(const std::string& command);
     void run_agent(const std::string& input);
+    void push_banner();  // Push startup banner to ChatArea
 };
 
 }  // namespace ea::tui

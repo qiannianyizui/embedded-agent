@@ -1,12 +1,15 @@
 // TuiApp — assembles all FTXUI components and drives the TUI event loop
 #include "TuiApp.h"
 #include "common/io/Logger.h"
+#include "Theme.h"
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
+#include <ftxui/component/animation.hpp>
 #include <sstream>
 #include <iomanip>
 #include <fstream>
+#include <unistd.h>  // getcwd
 
 namespace ea::tui {
 
@@ -48,8 +51,6 @@ ea::agent::AgentLoop::StreamFn TuiApp::stream_fn() {
             } else if (chunk.type == ea::StreamChunk::Type::Error) {
                 chat_area_.append_error(chunk.data);
             }
-            // ToolCallBegin / ToolCallDelta / ToolCallEnd are handled
-            // by TuiEventListener via AgentEvent, not via StreamFn.
         });
     };
 }
@@ -59,11 +60,39 @@ ea::security::IApprovalHandler* TuiApp::approval_handler() {
 }
 
 // ---------------------------------------------------------------------------
+// Banner
+// ---------------------------------------------------------------------------
+
+void TuiApp::push_banner() {
+    BannerInfo info;
+    info.model = "agent";  // Model name set separately via status_bar_.set_model()
+    info.session_id = loop_ ? loop_->conversation_id() : "";
+
+    // Get cwd
+    char cwd_buf[4096];
+    if (getcwd(cwd_buf, sizeof(cwd_buf))) {
+        info.cwd = cwd_buf;
+    }
+
+    // Tool count
+    // (We don't have direct access to tool count here; leave as 0 for now)
+
+    // Render banner as text and push to ChatArea
+    auto banner_elem = render_banner(info, 95);
+    // For simplicity, push the welcome message as a system message
+    auto& theme = default_theme();
+    chat_area_.append_system(theme.brand.icon + " " + theme.brand.name + " — " + theme.brand.welcome);
+}
+
+// ---------------------------------------------------------------------------
 // Component tree
 // ---------------------------------------------------------------------------
 
 void TuiApp::build_component_tree() {
     using namespace ftxui;
+
+    // Create spinner component for animation
+    spinner_component_ = make_spinner(spinner_state_);
 
     // FTXUI focus routing: Container::Vertical uses a selector (default 0)
     // to pick the "active child" that receives events.  Only that child
@@ -377,8 +406,17 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
         }
     });
 
-    // Set model name in status bar
+    // Set model name in status bar (from config, not AgentLoop)
     status_bar_.set_model("agent");
+
+    // Set cwd in status bar
+    char cwd_buf[4096];
+    if (getcwd(cwd_buf, sizeof(cwd_buf))) {
+        status_bar_.set_cwd(cwd_buf);
+    }
+
+    // Push startup banner
+    push_banner();
 
     // Build the component tree
     build_component_tree();
