@@ -145,8 +145,8 @@ inline std::string ctxBar(int pct, int width = 10) {
     int p = std::max(0, std::min(100, pct));
     int filled = (p * width + 50) / 100;  // rounded
     std::string bar;
-    bar.append(filled, '█');       // █ filled
-    bar.append(width - filled, '░'); // ░ empty
+    for (int i = 0; i < filled; ++i) bar += "█";
+    for (int i = filled; i < width; ++i) bar += "░";
     return bar;
 }
 
