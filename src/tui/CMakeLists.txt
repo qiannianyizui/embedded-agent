@@ -1,4 +1,5 @@
 add_library(ea-tui OBJECT
+    Theme.cpp
     TuiApp.cpp
     ChatArea.cpp
     InputBar.cpp
