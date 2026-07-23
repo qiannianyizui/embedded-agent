@@ -1,5 +1,7 @@
-// StatusBar — bottom status bar showing token usage, cost, model, session, and busy indicator
+// StatusBar — bottom status bar with Hermes-style horizontal rule format
 #include "StatusBar.h"
+#include "Theme.h"
+#include "FormatUtils.h"
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/component.hpp>
 #include <cmath>
@@ -8,7 +10,9 @@
 
 namespace ea::tui {
 
-StatusBar::StatusBar() = default;
+StatusBar::StatusBar() {
+    session_start_ = std::chrono::steady_clock::now();
+}
 
 ftxui::Component StatusBar::component() {
     if (!component_) {
@@ -19,6 +23,11 @@ ftxui::Component StatusBar::component() {
 
 void StatusBar::set_busy(bool busy) {
     busy_ = busy;
+    if (busy) {
+        spinner_state_.start();
+    } else {
+        spinner_state_.stop();
+    }
 }
 
 void StatusBar::update_usage(int input_tokens, int output_tokens) {
@@ -38,62 +47,96 @@ void StatusBar::set_session_id(const std::string& id) {
     session_id_ = id;
 }
 
-std::string StatusBar::format_tokens(int tokens) {
-    if (tokens >= 1000) {
-        double k = static_cast<double>(tokens) / 1000.0;
-        char buf[32];
-        std::snprintf(buf, sizeof(buf), "%.1fk", k);
-        return buf;
-    }
-    return std::to_string(tokens);
+void StatusBar::set_cwd(const std::string& cwd) {
+    cwd_ = cwd;
 }
 
-std::string StatusBar::format_cost(double cost) {
-    char buf[32];
-    std::snprintf(buf, sizeof(buf), "$%.4f", cost);
-    return buf;
+void StatusBar::set_context_pct(int pct) {
+    context_pct_ = pct;
+}
+
+ftxui::Color StatusBar::context_color() const {
+    auto& theme = default_theme();
+    if (context_pct_ < 0) return theme.color.muted;
+    if (context_pct_ >= 95) return theme.color.status_critical;
+    if (context_pct_ > 80) return theme.color.status_bad;
+    if (context_pct_ >= 50) return theme.color.status_warn;
+    return theme.color.status_good;
 }
 
 ftxui::Element StatusBar::render() {
     using namespace ftxui;
+    auto& theme = default_theme();
 
-    // Advance tick for spinner animation
-    tick_++;
-
-    // Left: busy indicator
-    Element indicator;
-    if (busy_) {
-        indicator = hbox({
-            spinner(3, tick_) | color(Color::Yellow),
-            text(" working"),
-        });
-    } else {
-        indicator = text("● ready") | color(Color::Green);
-    }
-
-    // Middle segments
-    std::string fmt_tokens = format_tokens(input_tokens_) + " in / "
-                           + format_tokens(output_tokens_) + " out";
-    std::string fmt_cost = format_cost(cost_usd_);
-
+    // ── Leader ──
     std::vector<Element> segments;
-    segments.push_back(std::move(indicator));
-    segments.push_back(separator());
+    segments.push_back(text("─ ") | color(theme.color.border));
+
+    // ── Indicator ──
+    if (busy_) {
+        // Show spinner frame text
+        std::string frame = spinner_frame_text(spinner_state_);
+        segments.push_back(text(frame) | color(theme.color.accent));
+    } else {
+        // Idle: show session duration in status_good color
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - session_start_).count();
+        segments.push_back(
+            text("✓ " + fmtDuration(elapsed_ms)) | color(theme.color.status_good)
+        );
+    }
+
+    // ── Separator helper ──
+    auto sep = [&]() -> Element {
+        return text(" │ ") | color(theme.color.muted);
+    };
+
+    // ── Model ──
     if (!model_.empty()) {
-        segments.push_back(text(model_) | dim);
-        segments.push_back(separator());
+        segments.push_back(sep());
+        segments.push_back(text(shortModelLabel(model_)) | color(theme.color.status_fg));
     }
-    segments.push_back(text(fmt_tokens) | dim);
-    segments.push_back(separator());
-    segments.push_back(text(fmt_cost) | dim);
 
-    // Right: session id (right-aligned via filler before it)
-    if (!session_id_.empty()) {
+    // ── Tokens ──
+    if (input_tokens_ > 0 || output_tokens_ > 0) {
+        segments.push_back(sep());
+        std::string tok_str = fmtK(input_tokens_) + "/" + fmtK(output_tokens_);
+        segments.push_back(text(tok_str) | color(theme.color.status_fg));
+    }
+
+    // ── Context bar ──
+    if (context_pct_ >= 0) {
+        segments.push_back(sep());
+        std::string bar = "[" + ctxBar(context_pct_) + "] "
+                        + std::to_string(context_pct_) + "%";
+        segments.push_back(text(bar) | color(context_color()));
+    }
+
+    // ── Cost ──
+    if (cost_usd_ > 0.0) {
+        segments.push_back(sep());
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "$%.4f", cost_usd_);
+        segments.push_back(text(buf) | color(theme.color.status_fg));
+    }
+
+    // ── Duration ──
+    segments.push_back(sep());
+    auto now = std::chrono::steady_clock::now();
+    auto session_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now - session_start_).count();
+    segments.push_back(text(fmtDuration(session_ms)) | color(theme.color.status_fg));
+
+    // ── Right side: cwd ──
+    if (!cwd_.empty()) {
         segments.push_back(filler());
-        segments.push_back(text(session_id_) | dim);
+        // ─ separator before cwd
+        segments.push_back(text(" ─ ") | color(theme.color.border));
+        segments.push_back(text(cwd_) | color(theme.color.label));
     }
 
-    return hbox(std::move(segments)) | border | flex;
+    return hbox(std::move(segments)) | flex;
 }
 
 }  // namespace ea::tui
