@@ -99,8 +99,8 @@ inline std::string shortModelLabel(const std::string& model) {
     auto slash = name.rfind('/');
     if (slash != std::string::npos) name = name.substr(slash + 1);
 
-    // Strip common prefixes
-    const std::vector<std::string> prefixes = {"claude-", "anthropic-", "gpt-"};
+    // Strip common prefixes (only full model-family prefixes, not short names like "gpt")
+    const std::vector<std::string> prefixes = {"claude-", "anthropic-"};
     for (const auto& p : prefixes) {
         if (name.size() > p.size() && name.compare(0, p.size(), p) == 0) {
             name = name.substr(p.size());
@@ -113,17 +113,8 @@ inline std::string shortModelLabel(const std::string& model) {
         if (c == '-' || c == '_') c = ' ';
     }
 
-    // Insert decimal point between digit-digit patterns like "4 8" → "4.8"
-    // Only for the last digit-space-digit in the string
-    for (size_t i = name.size(); i > 2; --i) {
-        if (name[i-1] >= '0' && name[i-1] <= '9' &&
-            name[i-2] == ' ' &&
-            name[i-3] >= '0' && name[i-3] <= '9') {
-            name[i-2] = '.';
-        }
-    }
-
-    // Strip trailing date stamps like " 20250514"
+    // Strip trailing date stamps like " 20250514" (8+ digit sequences)
+    // Must do this BEFORE decimal point insertion
     auto last_space = name.rfind(' ');
     if (last_space != std::string::npos && last_space + 1 < name.size()) {
         bool all_digits = true;
@@ -132,6 +123,16 @@ inline std::string shortModelLabel(const std::string& model) {
         }
         if (all_digits && name.size() - last_space - 1 >= 6) {
             name = name.substr(0, last_space);
+        }
+    }
+
+    // Insert decimal point between digit-space-digit patterns like "4 8" → "4.8"
+    // Only for the last digit-space-digit in the string
+    for (size_t i = name.size(); i > 2; --i) {
+        if (name[i-1] >= '0' && name[i-1] <= '9' &&
+            name[i-2] == ' ' &&
+            name[i-3] >= '0' && name[i-3] <= '9') {
+            name[i-2] = '.';
         }
     }
 

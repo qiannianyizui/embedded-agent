@@ -83,6 +83,8 @@ if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
         test_tui_event_listener.cpp
         test_tui_command_palette.cpp
         test_tui_input_bar.cpp
+        test_tui_theme.cpp
+        test_tui_spinner.cpp
     )
     target_link_libraries(ea-tui-tests PRIVATE
         ea-test-common
