@@ -55,6 +55,10 @@ ftxui::Element InputBar::render() {
         return text("  ... ") | dim;
     }
 
+    // Render the Input component directly — this is the standard FTXUI pattern
+    // for Renderer(child, render): the render lambda calls child->Render().
+    // Focus state is preserved because input_component_ is a child of
+    // with_events, which is a child of this Renderer in the component tree.
     return hbox({
         text("> "),
         input_component_->Render(),

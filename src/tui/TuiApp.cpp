@@ -65,8 +65,24 @@ ea::security::IApprovalHandler* TuiApp::approval_handler() {
 void TuiApp::build_component_tree() {
     using namespace ftxui;
 
-    // Main vertical layout: chat | separator | status | separator | input
-    auto main_layout = Renderer([this] {
+    // FTXUI focus routing: Container::Vertical uses a selector (default 0)
+    // to pick the "active child" that receives events.  Only that child
+    // gets keyboard input.  ChatArea and StatusBar are pure Renderers
+    // (non-focusable) — if we put them in the Container, the selector
+    // would start at index 0 (ChatArea) and the InputBar at index 2
+    // would never receive keystrokes until the user presses Tab/Down.
+    //
+    // Solution: only put the InputBar in the Container.  ChatArea and
+    // StatusBar are rendered directly in the Renderer lambda without
+    // participating in the focus chain.
+    auto container = Container::Vertical({
+        input_bar_.component(),
+    });
+
+    // Wrap the container with a Renderer to compose the full layout.
+    // The Renderer delegates events/focus to its child (the container),
+    // and only customises the visual output.
+    auto main_layout = Renderer(container, [this] {
         return vbox({
             chat_area_.component()->Render() | flex | frame,
             separator(),
