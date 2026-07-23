@@ -1,4 +1,4 @@
-// ChatArea — main chat message display with streaming support
+// ChatArea — main chat message display with Hermes-style role glyphs and gutter layout
 #pragma once
 #include <ftxui/component/component.hpp>
 #include "core/Types.h"
@@ -28,6 +28,8 @@ public:
     void append_tool_start(const std::string& name, const std::string& args);
     void append_tool_end(const std::string& name, const std::string& result, bool is_error);
     void append_error(const std::string& msg);
+    void append_system(const std::string& text);  // New: system messages
+    void append_banner(const std::string& text);  // New: banner message
     void finish_message();  // Streaming output complete
     void clear();
 
@@ -49,6 +51,7 @@ private:
     bool has_new_ = false;
     int scroll_position_ = 0;
     size_t spinner_index_ = 0;
+    bool first_user_message_ = true;  // For user message separator logic
 
     ftxui::Element render_message(const ChatMessage& msg, int width);
     ftxui::Element render();
