@@ -1,14 +1,43 @@
-// InputBar — bottom user input area with history navigation and submit callback
+// InputBar — bottom user input area with Hermes-style prompt and placeholder
 #include "InputBar.h"
+#include "Theme.h"
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
+#include <cstdlib>
+#include <ctime>
 
 namespace ea::tui {
 
-InputBar::InputBar() {
+namespace {
+
+// Placeholder list — matches Hermes PLACEHOLDERS
+const std::vector<std::string> PLACEHOLDERS = {
+    "Ask me anything…",
+    "Try \"explain this codebase\"",
+    "Try \"write a test for…\"",
+    "Try \"refactor the auth module\"",
+    "Try \"/help\" for commands",
+    "Try \"fix the lint errors\"",
+    "Try \"how does the config loader work?\"",
+};
+
+std::string pick_placeholder() {
+    // Simple random pick; seed once
+    static bool seeded = false;
+    if (!seeded) {
+        std::srand(static_cast<unsigned>(std::time(nullptr)));
+        seeded = true;
+    }
+    return PLACEHOLDERS[std::rand() % PLACEHOLDERS.size()];
+}
+
+}  // anonymous namespace
+
+InputBar::InputBar()
+    : placeholder_(pick_placeholder()) {
     ftxui::InputOption option;
-    option.placeholder = "Type your message...";
+    option.placeholder = placeholder_;
     option.multiline = false;
     option.on_enter = [this] {
         // The on_enter fires when the Input component processes Return.
@@ -37,6 +66,9 @@ ftxui::Component InputBar::component() {
 
 void InputBar::set_busy(bool busy) {
     busy_ = busy;
+    // Update placeholder based on busy state
+    // Note: FTXUI Input doesn't support dynamic placeholder changes easily,
+    // so we handle this in render() by showing a different prompt.
 }
 
 void InputBar::set_on_submit(std::function<void(const std::string&)> fn) {
@@ -50,17 +82,29 @@ void InputBar::clear() {
 
 ftxui::Element InputBar::render() {
     using namespace ftxui;
+    auto& theme = default_theme();
 
     if (busy_) {
-        return text("  ... ") | dim;
+        // Busy: muted prompt + dim text
+        return hbox({
+            text("❯ ") | color(theme.color.muted) | dim,
+            text("Ctrl+C to interrupt…") | color(theme.color.muted) | dim,
+        });
     }
 
-    // Render the Input component directly — this is the standard FTXUI pattern
-    // for Renderer(child, render): the render lambda calls child->Render().
-    // Focus state is preserved because input_component_ is a child of
-    // with_events, which is a child of this Renderer in the component tree.
+    // Normal: gold bold ❯ + input
+    // Shell mode: if input starts with '!', show blue prompt
+    bool shell_mode = !input_.empty() && input_[0] == '!';
+
+    auto prompt_glyph = text("❯ ");
+    if (shell_mode) {
+        prompt_glyph = prompt_glyph | color(theme.color.shell_dollar);
+    } else {
+        prompt_glyph = prompt_glyph | color(theme.color.label) | bold;
+    }
+
     return hbox({
-        text("> "),
+        prompt_glyph,
         input_component_->Render(),
     });
 }
