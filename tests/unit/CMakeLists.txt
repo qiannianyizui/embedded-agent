@@ -54,6 +54,7 @@ add_executable(ea-unit-tests
     test_plugin_host.cpp
     test_retry_policy.cpp
     test_regression.cpp
+    test_config_save.cpp
 )
 target_link_libraries(ea-unit-tests PRIVATE
     ea-test-common
@@ -85,6 +86,7 @@ if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
         test_tui_input_bar.cpp
         test_tui_theme.cpp
         test_tui_spinner.cpp
+        test_tui_setup_wizard.cpp
     )
     target_link_libraries(ea-tui-tests PRIVATE
         ea-test-common
