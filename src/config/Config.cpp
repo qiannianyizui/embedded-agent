@@ -3,6 +3,7 @@
 #include "common/io/Logger.h"
 #include <toml.hpp>
 #include <cstdlib>
+#include <filesystem>
 
 namespace ea::config {
 
@@ -187,6 +188,158 @@ Result<AppConfig> load(const std::string& config_path) {
     if (model && model[0] != '\0') cfg.agent.model = model;
 
     return cfg;
+}
+
+Result<void> save(const AppConfig& cfg, const std::string& config_path) {
+    std::string path = config_path.empty() ? cfg.config_path : config_path;
+    if (path.empty()) {
+        auto cfg_dir = fs::config_dir();
+        if (cfg_dir.ok()) {
+            path = cfg_dir.value() + "/config.toml";
+        } else {
+            return cfg_dir.error();
+        }
+    }
+
+    // Ensure parent directory exists
+    auto parent = std::filesystem::path(path).parent_path().string();
+    if (!parent.empty()) {
+        auto mkdir_result = fs::mkdir_p(parent);
+        if (!mkdir_result.ok()) {
+            return mkdir_result.error();
+        }
+    }
+
+    try {
+        // Build toml::value from AppConfig
+        toml::table agent_tbl;
+        if (!cfg.agent.model.empty())          agent_tbl["model"] = cfg.agent.model;
+        agent_tbl["max_iterations"] = cfg.agent.max_iterations;
+        agent_tbl["auto_memory"]    = cfg.agent.auto_memory;
+        if (!cfg.agent.soul.empty())            agent_tbl["soul"] = cfg.agent.soul;
+        agent_tbl["stream"]         = cfg.agent.stream;
+
+        // Agent compression sub-table
+        toml::table compression_tbl;
+        compression_tbl["enable"]              = cfg.agent.compression_enable;
+        compression_tbl["max_tokens"]          = cfg.agent.compression_max_tokens;
+        compression_tbl["keep_recent_turns"]   = cfg.agent.compression_keep_recent_turns;
+        agent_tbl["compression"] = compression_tbl;
+
+        toml::table provider_tbl;
+        provider_tbl["type"]          = cfg.provider.type;
+        if (!cfg.provider.base_url.empty())       provider_tbl["base_url"] = cfg.provider.base_url;
+        if (!cfg.provider.api_key.empty())        provider_tbl["api_key"] = cfg.provider.api_key;
+        if (!cfg.provider.default_model.empty())  provider_tbl["default_model"] = cfg.provider.default_model;
+        provider_tbl["timeout"] = static_cast<int>(cfg.provider.timeout.count() / 1000);
+
+        toml::table memory_tbl;
+        memory_tbl["backend"]     = cfg.memory.backend;
+        if (!cfg.memory.path.empty()) memory_tbl["path"] = cfg.memory.path;
+        memory_tbl["enable_fts5"] = cfg.memory.enable_fts5;
+
+        // Memory strategy sub-table
+        toml::table strategy_tbl;
+        strategy_tbl["type"]                    = cfg.memory_strategy.type;
+        strategy_tbl["working_turns"]           = cfg.memory_strategy.working_turns;
+        strategy_tbl["short_term_max"]          = cfg.memory_strategy.short_term_max;
+        strategy_tbl["long_term_importance"]    = cfg.memory_strategy.long_term_importance;
+        strategy_tbl["enable_fact_extraction"]  = cfg.memory_strategy.enable_fact_extraction;
+        strategy_tbl["enable_auto_summarize"]   = cfg.memory_strategy.enable_auto_summarize;
+        memory_tbl["strategy"] = strategy_tbl;
+
+        toml::table security_tbl;
+        security_tbl["autonomy"] = cfg.security.autonomy;
+        if (!cfg.security.workspace.empty())  security_tbl["workspace"] = cfg.security.workspace;
+        if (!cfg.security.allowed_commands.empty()) {
+            security_tbl["allowed_commands"] = cfg.security.allowed_commands;
+        }
+        security_tbl["approval_timeout"] = cfg.security.approval_timeout;
+        toml::table approval_tbl;
+        approval_tbl["mode"]                  = cfg.security.approval_mode;
+        approval_tbl["auto_approve_dangerous"] = cfg.security.auto_approve_dangerous;
+        security_tbl["approval"] = approval_tbl;
+
+        toml::table conv_tbl;
+        if (!cfg.conversation.path.empty())  conv_tbl["path"] = cfg.conversation.path;
+        conv_tbl["auto_resume"]       = cfg.conversation.auto_resume;
+        conv_tbl["auto_persist"]      = cfg.conversation.auto_persist;
+        conv_tbl["max_conversations"] = cfg.conversation.max_conversations;
+
+        toml::table server_tbl;
+        server_tbl["host"]                  = cfg.server.host;
+        server_tbl["port"]                  = cfg.server.port;
+        server_tbl["max_sessions"]          = cfg.server.max_sessions;
+        server_tbl["cors_origin"]           = cfg.server.cors_origin;
+        server_tbl["session_idle_timeout"]  = cfg.server.session_idle_timeout;
+
+        // Assemble root table
+        toml::table root;
+        root["agent"]       = agent_tbl;
+        root["provider"]    = provider_tbl;
+        root["memory"]      = memory_tbl;
+        root["security"]    = security_tbl;
+        root["conversation"] = conv_tbl;
+        root["server"]      = server_tbl;
+
+        // Budget section (only if non-trivial)
+        if (!cfg.budget.pricing.empty() || cfg.budget.warn_cost_usd > 0) {
+            toml::table budget_tbl;
+            if (!cfg.budget.path.empty()) budget_tbl["path"] = cfg.budget.path;
+            budget_tbl["warn_input_tokens"]  = cfg.budget.warn_input_tokens;
+            budget_tbl["warn_output_tokens"] = cfg.budget.warn_output_tokens;
+            budget_tbl["warn_cost_usd"]      = cfg.budget.warn_cost_usd;
+            budget_tbl["max_input_tokens"]   = cfg.budget.max_input_tokens;
+            budget_tbl["max_output_tokens"]  = cfg.budget.max_output_tokens;
+            budget_tbl["max_cost_usd"]       = cfg.budget.max_cost_usd;
+            if (!cfg.budget.pricing.empty()) {
+                std::vector<toml::value> pricing_arr;
+                for (const auto& mp : cfg.budget.pricing) {
+                    toml::table p;
+                    p["model_id"]             = mp.model_id;
+                    p["input_per_mtok"]       = mp.input_per_mtok;
+                    p["output_per_mtok"]      = mp.output_per_mtok;
+                    p["cache_read_per_mtok"]  = mp.cache_read_per_mtok;
+                    p["cache_write_per_mtok"] = mp.cache_write_per_mtok;
+                    pricing_arr.push_back(toml::value(p));
+                }
+                budget_tbl["pricing"] = pricing_arr;
+            }
+            root["budget"] = budget_tbl;
+        }
+
+        // MCP servers (only if configured)
+        if (!cfg.mcp_servers.empty()) {
+            std::vector<toml::value> servers_arr;
+            for (const auto& sc : cfg.mcp_servers) {
+                toml::table s;
+                s["name"]    = sc.name;
+                s["command"] = sc.command;
+                if (!sc.args.empty())     s["args"] = sc.args;
+                if (!sc.env.empty()) {
+                    toml::table env_tbl;
+                    for (const auto& [k, v] : sc.env) {
+                        env_tbl[k] = v;
+                    }
+                    s["env"] = env_tbl;
+                }
+                s["dangerous"] = sc.dangerous;
+                servers_arr.push_back(toml::value(s));
+            }
+            toml::table mcp_tbl;
+            mcp_tbl["servers"] = servers_arr;
+            root["mcp"] = mcp_tbl;
+        }
+
+        // Serialize to TOML string and write
+        toml::value root_val(root);
+        std::string content = toml::format(root_val);
+
+        return fs::write_file(path, content);
+
+    } catch (const std::exception& e) {
+        return Error::parse(std::string("Config save error: ") + e.what());
+    }
 }
 
 }  // namespace ea::config

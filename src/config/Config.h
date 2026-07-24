@@ -98,4 +98,8 @@ struct AppConfig {
 
 Result<AppConfig> load(const std::string& config_path = "");
 
+// Save AppConfig to a TOML file. If config_path is empty, uses cfg.config_path
+// (the path it was loaded from). Creates parent directories as needed.
+Result<void> save(const AppConfig& cfg, const std::string& config_path = "");
+
 }  // namespace ea::config
