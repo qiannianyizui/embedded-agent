@@ -31,12 +31,105 @@
 #include "server/HttpServer.h"
 #ifdef EA_ENABLE_TUI
 #include "tui/TuiApp.h"
+#include "tui/SetupWizard.h"
 #endif
 #include <CLI/CLI.hpp>
 #include <iostream>
 #include <string>
 #include <fstream>
 #include <iomanip>
+
+// ---------------------------------------------------------------------------
+// Setup wizard entry point
+// ---------------------------------------------------------------------------
+
+static int run_setup_wizard(bool non_interactive, bool reset, const std::string& config_path) {
+    // Initialize logging (minimal)
+    auto home = ea::platform::home_dir();
+    ea::log::init(home + "/.embedded-agent", false);
+
+    if (non_interactive) {
+        // Non-interactive: generate config from defaults + env vars
+        auto cfg = ea::tui::run_non_interactive_setup();
+        if (!config_path.empty()) cfg.config_path = config_path;
+
+        auto save_result = ea::config::save(cfg);
+        if (!save_result.ok()) {
+            std::cerr << "Error saving config: " << save_result.error().message << std::endl;
+            return 1;
+        }
+
+        std::cout << "✓ Configuration saved to " << cfg.config_path << std::endl;
+        return 0;
+    }
+
+#ifdef EA_ENABLE_TUI
+    // Interactive: run FTXUI setup wizard
+    ea::tui::WizardState state;
+
+    // Detect existing config
+    std::string cfg_path = config_path;
+    if (cfg_path.empty()) {
+        auto cfg_dir = ea::fs::config_dir();
+        if (cfg_dir.ok()) {
+            cfg_path = cfg_dir.value() + "/config.toml";
+        }
+    }
+    auto exists_result = ea::fs::exists(cfg_path);
+    state.has_existing_config = exists_result.ok() && exists_result.value();
+
+    // Detect OpenClaw
+    std::string openclaw_path = home + "/.openclaw";
+    auto oc_exists = ea::fs::exists(openclaw_path);
+    state.has_openclaw = oc_exists.ok() && oc_exists.value();
+
+    // If existing config and not reset, load current values as defaults
+    if (state.has_existing_config && !reset) {
+        auto cfg_result = ea::config::load(cfg_path);
+        if (cfg_result.ok()) {
+            auto& cfg = cfg_result.value();
+            state.provider_type = cfg.provider.type;
+            state.base_url = cfg.provider.base_url;
+            state.api_key = cfg.provider.api_key;
+            state.default_model = cfg.provider.default_model.empty()
+                ? cfg.agent.model : cfg.provider.default_model;
+            state.workspace = cfg.security.workspace;
+            state.autonomy = cfg.security.autonomy;
+        }
+    }
+
+    // Run the wizard
+    auto wizard = ea::tui::make_setup_wizard(state);
+    auto screen = ftxui::ScreenInteractive::Fullscreen();
+    screen.Loop(wizard);
+
+    if (state.cancelled) {
+        std::cout << "Setup cancelled." << std::endl;
+        return 0;
+    }
+
+    if (!state.finished) {
+        return 0;
+    }
+
+    // Build and save config
+    auto cfg = ea::tui::build_config_from_wizard(state);
+    if (!config_path.empty()) cfg.config_path = config_path;
+
+    auto save_result = ea::config::save(cfg);
+    if (!save_result.ok()) {
+        std::cerr << "Error saving config: " << save_result.error().message << std::endl;
+        return 1;
+    }
+
+    std::cout << "✓ Configuration saved to " << cfg.config_path << std::endl;
+    return 0;
+#else
+    std::cerr << "Setup wizard requires TUI support. "
+              << "Rebuild with EA_ENABLE_TUI=ON or use --non-interactive." << std::endl;
+    return 1;
+#endif
+}
 
 int main(int argc, char* argv[]) {
     CLI::App app{"embedded-agent — Lightweight AI Agent for Linux & Android"};
@@ -46,7 +139,24 @@ int main(int argc, char* argv[]) {
     app.add_option("-c,--config", config_path, "Config file path");
     app.add_flag("--debug", debug, "Enable debug logging");
 
+    // Setup subcommand
+    auto setup_cmd = app.add_subcommand("setup", "Interactive setup wizard");
+    std::string setup_section;
+    bool setup_non_interactive = false;
+    bool setup_reset = false;
+    setup_cmd->add_option("section", setup_section,
+        "Run a specific section (provider/model/workspace/security)")
+        ->check(CLI::IsMember({"provider", "model", "workspace", "security"}));
+    setup_cmd->add_flag("--non-interactive", setup_non_interactive,
+        "Non-interactive mode (use defaults/env vars)");
+    setup_cmd->add_flag("--reset", setup_reset, "Reset config to defaults");
+
     CLI11_PARSE(app, argc, argv);
+
+    // Handle setup subcommand
+    if (setup_cmd->parsed()) {
+        return run_setup_wizard(setup_non_interactive, setup_reset, config_path);
+    }
 
     // 1. Initialize logging
     auto home = ea::platform::home_dir();
