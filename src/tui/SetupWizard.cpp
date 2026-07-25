@@ -169,6 +169,7 @@ struct WizardImpl : ftxui::ComponentBase {
     ftxui::Component content_area_;   // holds the active step's focusable child
     ftxui::Component container_;      // vertical: content_area -> button_row
     int container_selector_ = 0;      // 0=content_area_, 1=button_row_
+    int button_selector_ = 0;         // index within button_row_
 
     explicit WizardImpl(WizardState& s) : state(s) {
         using namespace ftxui;
@@ -230,7 +231,7 @@ struct WizardImpl : ftxui::ComponentBase {
         }, btn_style);
 
         // Button row: horizontal container, focus moves Left/Right between buttons
-        button_row_ = Container::Horizontal({});
+        button_row_ = Container::Horizontal({}, &button_selector_);
         // Rebuilt per-step in rebuild_layout()
 
         // Content area: holds the active step's focusable child (Input or a
@@ -290,6 +291,13 @@ struct WizardImpl : ftxui::ComponentBase {
             button_row_->Add(next_btn_);  // "Get Started"
         }
         button_row_->Add(cancel_btn_);
+
+        // ---- Button selector ----
+        // Default focus to Next/Finish, not Back, so the user doesn't
+        // accidentally go back after advancing a step.
+        // Welcome: [Next, Cancel] → index 0 = Next
+        // Others:  [Back, Next/Finish, Cancel] → index 1 = Next/Finish
+        button_selector_ = (state.current_step == WizardStep::Welcome) ? 0 : 1;
 
         // ---- Focus routing ----
         // container_ = Vertical({content_area_, button_row_}), selector 0→content, 1→buttons.
