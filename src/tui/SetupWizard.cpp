@@ -69,36 +69,6 @@ ftxui::Element render_step_indicator(WizardStep current) {
     });
 }
 
-// Provider selection renderer
-ftxui::Element render_provider_step(WizardState& /*state*/, int& selected_provider) {
-    using namespace ftxui;
-    auto& theme = default_theme();
-
-    std::vector<Element> entries;
-    for (int i = 0; i < 3; ++i) {
-        const auto& p = PROVIDERS[i];
-        if (i == selected_provider) {
-            entries.push_back(hbox({
-                text("▸ ") | color(theme.color.accent) | bold,
-                text(p.label) | inverted | bold | color(theme.color.accent),
-            }));
-        } else {
-            entries.push_back(hbox({
-                text("  "),
-                text(p.label) | color(theme.color.text),
-            }));
-        }
-    }
-
-    return vbox({
-        text("  Select your AI provider") | color(theme.color.primary) | bold,
-        text(""),
-        vbox(std::move(entries)),
-        text(""),
-        text("  Use ↑/↓ to select, then press Enter") | color(theme.color.muted) | dim,
-    });
-}
-
 }  // anonymous namespace
 
 // ---------------------------------------------------------------------------
@@ -108,7 +78,6 @@ ftxui::Element render_provider_step(WizardState& /*state*/, int& selected_provid
 ea::config::AppConfig run_non_interactive_setup() {
     ea::config::AppConfig cfg;
 
-    // Apply environment variables
     const char* api_key = getenv("EMBEDDED_AGENT_API_KEY");
     if (api_key && api_key[0] != '\0') cfg.provider.api_key = api_key;
     const char* model = getenv("EMBEDDED_AGENT_MODEL");
@@ -118,13 +87,11 @@ ea::config::AppConfig run_non_interactive_setup() {
     const char* provider_type = getenv("EMBEDDED_AGENT_PROVIDER");
     if (provider_type && provider_type[0] != '\0') cfg.provider.type = provider_type;
 
-    // Set config path
     auto cfg_dir = ea::fs::config_dir();
     if (cfg_dir.ok()) {
         cfg.config_path = cfg_dir.value() + "/config.toml";
     }
 
-    // Set default model from provider
     if (cfg.agent.model.empty() && !cfg.provider.default_model.empty()) {
         cfg.agent.model = cfg.provider.default_model;
     }
@@ -142,22 +109,16 @@ ea::config::AppConfig run_non_interactive_setup() {
 ea::config::AppConfig build_config_from_wizard(const WizardState& state) {
     ea::config::AppConfig cfg;
 
-    // Provider
     cfg.provider.type = state.provider_type;
     cfg.provider.base_url = state.base_url;
     cfg.provider.api_key = state.api_key;
     cfg.provider.default_model = state.default_model;
-
-    // Agent
     cfg.agent.model = state.default_model;
-
-    // Security
     cfg.security.autonomy = state.autonomy;
     if (!state.workspace.empty()) {
         cfg.security.workspace = state.workspace;
     }
 
-    // Config path
     auto cfg_dir = ea::fs::config_dir();
     if (cfg_dir.ok()) {
         cfg.config_path = cfg_dir.value() + "/config.toml";
@@ -168,6 +129,16 @@ ea::config::AppConfig build_config_from_wizard(const WizardState& state) {
 
 // ---------------------------------------------------------------------------
 // Wizard component implementation
+//
+// Focus routing:
+//   - The content area holds either a selection list (Provider/Security) or
+//     an Input field (ApiKey/Model/Workspace) or static text (Welcome/Review).
+//   - The footer holds navigation buttons (Back/Next/Finish + Cancel) as real
+//     FTXUI Button components so they receive focus and can be activated with
+//     Enter or a mouse click.
+//   - A Container::Vertical chains content -> buttons. Tab/Down moves focus
+//     from the content area to the button row; Left/Right moves between the
+//     buttons in the horizontal button container.
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -175,110 +146,147 @@ namespace {
 struct WizardImpl : ftxui::ComponentBase {
     WizardState& state;
     int selected_provider = 0;
+    int selected_autonomy = 0;  // 0=supervised, 1=autonomous, 2=full
 
-    // Input fields per step
+    // Input fields
     std::string input_url;
     std::string input_key;
     std::string input_model;
     std::string input_workspace;
-    int selected_autonomy = 0;  // 0=supervised, 1=autonomous, 2=full
 
-    // FTXUI input components
-    ftxui::Component url_input_;
+    // Input components
     ftxui::Component key_input_;
     ftxui::Component model_input_;
     ftxui::Component workspace_input_;
 
+    // Navigation buttons
+    ftxui::Component back_btn_;
+    ftxui::Component next_btn_;
+    ftxui::Component finish_btn_;
+    ftxui::Component cancel_btn_;
+    ftxui::Component button_row_;     // horizontal container of buttons
+    ftxui::Component content_area_;   // holds the active step's focusable child
+    ftxui::Component container_;      // vertical: content_area -> button_row
+
     explicit WizardImpl(WizardState& s) : state(s) {
-        // Initialize from state
+        using namespace ftxui;
+
         selected_provider = provider_index(state.provider_type);
         input_url = state.base_url;
         input_key = state.api_key;
         input_model = state.default_model;
 
-        // Get cwd as default workspace
         char cwd_buf[4096];
         if (getcwd(cwd_buf, sizeof(cwd_buf))) {
             input_workspace = state.workspace.empty() ? cwd_buf : state.workspace;
+        } else if (!state.workspace.empty()) {
+            input_workspace = state.workspace;
         }
 
-        // Initialize selected_autonomy from state
         if (state.autonomy == "autonomous") selected_autonomy = 1;
         else if (state.autonomy == "full") selected_autonomy = 2;
         else selected_autonomy = 0;
 
-        // Create input components
-        ftxui::InputOption url_opt;
-        url_opt.placeholder = "https://api.openai.com/v1";
-        url_opt.multiline = false;
-        url_input_ = ftxui::Input(&input_url, url_opt);
-
-        ftxui::InputOption key_opt;
+        // Input components
+        InputOption key_opt;
         key_opt.placeholder = "sk-...";
         key_opt.multiline = false;
-        key_input_ = ftxui::Input(&input_key, key_opt);
+        key_input_ = Input(&input_key, key_opt);
 
-        ftxui::InputOption model_opt;
+        InputOption model_opt;
         model_opt.placeholder = "gpt-4o";
         model_opt.multiline = false;
-        model_input_ = ftxui::Input(&input_model, model_opt);
+        model_input_ = Input(&input_model, model_opt);
 
-        ftxui::InputOption ws_opt;
+        InputOption ws_opt;
         ws_opt.placeholder = "/home/user/project";
         ws_opt.multiline = false;
-        workspace_input_ = ftxui::Input(&input_workspace, ws_opt);
+        workspace_input_ = Input(&input_workspace, ws_opt);
+
+        // Navigation buttons — real Button components so they get focus
+        auto btn_style = ButtonOption::Ascii();
+        back_btn_ = Button(" < Back > ", [this] { go_back(); }, btn_style);
+        next_btn_ = Button(" < Next > ", [this] { go_next(); }, btn_style);
+        finish_btn_ = Button(" < Finish > ", [this] {
+            sync_state();
+            state.finished = true;
+        }, btn_style);
+        cancel_btn_ = Button(" < Cancel > ", [this] {
+            state.cancelled = true;
+        }, btn_style);
+
+        // Button row: horizontal container, focus moves Left/Right between buttons
+        button_row_ = Container::Horizontal({});
+        // Rebuilt per-step in rebuild_layout()
+
+        // Content area: holds the active step's focusable child (Input or a
+        // dummy selectable for arrow-key steps). Rebuilt per-step.
+        content_area_ = Container::Vertical({});
+
+        // Top-level: content_area on top, button_row on bottom. Down/Tab moves
+        // focus from content to buttons.
+        container_ = Container::Vertical({content_area_, button_row_});
+
+        // Wrap container with a renderer + global key handling.
+        auto inner = Renderer(container_, [this] { return render_frame(); });
+        auto with_events = CatchEvent(inner, [this](Event e) { return on_global_event(e); });
+        Add(with_events);
+
+        rebuild_layout();
     }
 
-    ftxui::Element OnRender() override {
+    // Rebuild content_area_ and button_row_ children for the current step
+    void rebuild_layout() {
         using namespace ftxui;
-        auto& theme = default_theme();
 
-        // Sync state from inputs
-        sync_state();
-
-        Element body;
+        // ---- Content area ----
+        content_area_->DetachAllChildren();
         switch (state.current_step) {
-            case WizardStep::Welcome:  body = render_welcome(); break;
-            case WizardStep::Provider: body = render_provider(); break;
-            case WizardStep::ApiKey:   body = render_api_key(); break;
-            case WizardStep::Model:    body = render_model(); break;
-            case WizardStep::Workspace:body = render_workspace(); break;
-            case WizardStep::Security: body = render_security(); break;
-            case WizardStep::Review:   body = render_review(); break;
-            default: body = text(""); break;
+            case WizardStep::ApiKey:
+                content_area_->Add(key_input_);
+                break;
+            case WizardStep::Model:
+                content_area_->Add(model_input_);
+                break;
+            case WizardStep::Workspace:
+                content_area_->Add(workspace_input_);
+                break;
+            default:
+                // Welcome / Provider / Security / Review have no text input.
+                // Add a non-focusable placeholder so the container has a child
+                // (Container::Vertical with zero children would not advance
+                // focus to the button row).
+                content_area_->Add(Renderer([] { return text(""); }));
+                break;
         }
 
-        auto step_bar = render_step_indicator(state.current_step);
-
-        // Navigation buttons
-        std::vector<Element> nav;
+        // ---- Button row ----
+        button_row_->DetachAllChildren();
         if (state.current_step != WizardStep::Welcome) {
-            nav.push_back(text(" < Back ") | color(theme.color.muted));
-            nav.push_back(text("  "));
+            button_row_->Add(back_btn_);
         }
         if (state.current_step == WizardStep::Review) {
-            nav.push_back(text(" Finish ") | color(theme.color.ok) | bold);
+            button_row_->Add(finish_btn_);
         } else if (state.current_step != WizardStep::Welcome) {
-            nav.push_back(text(" Next > ") | color(theme.color.accent) | bold);
+            button_row_->Add(next_btn_);
         } else {
-            nav.push_back(text(" Get Started > ") | color(theme.color.accent) | bold);
+            button_row_->Add(next_btn_);  // "Get Started"
         }
-        nav.push_back(text("     "));
-        nav.push_back(text(" Cancel ") | color(theme.color.muted) | dim);
-
-        return vbox({
-            step_bar,
-            separator(),
-            body | flex,
-            separator(),
-            hbox(std::move(nav)),
-        }) | borderRounded | color(theme.color.border) | size(WIDTH, GREATER_THAN, 60);
+        button_row_->Add(cancel_btn_);
     }
 
-    bool OnEvent(ftxui::Event event) override {
+    // Global event handling — arrow selection for Provider/Security steps,
+    // plus Enter-to-advance convenience on those steps.
+    bool on_global_event(ftxui::Event event) {
         using namespace ftxui;
 
-        // Provider step: arrow keys to select
+        // Escape always cancels
+        if (event == Event::Escape) {
+            state.cancelled = true;
+            return true;
+        }
+
+        // Provider step: ↑/↓ to pick provider
         if (state.current_step == WizardStep::Provider) {
             if (event == Event::ArrowUp && selected_provider > 0) {
                 selected_provider--;
@@ -292,7 +300,7 @@ struct WizardImpl : ftxui::ComponentBase {
             }
         }
 
-        // Security step: arrow keys to select autonomy
+        // Security step: ↑/↓ to pick autonomy
         if (state.current_step == WizardStep::Security) {
             if (event == Event::ArrowUp && selected_autonomy > 0) {
                 selected_autonomy--;
@@ -304,62 +312,24 @@ struct WizardImpl : ftxui::ComponentBase {
             }
         }
 
-        // Navigation: Enter = Next/Finish, Escape = Cancel
-        if (event == Event::Return) {
-            if (state.current_step == WizardStep::Review) {
-                sync_state();
-                state.finished = true;
-                return true;
-            }
-            go_next();
-            return true;
-        }
-
-        if (event == Event::Escape) {
-            state.cancelled = true;
-            return true;
-        }
-
-        // Alt+Left = Back
-        if (event.input() == "\x1b" "D") {  // Alt+Left
-            go_back();
-            return true;
-        }
-
-        // Forward text input events to active input component
-        if (state.current_step == WizardStep::Provider) {
-            // No text input on provider step (arrow selection only)
-            return false;
-        }
-        if (state.current_step == WizardStep::ApiKey) {
-            return key_input_->OnEvent(event);
-        }
-        if (state.current_step == WizardStep::Model) {
-            return model_input_->OnEvent(event);
-        }
-        if (state.current_step == WizardStep::Workspace) {
-            return workspace_input_->OnEvent(event);
-        }
-
         return false;
     }
 
     void go_next() {
         int step = static_cast<int>(state.current_step);
-        // Skip API Key step for Ollama
         if (step == static_cast<int>(WizardStep::Provider) && selected_provider == 2) {
-            step = static_cast<int>(WizardStep::Model);  // Skip ApiKey
+            step = static_cast<int>(WizardStep::Model);  // skip ApiKey for Ollama
         } else {
             step++;
         }
         if (step < static_cast<int>(WizardStep::Count)) {
             state.current_step = static_cast<WizardStep>(step);
+            rebuild_layout();
         }
     }
 
     void go_back() {
         int step = static_cast<int>(state.current_step);
-        // Skip API Key step for Ollama when going back
         if (step == static_cast<int>(WizardStep::Model) && selected_provider == 2) {
             step = static_cast<int>(WizardStep::Provider);
         } else {
@@ -367,6 +337,7 @@ struct WizardImpl : ftxui::ComponentBase {
         }
         if (step >= 0) {
             state.current_step = static_cast<WizardStep>(step);
+            rebuild_layout();
         }
     }
 
@@ -387,18 +358,49 @@ struct WizardImpl : ftxui::ComponentBase {
         state.autonomy = autonomy_levels[selected_autonomy];
     }
 
-    // Step renderers
+    // ---- Frame renderer ----
+    ftxui::Element render_frame() {
+        using namespace ftxui;
+        auto& theme = default_theme();
+        sync_state();
+
+        Element body;
+        switch (state.current_step) {
+            case WizardStep::Welcome:   body = render_welcome(); break;
+            case WizardStep::Provider:  body = render_provider(); break;
+            case WizardStep::ApiKey:    body = render_api_key(); break;
+            case WizardStep::Model:     body = render_model(); break;
+            case WizardStep::Workspace: body = render_workspace(); break;
+            case WizardStep::Security:  body = render_security(); break;
+            case WizardStep::Review:    body = render_review(); break;
+            default: body = text(""); break;
+        }
+
+        auto step_bar = render_step_indicator(state.current_step);
+
+        // Determine which button label shows for "Next"
+        return vbox({
+            step_bar,
+            separator(),
+            body | flex,
+            separator(),
+            // Render the button row via its component (preserves focus state)
+            button_row_->Render(),
+        }) | borderRounded | color(theme.color.border) | size(WIDTH, GREATER_THAN, 60);
+    }
+
+    // ---- Step renderers ----
 
     ftxui::Element render_welcome() {
         using namespace ftxui;
         auto& theme = default_theme();
-
         std::vector<Element> lines;
         lines.push_back(text(""));
         lines.push_back(text("  ⚕  Embedded Agent Setup Wizard") | color(theme.color.primary) | bold);
         lines.push_back(text(""));
         lines.push_back(text("  Let's configure your Embedded Agent installation.") | color(theme.color.text));
-        lines.push_back(text("  Press Ctrl+C at any time to exit.") | color(theme.color.muted) | dim);
+        lines.push_back(text("  Use Tab or ↓ to move to the buttons, Enter to activate.") | color(theme.color.muted) | dim);
+        lines.push_back(text("  Press Esc at any time to cancel.") | color(theme.color.muted) | dim);
         lines.push_back(text(""));
 
         if (state.has_openclaw) {
@@ -406,25 +408,45 @@ struct WizardImpl : ftxui::ComponentBase {
             lines.push_back(text("    Found OpenClaw data at ~/.openclaw") | color(theme.color.muted) | dim);
             lines.push_back(text(""));
         }
-
         if (state.has_existing_config) {
             lines.push_back(text("  ◆ Existing Configuration Found") | color(theme.color.accent));
             lines.push_back(text("    Current values will be shown as defaults.") | color(theme.color.muted) | dim);
             lines.push_back(text(""));
         }
-
         return vbox(std::move(lines));
     }
 
     ftxui::Element render_provider() {
-        return render_provider_step(state, selected_provider);
+        using namespace ftxui;
+        auto& theme = default_theme();
+        std::vector<Element> entries;
+        for (int i = 0; i < 3; ++i) {
+            const auto& p = PROVIDERS[i];
+            if (i == selected_provider) {
+                entries.push_back(hbox({
+                    text("▸ ") | color(theme.color.accent) | bold,
+                    text(p.label) | inverted | bold | color(theme.color.accent),
+                }));
+            } else {
+                entries.push_back(hbox({
+                    text("  "),
+                    text(p.label) | color(theme.color.text),
+                }));
+            }
+        }
+        return vbox({
+            text("  Select your AI provider") | color(theme.color.primary) | bold,
+            text(""),
+            vbox(std::move(entries)),
+            text(""),
+            text("  Use ↑/↓ to select, then Tab to the Next button") | color(theme.color.muted) | dim,
+        });
     }
 
     ftxui::Element render_api_key() {
         using namespace ftxui;
         auto& theme = default_theme();
         const auto& p = PROVIDERS[selected_provider];
-
         return vbox({
             text("  Enter your API key") | color(theme.color.primary) | bold,
             text("  Provider: " + p.label) | color(theme.color.muted),
@@ -442,7 +464,6 @@ struct WizardImpl : ftxui::ComponentBase {
         using namespace ftxui;
         auto& theme = default_theme();
         const auto& p = PROVIDERS[selected_provider];
-
         return vbox({
             text("  Select default model") | color(theme.color.primary) | bold,
             text("  Provider: " + p.label) | color(theme.color.muted),
@@ -459,7 +480,6 @@ struct WizardImpl : ftxui::ComponentBase {
     ftxui::Element render_workspace() {
         using namespace ftxui;
         auto& theme = default_theme();
-
         return vbox({
             text("  Set workspace directory") | color(theme.color.primary) | bold,
             text("  The agent will operate within this directory") | color(theme.color.muted),
@@ -476,14 +496,12 @@ struct WizardImpl : ftxui::ComponentBase {
     ftxui::Element render_security() {
         using namespace ftxui;
         auto& theme = default_theme();
-
         const char* autonomy_labels[] = {"Supervised", "Autonomous", "Full"};
         const char* autonomy_descs[] = {
             "Ask for approval before dangerous operations",
             "Auto-approve safe operations, ask for dangerous ones",
             "Auto-approve all operations (use with caution)",
         };
-
         std::vector<Element> entries;
         for (int i = 0; i < 3; ++i) {
             if (i == selected_autonomy) {
@@ -501,7 +519,6 @@ struct WizardImpl : ftxui::ComponentBase {
             }
             entries.push_back(text(""));
         }
-
         return vbox({
             text("  Select security level") | color(theme.color.primary) | bold,
             text("  Use ↑/↓ to select") | color(theme.color.muted) | dim,
@@ -514,53 +531,31 @@ struct WizardImpl : ftxui::ComponentBase {
         using namespace ftxui;
         auto& theme = default_theme();
         sync_state();
-
         auto config = build_config_from_wizard(state);
 
         std::vector<Element> lines;
         lines.push_back(text("  Review your configuration") | color(theme.color.primary) | bold);
         lines.push_back(text(""));
-
-        // Provider section
         lines.push_back(text("  Provider") | color(theme.color.label) | bold);
-        lines.push_back(hbox({
-            text("    type:       ") | color(theme.color.muted),
-            text(config.provider.type) | color(theme.color.text),
-        }));
-        if (!config.provider.base_url.empty()) {
-            lines.push_back(hbox({
-                text("    base_url:   ") | color(theme.color.muted),
-                text(config.provider.base_url) | color(theme.color.text),
-            }));
-        }
-        if (!config.provider.api_key.empty()) {
-            lines.push_back(hbox({
-                text("    api_key:    ") | color(theme.color.muted),
-                text(config.provider.api_key.substr(0, 8) + "…") | color(theme.color.text),
-            }));
-        }
-        lines.push_back(hbox({
-            text("    model:      ") | color(theme.color.muted),
-            text(config.agent.model) | color(theme.color.text),
-        }));
+        lines.push_back(hbox({ text("    type:       ") | color(theme.color.muted),
+                               text(config.provider.type) | color(theme.color.text) }));
+        if (!config.provider.base_url.empty())
+            lines.push_back(hbox({ text("    base_url:   ") | color(theme.color.muted),
+                                   text(config.provider.base_url) | color(theme.color.text) }));
+        if (!config.provider.api_key.empty())
+            lines.push_back(hbox({ text("    api_key:    ") | color(theme.color.muted),
+                                   text(config.provider.api_key.substr(0, 8) + "…") | color(theme.color.text) }));
+        lines.push_back(hbox({ text("    model:      ") | color(theme.color.muted),
+                               text(config.agent.model) | color(theme.color.text) }));
         lines.push_back(text(""));
-
-        // Security section
         lines.push_back(text("  Security") | color(theme.color.label) | bold);
-        lines.push_back(hbox({
-            text("    autonomy:   ") | color(theme.color.muted),
-            text(config.security.autonomy) | color(theme.color.text),
-        }));
-        if (!config.security.workspace.empty()) {
-            lines.push_back(hbox({
-                text("    workspace:  ") | color(theme.color.muted),
-                text(config.security.workspace) | color(theme.color.text),
-            }));
-        }
+        lines.push_back(hbox({ text("    autonomy:   ") | color(theme.color.muted),
+                               text(config.security.autonomy) | color(theme.color.text) }));
+        if (!config.security.workspace.empty())
+            lines.push_back(hbox({ text("    workspace:  ") | color(theme.color.muted),
+                                   text(config.security.workspace) | color(theme.color.text) }));
         lines.push_back(text(""));
-
-        lines.push_back(text("  Press Enter to save configuration") | color(theme.color.accent));
-
+        lines.push_back(text("  Tab to Finish and press Enter to save") | color(theme.color.accent));
         return vbox(std::move(lines));
     }
 };
