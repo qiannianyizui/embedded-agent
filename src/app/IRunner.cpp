@@ -2,19 +2,18 @@
 #include "app/CliRunner.h"
 #include "ea/build_config.h"
 
-// Task 8 will create ServerRunner.h / TuiRunner.h and define these guards
-#if defined(EA_MODE_SERVER) && defined(EA_HAS_SERVER_RUNNER)
+#if defined(EA_MODE_SERVER)
 #include "app/ServerRunner.h"
-#elif defined(EA_ENABLE_TUI) && defined(EA_HAS_TUI_RUNNER)
+#elif defined(EA_ENABLE_TUI)
 #include "app/TuiRunner.h"
 #endif
 
 namespace ea::app {
 
 std::unique_ptr<IRunner> IRunner::create() {
-#if defined(EA_MODE_SERVER) && defined(EA_HAS_SERVER_RUNNER)
+#if defined(EA_MODE_SERVER)
     return std::make_unique<ServerRunner>();
-#elif defined(EA_ENABLE_TUI) && defined(EA_HAS_TUI_RUNNER)
+#elif defined(EA_ENABLE_TUI)
     return std::make_unique<TuiRunner>();
 #else
     return std::make_unique<CliRunner>();
