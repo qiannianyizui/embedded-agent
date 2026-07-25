@@ -101,6 +101,7 @@ static int run_setup_wizard(bool non_interactive, bool reset, const std::string&
     // Run the wizard
     auto wizard = ea::tui::make_setup_wizard(state);
     auto screen = ftxui::ScreenInteractive::Fullscreen();
+    state.screen = &screen;  // Let Cancel/Finish call screen.Exit()
     screen.Loop(wizard);
 
     if (state.cancelled) {

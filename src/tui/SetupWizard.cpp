@@ -145,6 +145,7 @@ namespace {
 
 struct WizardImpl : ftxui::ComponentBase {
     WizardState& state;
+    ftxui::ScreenInteractive* get_screen() { return state.screen; }
     int selected_provider = 0;
     int selected_autonomy = 0;  // 0=supervised, 1=autonomous, 2=full
 
@@ -210,9 +211,11 @@ struct WizardImpl : ftxui::ComponentBase {
         finish_btn_ = Button(" < Finish > ", [this] {
             sync_state();
             state.finished = true;
+            if (get_screen()) get_screen()->Exit();
         }, btn_style);
         cancel_btn_ = Button(" < Cancel > ", [this] {
             state.cancelled = true;
+            if (get_screen()) get_screen()->Exit();
         }, btn_style);
 
         // Button row: horizontal container, focus moves Left/Right between buttons
@@ -253,9 +256,8 @@ struct WizardImpl : ftxui::ComponentBase {
                 break;
             default:
                 // Welcome / Provider / Security / Review have no text input.
-                // Add a non-focusable placeholder so the container has a child
-                // (Container::Vertical with zero children would not advance
-                // focus to the button row).
+                // Add a non-focusable placeholder. Container::Vertical skips
+                // non-focusable children, so focus lands directly on button_row_.
                 content_area_->Add(Renderer([] { return text(""); }));
                 break;
         }
@@ -280,9 +282,10 @@ struct WizardImpl : ftxui::ComponentBase {
     bool on_global_event(ftxui::Event event) {
         using namespace ftxui;
 
-        // Escape always cancels
+        // Escape always cancels and exits
         if (event == Event::Escape) {
             state.cancelled = true;
+            if (get_screen()) get_screen()->Exit();
             return true;
         }
 
@@ -310,6 +313,16 @@ struct WizardImpl : ftxui::ComponentBase {
                 selected_autonomy++;
                 return true;
             }
+        }
+
+        // For steps without text input (Welcome/Provider/Security/Review),
+        // forward keyboard events directly to the button row so the user
+        // doesn't need to press Tab/↓ first to reach the buttons.
+        bool has_input = (state.current_step == WizardStep::ApiKey ||
+                          state.current_step == WizardStep::Model ||
+                          state.current_step == WizardStep::Workspace);
+        if (!has_input) {
+            if (button_row_->OnEvent(event)) return true;
         }
 
         return false;

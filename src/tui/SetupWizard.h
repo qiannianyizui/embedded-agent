@@ -2,6 +2,7 @@
 #pragma once
 #include "config/Config.h"
 #include <ftxui/component/component.hpp>
+#include <ftxui/component/screen_interactive.hpp>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,9 @@ struct WizardState {
     // Detection results (set before wizard starts)
     bool has_existing_config = false;
     bool has_openclaw = false;
+
+    // Screen pointer — set before Loop() so Cancel/Finish can call Exit()
+    ftxui::ScreenInteractive* screen = nullptr;
 };
 
 // Create the SetupWizard FTXUI component
