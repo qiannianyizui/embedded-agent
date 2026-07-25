@@ -2,6 +2,8 @@ add_library(ea-app OBJECT
     AppBuilder.cpp
     CliCommandRegistry.cpp
     auto_resume.cpp
+    IRunner.cpp
+    CliRunner.cpp
 )
 ea_target_compile_options(ea-app)
 target_include_directories(ea-app PUBLIC
