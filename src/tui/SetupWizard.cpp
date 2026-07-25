@@ -301,11 +301,21 @@ struct WizardImpl : ftxui::ComponentBase {
 
         // ---- Focus routing ----
         // container_ = Vertical({content_area_, button_row_}), selector 0→content, 1→buttons.
-        // For steps with text input, focus starts in content_area_ (the Input field).
-        // For steps without text input, focus goes directly to button_row_ so the
-        // user can immediately press Enter to activate the default button.
+        // For steps without text input, focus always goes to button_row_.
+        // For steps with text input:
+        //   - If the field already has a value (loaded from existing config),
+        //     focus goes to button_row_ (Next) — the user can just confirm.
+        //   - If the field is empty, focus stays in content_area_ (Input)
+        //     so the user must fill it in first.
         if (has_input) {
-            container_selector_ = 0;  // focus on content_area_ (Input field)
+            bool field_has_value = false;
+            switch (state.current_step) {
+                case WizardStep::ApiKey:    field_has_value = !input_key.empty(); break;
+                case WizardStep::Model:     field_has_value = !input_model.empty(); break;
+                case WizardStep::Workspace: field_has_value = !input_workspace.empty(); break;
+                default: break;
+            }
+            container_selector_ = field_has_value ? 1 : 0;
         } else {
             container_selector_ = 1;  // focus on button_row_
         }
@@ -450,9 +460,9 @@ struct WizardImpl : ftxui::ComponentBase {
         lines.push_back(text("  Press Esc at any time to cancel.") | color(theme.color.muted) | dim);
         lines.push_back(text(""));
 
-        if (state.has_openclaw) {
-            lines.push_back(text("  ◆ OpenClaw Installation Detected") | color(theme.color.warn));
-            lines.push_back(text("    Found OpenClaw data at ~/.openclaw") | color(theme.color.muted) | dim);
+        if (state.has_hermes) {
+            lines.push_back(text("  ◆ Hermes Agent Installation Detected") | color(theme.color.warn));
+            lines.push_back(text("    Found Hermes data at ~/.hermes") | color(theme.color.muted) | dim);
             lines.push_back(text(""));
         }
         if (state.has_existing_config) {

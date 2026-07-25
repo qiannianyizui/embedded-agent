@@ -41,7 +41,7 @@ struct WizardState {
 
     // Detection results (set before wizard starts)
     bool has_existing_config = false;
-    bool has_openclaw = false;
+    bool has_hermes = false;
 
     // Screen pointer — set before Loop() so Cancel/Finish can call Exit()
     ftxui::ScreenInteractive* screen = nullptr;

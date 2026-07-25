@@ -78,10 +78,10 @@ static int run_setup_wizard(bool non_interactive, bool reset, const std::string&
     auto exists_result = ea::fs::exists(cfg_path);
     state.has_existing_config = exists_result.ok() && exists_result.value();
 
-    // Detect OpenClaw
-    std::string openclaw_path = home + "/.openclaw";
-    auto oc_exists = ea::fs::exists(openclaw_path);
-    state.has_openclaw = oc_exists.ok() && oc_exists.value();
+    // Detect Hermes Agent
+    std::string hermes_path = home + "/.hermes";
+    auto hm_exists = ea::fs::exists(hermes_path);
+    state.has_hermes = hm_exists.ok() && hm_exists.value();
 
     // If existing config and not reset, load current values as defaults
     if (state.has_existing_config && !reset) {
