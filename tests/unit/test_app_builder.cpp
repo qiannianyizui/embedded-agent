@@ -131,3 +131,18 @@ TEST_CASE("AppBuilder creates compressor when compression is enabled", "[app]") 
 
     cleanup_temp(temp_dir);
 }
+
+TEST_CASE("AppBuilder preserves debug flag", "[app]") {
+    auto temp_dir = make_temp_dir();
+    auto cfg = make_test_config(temp_dir);
+
+    auto result = AppBuilder::build(cfg, true);
+    REQUIRE(result.ok());
+    REQUIRE(result.value().debug == true);
+
+    auto result2 = AppBuilder::build(cfg, false);
+    REQUIRE(result2.ok());
+    REQUIRE(result2.value().debug == false);
+
+    cleanup_temp(temp_dir);
+}

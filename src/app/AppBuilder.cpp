@@ -76,7 +76,10 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug) {
     if (memory_path.empty()) {
         auto resolved = fs::resolve_data_path("memory.db");
         if (resolved.ok()) {
-            fs::mkdir_p(resolved.value().substr(0, resolved.value().rfind('/')));
+            auto sep = resolved.value().rfind('/');
+            if (sep != std::string::npos) {
+                fs::mkdir_p(resolved.value().substr(0, sep));
+            }
             memory_path = resolved.value();
         } else {
             memory_path = "memory.db";
