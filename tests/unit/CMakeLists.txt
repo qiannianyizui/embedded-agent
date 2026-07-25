@@ -57,6 +57,7 @@ add_executable(ea-unit-tests
     test_config_save.cpp
     test_app_builder.cpp
     test_cli_command_registry.cpp
+    test_auto_resume.cpp
 )
 target_link_libraries(ea-unit-tests PRIVATE
     ea-test-common
