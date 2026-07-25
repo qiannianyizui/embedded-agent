@@ -205,8 +205,18 @@ struct WizardImpl : ftxui::ComponentBase {
         ws_opt.multiline = false;
         workspace_input_ = Input(&input_workspace, ws_opt);
 
-        // Navigation buttons — real Button components so they get focus
+        // Navigation buttons — custom transform: focused button gets white
+        // background with dark text for clear visual feedback.
         auto btn_style = ButtonOption::Ascii();
+        btn_style.transform = [](const EntryState& s) {
+            auto element = text(" " + s.label + " ");
+            if (s.focused) {
+                element = element | inverted | bold;
+            } else if (s.active) {
+                element = element | bold;
+            }
+            return element;
+        };
         back_btn_ = Button(" < Back > ", [this] { go_back(); }, btn_style);
         next_btn_ = Button(" < Next > ", [this] { go_next(); }, btn_style);
         finish_btn_ = Button(" < Finish > ", [this] {
