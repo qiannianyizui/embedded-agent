@@ -111,6 +111,7 @@ add_subdirectory(src/agent)
 add_subdirectory(src/mcp)
 add_subdirectory(src/plugin)
 add_subdirectory(src/server)
+add_subdirectory(src/app)
 
 if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
     add_subdirectory(src/tui)
@@ -170,6 +171,7 @@ add_library(embedded-agent-core STATIC
     $<TARGET_OBJECTS:ea-security>
     $<TARGET_OBJECTS:ea-server>
     $<TARGET_OBJECTS:ea-plugin>
+    $<TARGET_OBJECTS:ea-app>
 )
 target_link_libraries(embedded-agent-core PUBLIC
     ea-core

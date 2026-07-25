@@ -55,12 +55,13 @@ add_executable(ea-unit-tests
     test_retry_policy.cpp
     test_regression.cpp
     test_config_save.cpp
+    test_app_builder.cpp
 )
 target_link_libraries(ea-unit-tests PRIVATE
     ea-test-common
     ea-common ea-config ea-memory ea-conversation ea-budget
     ea-provider ea-tool ea-agent ea-mcp ea-platform ea-security
-    ea-server ea-plugin
+    ea-server ea-plugin ea-app
     nlohmann_json::nlohmann_json
     httplib::httplib
     Catch2::Catch2WithMain
