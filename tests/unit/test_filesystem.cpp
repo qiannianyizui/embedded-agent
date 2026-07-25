@@ -96,3 +96,17 @@ TEST_CASE("FileSystem home_dir returns non-empty path", "[filesystem]") {
     REQUIRE(result.ok());
     REQUIRE_FALSE(result.value().empty());
 }
+
+TEST_CASE("resolve_data_path returns config_dir/filename when config_dir ok", "[common][filesystem]") {
+    auto result = ea::fs::resolve_data_path("test.db");
+    REQUIRE(result.ok());
+    // Should end with /test.db
+    REQUIRE(result.value().size() >= 8);
+    REQUIRE(result.value().substr(result.value().size() - 8) == "/test.db");
+}
+
+TEST_CASE("resolve_data_path with empty filename", "[common][filesystem]") {
+    auto result = ea::fs::resolve_data_path("");
+    // Empty filename should still produce a valid path ending in /
+    REQUIRE(result.ok());
+}

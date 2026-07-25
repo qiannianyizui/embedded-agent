@@ -26,6 +26,16 @@ Result<std::string> data_dir() {
     return config_dir();
 }
 
+Result<std::string> resolve_data_path(const std::string& filename) {
+    auto cfg_dir = config_dir();
+    if (cfg_dir.ok()) {
+        return cfg_dir.value() + "/" + filename;
+    }
+    auto home = home_dir();
+    if (!home.ok()) return home.error();
+    return home.value() + "/.embedded-agent/" + filename;
+}
+
 Result<bool> exists(const std::string& path) {
     struct stat st;
     if (stat(path.c_str(), &st) == 0) return true;
