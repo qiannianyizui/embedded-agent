@@ -2,7 +2,7 @@
 #pragma once
 #include "config/Config.h"
 #include <ftxui/component/component.hpp>
-#include <ftxui/component/screen_interactive.hpp>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -43,8 +43,9 @@ struct WizardState {
     bool has_existing_config = false;
     bool has_hermes = false;
 
-    // Screen pointer — set before Loop() so Cancel/Finish can call Exit()
-    ftxui::ScreenInteractive* screen = nullptr;
+    // Exit callback — set to screen.ExitLoopClosure() before Loop()
+    // so Cancel/Finish can exit the event loop.
+    std::function<void()> exit_loop;
 };
 
 // Create the SetupWizard FTXUI component

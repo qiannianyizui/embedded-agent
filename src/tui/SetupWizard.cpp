@@ -6,7 +6,6 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
-#include <ftxui/component/screen_interactive.hpp>
 #include <cstdlib>
 #include <unistd.h>
 
@@ -25,7 +24,7 @@ struct ProviderPreset {
 
 const ProviderPreset PROVIDERS[] = {
     {"openai_compatible", "OpenAI Compatible",  "https://api.openai.com/v1",      "gpt-4o",        true},
-    {"anthropic",         "Anthropic Claude",   "https://api.anthropic.com",       "claude-sonnet-5", true},
+    {"anthropic",         "Anthropic Claude",   "https://api.anthropic.com",       "claude-sonnet-4-6", true},
     {"ollama",            "Ollama (Local)",      "http://localhost:11434",          "llama3",         false},
 };
 
@@ -145,7 +144,9 @@ namespace {
 
 struct WizardImpl : ftxui::ComponentBase {
     WizardState& state;
-    ftxui::ScreenInteractive* get_screen() { return state.screen; }
+    void exit_loop() {
+        if (state.exit_loop) state.exit_loop();
+    }
     int selected_provider = 0;
     int selected_autonomy = 0;  // 0=supervised, 1=autonomous, 2=full
 
@@ -156,6 +157,7 @@ struct WizardImpl : ftxui::ComponentBase {
     std::string input_workspace;
 
     // Input components
+    ftxui::Component url_input_;
     ftxui::Component key_input_;
     ftxui::Component model_input_;
     ftxui::Component workspace_input_;
@@ -190,20 +192,30 @@ struct WizardImpl : ftxui::ComponentBase {
         else if (state.autonomy == "full") selected_autonomy = 2;
         else selected_autonomy = 0;
 
-        // Input components
+        // Input components — on_enter advances to the next step so the user
+        // can press Enter after typing instead of Tabbing to the Next button.
+        InputOption url_opt;
+        url_opt.placeholder = "https://api.openai.com/v1";
+        url_opt.multiline = false;
+        url_opt.on_enter = [this] { go_next(); };
+        url_input_ = Input(&input_url, url_opt);
+
         InputOption key_opt;
         key_opt.placeholder = "sk-...";
         key_opt.multiline = false;
+        key_opt.on_enter = [this] { go_next(); };
         key_input_ = Input(&input_key, key_opt);
 
         InputOption model_opt;
         model_opt.placeholder = "gpt-4o";
         model_opt.multiline = false;
+        model_opt.on_enter = [this] { go_next(); };
         model_input_ = Input(&input_model, model_opt);
 
         InputOption ws_opt;
         ws_opt.placeholder = "/home/user/project";
         ws_opt.multiline = false;
+        ws_opt.on_enter = [this] { go_next(); };
         workspace_input_ = Input(&input_workspace, ws_opt);
 
         // Navigation buttons — custom transform: focused button gets white
@@ -223,11 +235,11 @@ struct WizardImpl : ftxui::ComponentBase {
         finish_btn_ = Button(" < Finish > ", [this] {
             sync_state();
             state.finished = true;
-            if (get_screen()) get_screen()->Exit();
+            exit_loop();
         }, btn_style);
         cancel_btn_ = Button(" < Cancel > ", [this] {
             state.cancelled = true;
-            if (get_screen()) get_screen()->Exit();
+            exit_loop();
         }, btn_style);
 
         // Button row: horizontal container, focus moves Left/Right between buttons
@@ -260,7 +272,8 @@ struct WizardImpl : ftxui::ComponentBase {
         bool has_input = false;
         switch (state.current_step) {
             case WizardStep::ApiKey:
-                content_area_->Add(key_input_);
+                // Show base_url and api_key inputs together
+                content_area_->Add(Container::Vertical({url_input_, key_input_}));
                 has_input = true;
                 break;
             case WizardStep::Model:
@@ -280,8 +293,10 @@ struct WizardImpl : ftxui::ComponentBase {
 
         // ---- Button row ----
         button_row_->DetachAllChildren();
+        int primary_btn_index = 0;  // index of Next/Finish in button_row_
         if (state.current_step != WizardStep::Welcome) {
             button_row_->Add(back_btn_);
+            primary_btn_index = 1;  // Back is at index 0, primary at 1
         }
         if (state.current_step == WizardStep::Review) {
             button_row_->Add(finish_btn_);
@@ -289,15 +304,14 @@ struct WizardImpl : ftxui::ComponentBase {
             button_row_->Add(next_btn_);
         } else {
             button_row_->Add(next_btn_);  // "Get Started"
+            primary_btn_index = 0;  // Welcome: [Next, Cancel], Next at index 0
         }
         button_row_->Add(cancel_btn_);
 
         // ---- Button selector ----
         // Default focus to Next/Finish, not Back, so the user doesn't
         // accidentally go back after advancing a step.
-        // Welcome: [Next, Cancel] → index 0 = Next
-        // Others:  [Back, Next/Finish, Cancel] → index 1 = Next/Finish
-        button_selector_ = (state.current_step == WizardStep::Welcome) ? 0 : 1;
+        button_selector_ = primary_btn_index;
 
         // ---- Focus routing ----
         // container_ = Vertical({content_area_, button_row_}), selector 0→content, 1→buttons.
@@ -310,7 +324,7 @@ struct WizardImpl : ftxui::ComponentBase {
         if (has_input) {
             bool field_has_value = false;
             switch (state.current_step) {
-                case WizardStep::ApiKey:    field_has_value = !input_key.empty(); break;
+                case WizardStep::ApiKey:    field_has_value = !input_key.empty() && !input_url.empty(); break;
                 case WizardStep::Model:     field_has_value = !input_model.empty(); break;
                 case WizardStep::Workspace: field_has_value = !input_workspace.empty(); break;
                 default: break;
@@ -329,7 +343,7 @@ struct WizardImpl : ftxui::ComponentBase {
         // Escape always cancels and exits
         if (event == Event::Escape) {
             state.cancelled = true;
-            if (get_screen()) get_screen()->Exit();
+            exit_loop();
             return true;
         }
 
@@ -401,8 +415,10 @@ struct WizardImpl : ftxui::ComponentBase {
     void apply_provider_preset() {
         const auto& p = PROVIDERS[selected_provider];
         state.provider_type = p.type;
-        if (input_url.empty()) input_url = p.default_url;
-        if (input_model.empty()) input_model = p.default_model;
+        // Always update URL when switching providers — the user chose a
+        // different provider and expects its default endpoint.
+        input_url = p.default_url;
+        input_model = p.default_model;
     }
 
     void sync_state() {
@@ -509,7 +525,12 @@ struct WizardImpl : ftxui::ComponentBase {
             text("  Provider: " + p.label) | color(theme.color.muted),
             text(""),
             hbox({
-                text("  ❯ ") | color(theme.color.label) | bold,
+                text("  ❯ URL:  ") | color(theme.color.label) | bold,
+                url_input_->Render() | flex,
+            }),
+            text(""),
+            hbox({
+                text("  ❯ Key:  ") | color(theme.color.label) | bold,
                 key_input_->Render() | flex,
             }),
             text(""),

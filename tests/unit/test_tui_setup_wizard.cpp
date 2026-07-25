@@ -25,7 +25,7 @@ TEST_CASE("build_config_from_wizard maps fields correctly", "[tui]") {
     state.provider_type = "anthropic";
     state.base_url = "https://api.anthropic.com";
     state.api_key = "sk-ant-test";
-    state.default_model = "claude-sonnet-5";
+    state.default_model = "claude-sonnet-4-6";
     state.workspace = "/home/user/project";
     state.autonomy = "autonomous";
 
@@ -33,8 +33,8 @@ TEST_CASE("build_config_from_wizard maps fields correctly", "[tui]") {
     REQUIRE(cfg.provider.type == "anthropic");
     REQUIRE(cfg.provider.base_url == "https://api.anthropic.com");
     REQUIRE(cfg.provider.api_key == "sk-ant-test");
-    REQUIRE(cfg.provider.default_model == "claude-sonnet-5");
-    REQUIRE(cfg.agent.model == "claude-sonnet-5");
+    REQUIRE(cfg.provider.default_model == "claude-sonnet-4-6");
+    REQUIRE(cfg.agent.model == "claude-sonnet-4-6");
     REQUIRE(cfg.security.workspace == "/home/user/project");
     REQUIRE(cfg.security.autonomy == "autonomous");
 }

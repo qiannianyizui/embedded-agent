@@ -101,7 +101,7 @@ static int run_setup_wizard(bool non_interactive, bool reset, const std::string&
     // Run the wizard
     auto wizard = ea::tui::make_setup_wizard(state);
     auto screen = ftxui::ScreenInteractive::Fullscreen();
-    state.screen = &screen;  // Let Cancel/Finish call screen.Exit()
+    state.exit_loop = screen.ExitLoopClosure();  // Let Cancel/Finish exit the loop
     screen.Loop(wizard);
 
     if (state.cancelled) {
@@ -133,7 +133,7 @@ static int run_setup_wizard(bool non_interactive, bool reset, const std::string&
 }
 
 int main(int argc, char* argv[]) {
-    CLI::App app{"embedded-agent — Lightweight AI Agent for Linux & Android"};
+    CLI::App app{"embedded-agent — Lightweight AI Agent"};
 
     std::string config_path;
     bool debug = false;
