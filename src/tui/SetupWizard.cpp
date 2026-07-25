@@ -168,6 +168,7 @@ struct WizardImpl : ftxui::ComponentBase {
     ftxui::Component button_row_;     // horizontal container of buttons
     ftxui::Component content_area_;   // holds the active step's focusable child
     ftxui::Component container_;      // vertical: content_area -> button_row
+    int container_selector_ = 0;      // 0=content_area_, 1=button_row_
 
     explicit WizardImpl(WizardState& s) : state(s) {
         using namespace ftxui;
@@ -227,8 +228,9 @@ struct WizardImpl : ftxui::ComponentBase {
         content_area_ = Container::Vertical({});
 
         // Top-level: content_area on top, button_row on bottom. Down/Tab moves
-        // focus from content to buttons.
-        container_ = Container::Vertical({content_area_, button_row_});
+        // focus from content to buttons. container_selector_ controls which
+        // child is active: 0=content_area_, 1=button_row_.
+        container_ = Container::Vertical({content_area_, button_row_}, &container_selector_);
 
         // Wrap container with a renderer + global key handling.
         auto inner = Renderer(container_, [this] { return render_frame(); });
@@ -244,20 +246,23 @@ struct WizardImpl : ftxui::ComponentBase {
 
         // ---- Content area ----
         content_area_->DetachAllChildren();
+        bool has_input = false;
         switch (state.current_step) {
             case WizardStep::ApiKey:
                 content_area_->Add(key_input_);
+                has_input = true;
                 break;
             case WizardStep::Model:
                 content_area_->Add(model_input_);
+                has_input = true;
                 break;
             case WizardStep::Workspace:
                 content_area_->Add(workspace_input_);
+                has_input = true;
                 break;
             default:
                 // Welcome / Provider / Security / Review have no text input.
-                // Add a non-focusable placeholder. Container::Vertical skips
-                // non-focusable children, so focus lands directly on button_row_.
+                // Add a non-focusable placeholder.
                 content_area_->Add(Renderer([] { return text(""); }));
                 break;
         }
@@ -275,6 +280,17 @@ struct WizardImpl : ftxui::ComponentBase {
             button_row_->Add(next_btn_);  // "Get Started"
         }
         button_row_->Add(cancel_btn_);
+
+        // ---- Focus routing ----
+        // container_ = Vertical({content_area_, button_row_}), selector 0→content, 1→buttons.
+        // For steps with text input, focus starts in content_area_ (the Input field).
+        // For steps without text input, focus goes directly to button_row_ so the
+        // user can immediately press Enter to activate the default button.
+        if (has_input) {
+            container_selector_ = 0;  // focus on content_area_ (Input field)
+        } else {
+            container_selector_ = 1;  // focus on button_row_
+        }
     }
 
     // Global event handling — arrow selection for Provider/Security steps,
