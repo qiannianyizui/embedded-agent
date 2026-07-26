@@ -1,7 +1,7 @@
 // tests/security/test_fuzz_provider.cpp
 #include <catch2/catch_test_macros.hpp>
 #include "FuzzHelper.h"
-#include "core/Types.h"
+#include "common/base/Types.h"
 #include "MockProvider.h"
 #include "MockTool.h"
 #include "agent/AgentLoop.h"

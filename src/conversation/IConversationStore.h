@@ -1,6 +1,6 @@
 // IConversationStore — interface for conversation persistence
 #pragma once
-#include "core/Types.h"
+#include "common/base/Types.h"
 #include "common/base/Result.h"
 #include <string>
 #include <vector>

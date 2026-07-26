@@ -6,7 +6,7 @@
 #include "provider/OpenAIProvider.h"
 #include "provider/AnthropicProvider.h"
 #include "provider/OllamaProvider.h"
-#include "core/Types.h"
+#include "common/base/Types.h"
 #include "common/base/Result.h"
 #include "nlohmann/json.hpp"
 

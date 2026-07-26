@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include "provider/PromptGuidedTools.h"
-#include "core/Types.h"
+#include "common/base/Types.h"
 
 using namespace ea;
 using namespace ea::provider;

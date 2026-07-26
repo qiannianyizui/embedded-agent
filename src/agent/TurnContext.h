@@ -1,6 +1,6 @@
 // TurnContext — per-iteration state for the agent loop step chain
 #pragma once
-#include "core/Types.h"
+#include "common/base/Types.h"
 #include "provider/IProvider.h"
 #include "tool/ToolRegistry.h"
 #include "AgentEvent.h"

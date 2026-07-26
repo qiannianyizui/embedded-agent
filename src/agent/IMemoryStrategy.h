@@ -1,6 +1,6 @@
 // Memory strategy interface — pluggable multi-turn memory management
 #pragma once
-#include "core/Types.h"
+#include "common/base/Types.h"
 #include "memory/IMemory.h"
 #include "provider/IProvider.h"
 #include <string>

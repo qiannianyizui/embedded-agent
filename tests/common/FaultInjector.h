@@ -4,7 +4,7 @@
 #pragma once
 #include "provider/IProvider.h"
 #include "memory/IMemory.h"
-#include "core/Types.h"
+#include "common/base/Types.h"
 #include "common/base/Result.h"
 #include "common/base/Error.h"
 #include <memory>

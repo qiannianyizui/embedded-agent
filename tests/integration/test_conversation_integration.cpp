@@ -5,7 +5,7 @@
 #include "memory/InMemoryBackend.h"
 #include "memory/MemoryManager.h"
 #include "tool/ToolRegistry.h"
-#include "core/Types.h"
+#include "common/base/Types.h"
 #include <cstdio>
 
 using namespace ea;

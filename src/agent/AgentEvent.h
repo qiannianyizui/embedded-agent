@@ -1,6 +1,6 @@
 // AgentEvent — lifecycle event types for the agent loop
 #pragma once
-#include "core/Types.h"
+#include "common/base/Types.h"
 #include "budget/Types.h"
 #include <string>
 

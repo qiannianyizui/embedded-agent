@@ -13,7 +13,7 @@
 #include "provider/OllamaProvider.h"
 #include "provider/ReliableProvider.h"
 #include "plugin/PluginProviderAdapter.h"
-#include "core/Types.h"
+#include "common/base/Types.h"
 #include "common/base/Result.h"
 #include "nlohmann/json.hpp"
 

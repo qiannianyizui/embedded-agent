@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
-#include "core/Types.h"
+#include "common/base/Types.h"
 
 namespace ea::agent {
 

@@ -6,7 +6,7 @@
 #include "tool/ToolRegistry.h"
 #include "tool/ITool.h"
 #include "provider/IProvider.h"
-#include "core/Types.h"
+#include "common/base/Types.h"
 #include "common/base/Result.h"
 #include <memory>
 #include <string>

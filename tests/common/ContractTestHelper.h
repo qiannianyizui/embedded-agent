@@ -6,7 +6,7 @@
 #include "provider/IProvider.h"
 #include "tool/ITool.h"
 #include "memory/IMemory.h"
-#include "core/Types.h"
+#include "common/base/Types.h"
 #include "common/base/Result.h"
 #include <catch2/catch_test_macros.hpp>
 #include <string>
