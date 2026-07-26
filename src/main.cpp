@@ -2,6 +2,7 @@
 #include "app/IRunner.h"
 #include "app/SetupWizardRunner.h"
 #include "platform/Platform.h"
+#include "common/io/FileSystem.h"
 #include "common/io/Logger.h"
 #include "config/Config.h"
 #include <CLI/CLI.hpp>
@@ -33,8 +34,8 @@ int main(int argc, char* argv[]) {
     }
 
     // Initialize logging
-    auto home = ea::platform::home_dir();
-    ea::log::init(home + "/.embedded-agent", debug);
+    auto cfg_dir = ea::fs::config_dir();
+    ea::log::init(cfg_dir.ok() ? cfg_dir.value() : "/tmp/.embedded-agent", debug);
     EA_INFO("embedded-agent v0.1.0 starting");
     EA_INFO("Platform: {}", ea::platform::platform_description());
 
