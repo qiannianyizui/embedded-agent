@@ -1,9 +1,9 @@
 // Subagent — independent AgentLoop execution for delegated tasks
 #pragma once
 #include "SubagentConfig.h"
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 #include "tool/ToolRegistry.h"
-#include "core/IMemory.h"
+#include "memory/IMemory.h"
 #include "common/base/Result.h"
 #include <atomic>
 #include <string>

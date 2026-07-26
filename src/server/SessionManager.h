@@ -2,9 +2,9 @@
 #pragma once
 #include "ServerConfig.h"
 #include "agent/AgentLoop.h"
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 #include "tool/ToolRegistry.h"
-#include "core/IMemory.h"
+#include "memory/IMemory.h"
 #include "security/SecurityPolicy.h"
 #include "memory/ScopedMemory.h"
 #include "memory/InMemoryBackend.h"

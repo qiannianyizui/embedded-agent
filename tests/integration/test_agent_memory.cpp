@@ -5,7 +5,7 @@
 #include <queue>
 #include <catch2/catch_test_macros.hpp>
 #include "agent/AgentLoop.h"
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 #include "memory/InMemoryBackend.h"
 #include "memory/MemoryManager.h"
 #include "tool/ToolRegistry.h"

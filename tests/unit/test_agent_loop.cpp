@@ -1,9 +1,9 @@
 #include <queue>
 #include <catch2/catch_test_macros.hpp>
 #include "agent/AgentLoop.h"
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 #include "tool/ToolRegistry.h"
-#include "core/ITool.h"
+#include "tool/ITool.h"
 
 using namespace ea;
 using namespace ea::agent;

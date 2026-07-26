@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include "tool/MemoryTool.h"
-#include "core/IMemory.h"
+#include "memory/IMemory.h"
 #include "core/Types.h"
 
 using namespace ea;

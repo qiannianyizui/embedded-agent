@@ -4,9 +4,9 @@
 #pragma once
 #include "ServerConfig.h"
 #include "SessionManager.h"
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 #include "tool/ToolRegistry.h"
-#include "core/IMemory.h"
+#include "memory/IMemory.h"
 #include "security/SecurityPolicy.h"
 #include "conversation/IConversationStore.h"
 #include "budget/BudgetTracker.h"

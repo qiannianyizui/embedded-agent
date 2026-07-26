@@ -3,9 +3,9 @@
 // interfaces (IProvider, ITool, IMemory) through their public API only.
 // Grey-box: uses interface knowledge but tests through public methods.
 #pragma once
-#include "core/IProvider.h"
-#include "core/ITool.h"
-#include "core/IMemory.h"
+#include "provider/IProvider.h"
+#include "tool/ITool.h"
+#include "memory/IMemory.h"
 #include "core/Types.h"
 #include "common/base/Result.h"
 #include <catch2/catch_test_macros.hpp>

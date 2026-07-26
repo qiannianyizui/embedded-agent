@@ -6,8 +6,8 @@
 #include "plugin/PluginListenerAdapter.h"
 #include "plugin/PluginHost.h"
 #include "plugin/PluginApi.h"
-#include "core/ITool.h"
-#include "core/IProvider.h"
+#include "tool/ITool.h"
+#include "provider/IProvider.h"
 #include "agent/IEventListener.h"
 #include "agent/AgentEvent.h"
 

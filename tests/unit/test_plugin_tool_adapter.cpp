@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include "plugin/PluginToolAdapter.h"
-#include "core/ITool.h"
+#include "tool/ITool.h"
 #include "core/Types.h"
 #include "common/base/Result.h"
 #include <memory>

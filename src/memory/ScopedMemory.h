@@ -1,7 +1,7 @@
 // ScopedMemory — agent-scoped memory decorator
 // Wraps an IMemory backend, scoping reads/writes by agent_id.
 #pragma once
-#include "core/IMemory.h"
+#include "memory/IMemory.h"
 #include <set>
 #include <string>
 

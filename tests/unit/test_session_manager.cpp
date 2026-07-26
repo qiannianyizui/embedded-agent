@@ -5,7 +5,7 @@
 #include "memory/ScopedMemory.h"
 #include "tool/ToolRegistry.h"
 #include "security/SecurityPolicy.h"
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 #include "core/Types.h"
 
 using namespace ea;

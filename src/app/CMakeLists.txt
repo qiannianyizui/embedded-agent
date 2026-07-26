@@ -5,6 +5,19 @@ add_library(ea-app OBJECT
     IRunner.cpp
     CliRunner.cpp
 )
+
+if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
+    target_sources(ea-app PRIVATE
+        TuiRunner.cpp
+        SetupWizardRunner.cpp
+    )
+    target_link_libraries(ea-app PUBLIC ea-tui)
+endif()
+
+if(EA_MODE_SERVER)
+    target_sources(ea-app PRIVATE ServerRunner.cpp)
+endif()
+
 ea_target_compile_options(ea-app)
 target_include_directories(ea-app PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}

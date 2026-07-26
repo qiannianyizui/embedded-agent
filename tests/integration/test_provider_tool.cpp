@@ -5,10 +5,10 @@
 #include <set>
 #include <catch2/catch_test_macros.hpp>
 #include "agent/AgentLoop.h"
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 #include "tool/ToolRegistry.h"
 #include "tool/Toolset.h"
-#include "core/ITool.h"
+#include "tool/ITool.h"
 #include "security/IApprovalHandler.h"
 
 using namespace ea;

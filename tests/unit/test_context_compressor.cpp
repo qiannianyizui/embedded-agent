@@ -1,7 +1,7 @@
 // tests/test_context_compressor.cpp
 #include <catch2/catch_test_macros.hpp>
 #include "agent/ContextCompressor.h"
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 
 using namespace ea;
 using namespace ea::agent;

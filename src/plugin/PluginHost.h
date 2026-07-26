@@ -6,7 +6,7 @@
 #include "PluginStepAdapter.h"
 #include "PluginListenerAdapter.h"
 #include "tool/ToolRegistry.h"
-#include "core/IMemory.h"
+#include "memory/IMemory.h"
 #include "security/SecurityPolicy.h"
 #include "common/base/Result.h"
 #include <map>

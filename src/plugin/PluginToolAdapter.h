@@ -1,5 +1,5 @@
 #pragma once
-#include "core/ITool.h"
+#include "tool/ITool.h"
 #include <memory>
 
 namespace ea::plugin {

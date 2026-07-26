@@ -1,6 +1,6 @@
 // DelegateTool — ITool bridge for LLM-driven sub-agent delegation
 #pragma once
-#include "core/ITool.h"
+#include "tool/ITool.h"
 #include "SubagentOrchestrator.h"
 
 namespace ea::agent {

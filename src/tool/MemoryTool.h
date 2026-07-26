@@ -1,6 +1,6 @@
 #pragma once
-#include "core/ITool.h"
-#include "core/IMemory.h"
+#include "tool/ITool.h"
+#include "memory/IMemory.h"
 
 namespace ea::tool {
 

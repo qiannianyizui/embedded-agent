@@ -2,7 +2,7 @@
 // Inherits IMemory so it can be used wherever IMemory* is expected.
 // Adds turn-level prefetch/sync and system prompt injection.
 #pragma once
-#include "core/IMemory.h"
+#include "memory/IMemory.h"
 #include <memory>
 #include <string>
 #include <vector>

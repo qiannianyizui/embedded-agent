@@ -2,8 +2,8 @@
 // Fault injection infrastructure — wraps IProvider and IMemory with controlled
 // failure modes for grey-box resilience testing.
 #pragma once
-#include "core/IProvider.h"
-#include "core/IMemory.h"
+#include "provider/IProvider.h"
+#include "memory/IMemory.h"
 #include "core/Types.h"
 #include "common/base/Result.h"
 #include "common/base/Error.h"

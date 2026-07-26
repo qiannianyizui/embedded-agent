@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include "tool/Toolset.h"
-#include "core/ITool.h"
+#include "tool/ITool.h"
 
 using namespace ea;
 using namespace ea::tool;

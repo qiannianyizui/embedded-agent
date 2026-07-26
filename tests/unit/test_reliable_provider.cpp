@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include "provider/ReliableProvider.h"
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 
 using namespace ea;
 using namespace ea::provider;

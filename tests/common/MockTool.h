@@ -1,6 +1,6 @@
 // tests/common/MockTool.h
 #pragma once
-#include "core/ITool.h"
+#include "tool/ITool.h"
 #include <functional>
 #include <vector>
 #include <chrono>

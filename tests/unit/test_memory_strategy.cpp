@@ -5,7 +5,7 @@
 #include "agent/ProgressiveMemoryStrategy.h"
 #include "agent/AgentLoop.h"
 #include "memory/InMemoryBackend.h"
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 
 using namespace ea;
 using namespace ea::agent;

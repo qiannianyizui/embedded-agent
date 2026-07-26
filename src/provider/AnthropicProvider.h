@@ -1,5 +1,5 @@
 #pragma once
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 #include "common/net/HttpClient.h"
 
 namespace ea::provider {

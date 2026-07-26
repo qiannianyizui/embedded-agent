@@ -1,8 +1,8 @@
 // AgentLoop — orchestrates ITurnStep chain for agent execution
 #pragma once
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 #include "tool/ToolRegistry.h"
-#include "core/IMemory.h"
+#include "memory/IMemory.h"
 #include "common/base/Result.h"
 #include "TurnContext.h"
 #include "ITurnStep.h"

@@ -1,5 +1,5 @@
 #pragma once
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 #include "config/Config.h"
 #include <memory>
 

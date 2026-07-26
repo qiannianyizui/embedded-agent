@@ -4,7 +4,7 @@
 #include "agent/AgentLoop.h"
 #include "agent/TurnContext.h"
 #include "agent/steps/CallProviderStep.h"
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 #include "tool/ToolRegistry.h"
 #include "config/Config.h"
 #include "common/io/FileSystem.h"

@@ -1,5 +1,5 @@
 #pragma once
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 #include <queue>
 #include <functional>
 #include <vector>

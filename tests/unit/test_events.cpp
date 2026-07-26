@@ -3,9 +3,9 @@
 #include "agent/AgentLoop.h"
 #include "agent/AgentEvent.h"
 #include "agent/IEventListener.h"
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 #include "tool/ToolRegistry.h"
-#include "core/ITool.h"
+#include "tool/ITool.h"
 #include <queue>
 #include <thread>
 #include <chrono>

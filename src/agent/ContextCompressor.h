@@ -1,6 +1,6 @@
 // src/agent/ContextCompressor.h
 #pragma once
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 #include "core/Types.h"
 #include "common/base/Result.h"
 #include <vector>

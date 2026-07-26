@@ -5,7 +5,7 @@
 #include "memory/InMemoryBackend.h"
 #include "tool/ToolRegistry.h"
 #include "security/SecurityPolicy.h"
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 #include "core/Types.h"
 #include "nlohmann/json.hpp"
 #include <httplib.h>

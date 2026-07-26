@@ -1,6 +1,6 @@
 // src/mcp/McpToolAdapter.h
 #pragma once
-#include "core/ITool.h"
+#include "tool/ITool.h"
 #include "McpClient.h"
 #include <memory>
 

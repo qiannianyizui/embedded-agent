@@ -4,8 +4,8 @@
 #include "plugin/PluginManifest.h"
 #include "plugin/PluginToolAdapter.h"
 #include "tool/ToolRegistry.h"
-#include "core/ITool.h"
-#include "core/IProvider.h"
+#include "tool/ITool.h"
+#include "provider/IProvider.h"
 #include "core/Types.h"
 #include "common/base/Result.h"
 #include <memory>

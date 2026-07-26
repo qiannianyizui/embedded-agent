@@ -1,7 +1,7 @@
 // AppContext — holds all runtime objects for the application
 #pragma once
 #include "config/Config.h"
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 #include "memory/SqliteMemory.h"
 #include "tool/ToolRegistry.h"
 #include "security/SecurityPolicy.h"

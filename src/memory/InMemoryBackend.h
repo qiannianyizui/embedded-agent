@@ -1,5 +1,5 @@
 #pragma once
-#include "core/IMemory.h"
+#include "memory/IMemory.h"
 #include <vector>
 #include <string>
 

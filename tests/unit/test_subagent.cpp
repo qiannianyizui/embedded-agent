@@ -3,7 +3,7 @@
 #include "agent/SubagentConfig.h"
 #include "agent/SubagentOrchestrator.h"
 #include "agent/DelegateTool.h"
-#include "core/IProvider.h"
+#include "provider/IProvider.h"
 
 using namespace ea;
 using namespace ea::agent;
