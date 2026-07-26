@@ -212,6 +212,25 @@ TEST_CASE("config_dir expands ~ in EA_CONFIG_DIR", "[filesystem]") {
     else setenv("EA_CONFIG_DIR", orig_str.c_str(), 1);
 }
 
+TEST_CASE("EA_CONFIG_DIR takes precedence over EA_DATA_DIR", "[filesystem]") {
+    const char* orig_config = getenv("EA_CONFIG_DIR");
+    const char* orig_data = getenv("EA_DATA_DIR");
+    std::string orig_config_str = orig_config ? orig_config : "";
+    std::string orig_data_str = orig_data ? orig_data : "";
+
+    setenv("EA_CONFIG_DIR", "/tmp/ea_conflict_config", 1);
+    setenv("EA_DATA_DIR", "/tmp/ea_conflict_data", 1);
+
+    auto result = data_dir();
+    REQUIRE(result.ok());
+    REQUIRE(result.value() == "/tmp/ea_conflict_config/data");
+
+    if (orig_config_str.empty()) unsetenv("EA_CONFIG_DIR");
+    else setenv("EA_CONFIG_DIR", orig_config_str.c_str(), 1);
+    if (orig_data_str.empty()) unsetenv("EA_DATA_DIR");
+    else setenv("EA_DATA_DIR", orig_data_str.c_str(), 1);
+}
+
 TEST_CASE("config_dir ignores empty EA_CONFIG_DIR", "[filesystem]") {
     const char* orig = getenv("EA_CONFIG_DIR");
     std::string orig_str = orig ? orig : "";

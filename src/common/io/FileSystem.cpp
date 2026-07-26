@@ -1,4 +1,5 @@
 #include "FileSystem.h"
+#include "common/io/Logger.h"
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <dirent.h>
@@ -59,9 +60,21 @@ Result<std::string> config_dir() {
 }
 
 Result<std::string> data_dir() {
-    const char* env_dir = getenv("EA_DATA_DIR");
-    if (env_dir && env_dir[0] != '\0') {
-        return expand_tilde(std::string(env_dir));
+    // EA_CONFIG_DIR takes precedence — when set, it pins both config
+    // and data locations. EA_DATA_DIR is ignored with a warning.
+    const char* config_env = getenv("EA_CONFIG_DIR");
+    const char* data_env = getenv("EA_DATA_DIR");
+    if (config_env && config_env[0] != '\0') {
+        if (data_env && data_env[0] != '\0') {
+            EA_WARN("EA_CONFIG_DIR is set; EA_DATA_DIR is ignored "
+                    "(CONFIG_DIR pins both config and data directories)");
+        }
+        auto cfg = config_dir();
+        if (!cfg.ok()) return cfg.error();
+        return cfg.value() + "/data";
+    }
+    if (data_env && data_env[0] != '\0') {
+        return expand_tilde(std::string(data_env));
     }
     auto cfg = config_dir();
     if (!cfg.ok()) return cfg.error();
