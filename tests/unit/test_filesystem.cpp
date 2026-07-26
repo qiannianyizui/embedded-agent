@@ -141,3 +141,44 @@ TEST_CASE("expand_tilde returns non-tilde path unchanged", "[filesystem]") {
 TEST_CASE("expand_tilde does not expand ~otheruser", "[filesystem]") {
     REQUIRE(expand_tilde("~otheruser/docs").substr(0, 1) == "~");
 }
+
+TEST_CASE("config_dir honors EA_CONFIG_DIR env var", "[filesystem]") {
+    const char* orig = getenv("EA_CONFIG_DIR");
+    std::string orig_str = orig ? orig : "";
+    setenv("EA_CONFIG_DIR", "/tmp/ea_test_config", 1);
+
+    auto result = config_dir();
+    REQUIRE(result.ok());
+    REQUIRE(result.value() == "/tmp/ea_test_config");
+
+    if (orig_str.empty()) unsetenv("EA_CONFIG_DIR");
+    else setenv("EA_CONFIG_DIR", orig_str.c_str(), 1);
+}
+
+TEST_CASE("config_dir expands ~ in EA_CONFIG_DIR", "[filesystem]") {
+    const char* orig = getenv("EA_CONFIG_DIR");
+    std::string orig_str = orig ? orig : "";
+    auto home = home_dir();
+    REQUIRE(home.ok());
+
+    setenv("EA_CONFIG_DIR", "~/custom-config", 1);
+    auto result = config_dir();
+    REQUIRE(result.ok());
+    REQUIRE(result.value() == home.value() + "/custom-config");
+
+    if (orig_str.empty()) unsetenv("EA_CONFIG_DIR");
+    else setenv("EA_CONFIG_DIR", orig_str.c_str(), 1);
+}
+
+TEST_CASE("config_dir ignores empty EA_CONFIG_DIR", "[filesystem]") {
+    const char* orig = getenv("EA_CONFIG_DIR");
+    std::string orig_str = orig ? orig : "";
+
+    setenv("EA_CONFIG_DIR", "", 1);
+    auto result = config_dir();
+    REQUIRE(result.ok());
+    REQUIRE(result.value().find(".embedded-agent") != std::string::npos);
+
+    if (orig_str.empty()) unsetenv("EA_CONFIG_DIR");
+    else setenv("EA_CONFIG_DIR", orig_str.c_str(), 1);
+}

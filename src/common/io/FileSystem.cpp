@@ -49,6 +49,10 @@ Result<std::string> home_dir() {
 }
 
 Result<std::string> config_dir() {
+    const char* env_dir = getenv("EA_CONFIG_DIR");
+    if (env_dir && env_dir[0] != '\0') {
+        return expand_tilde(std::string(env_dir));
+    }
     auto home = home_dir();
     if (!home.ok()) return home.error();
     return home.value() + "/.embedded-agent";
