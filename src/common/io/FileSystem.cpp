@@ -82,13 +82,9 @@ Result<std::string> data_dir() {
 }
 
 Result<std::string> resolve_data_path(const std::string& filename) {
-    auto cfg_dir = config_dir();
-    if (cfg_dir.ok()) {
-        return cfg_dir.value() + "/" + filename;
-    }
-    auto home = home_dir();
-    if (!home.ok()) return home.error();
-    return home.value() + "/.embedded-agent/" + filename;
+    auto dir = data_dir();
+    if (!dir.ok()) return dir.error();
+    return dir.value() + "/" + filename;
 }
 
 Result<bool> exists(const std::string& path) {

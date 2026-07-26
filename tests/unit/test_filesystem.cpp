@@ -106,12 +106,12 @@ TEST_CASE("FileSystem home_dir returns a writable-looking absolute path", "[file
     REQUIRE(result.value().front() == '/');
 }
 
-TEST_CASE("resolve_data_path returns config_dir/filename when config_dir ok", "[common][filesystem]") {
+TEST_CASE("resolve_data_path returns data_dir/filename", "[common][filesystem]") {
     auto result = ea::fs::resolve_data_path("test.db");
     REQUIRE(result.ok());
-    // Should end with /test.db
     REQUIRE(result.value().size() >= 8);
     REQUIRE(result.value().substr(result.value().size() - 8) == "/test.db");
+    REQUIRE(result.value().find("/data/") != std::string::npos);
 }
 
 TEST_CASE("resolve_data_path with empty filename", "[common][filesystem]") {

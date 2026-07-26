@@ -35,6 +35,15 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug) {
     ctx.config = cfg;
     ctx.debug = debug;
 
+    // Ensure data directory exists before creating databases
+    auto data_result = fs::data_dir();
+    if (data_result.ok()) {
+        auto mkdir_result = fs::mkdir_p(data_result.value());
+        if (!mkdir_result.ok()) {
+            EA_WARN("Failed to create data directory: {}", mkdir_result.error().message);
+        }
+    }
+
     // 3. Create provider
     auto provider_raw = provider::create(cfg.provider);
     if (!provider_raw) {
