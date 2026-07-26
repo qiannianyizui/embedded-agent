@@ -142,6 +142,48 @@ TEST_CASE("expand_tilde does not expand ~otheruser", "[filesystem]") {
     REQUIRE(expand_tilde("~otheruser/docs").substr(0, 1) == "~");
 }
 
+TEST_CASE("data_dir defaults to config_dir/data", "[filesystem]") {
+    const char* orig = getenv("EA_DATA_DIR");
+    std::string orig_str = orig ? orig : "";
+    unsetenv("EA_DATA_DIR");
+
+    auto cfg = config_dir();
+    auto dat = data_dir();
+    REQUIRE(cfg.ok());
+    REQUIRE(dat.ok());
+    REQUIRE(dat.value() == cfg.value() + "/data");
+
+    if (!orig_str.empty()) setenv("EA_DATA_DIR", orig_str.c_str(), 1);
+}
+
+TEST_CASE("data_dir honors EA_DATA_DIR env var", "[filesystem]") {
+    const char* orig = getenv("EA_DATA_DIR");
+    std::string orig_str = orig ? orig : "";
+
+    setenv("EA_DATA_DIR", "/tmp/ea_test_data", 1);
+    auto result = data_dir();
+    REQUIRE(result.ok());
+    REQUIRE(result.value() == "/tmp/ea_test_data");
+
+    if (orig_str.empty()) unsetenv("EA_DATA_DIR");
+    else setenv("EA_DATA_DIR", orig_str.c_str(), 1);
+}
+
+TEST_CASE("data_dir expands ~ in EA_DATA_DIR", "[filesystem]") {
+    const char* orig = getenv("EA_DATA_DIR");
+    std::string orig_str = orig ? orig : "";
+    auto home = home_dir();
+    REQUIRE(home.ok());
+
+    setenv("EA_DATA_DIR", "~/custom-data", 1);
+    auto result = data_dir();
+    REQUIRE(result.ok());
+    REQUIRE(result.value() == home.value() + "/custom-data");
+
+    if (orig_str.empty()) unsetenv("EA_DATA_DIR");
+    else setenv("EA_DATA_DIR", orig_str.c_str(), 1);
+}
+
 TEST_CASE("config_dir honors EA_CONFIG_DIR env var", "[filesystem]") {
     const char* orig = getenv("EA_CONFIG_DIR");
     std::string orig_str = orig ? orig : "";

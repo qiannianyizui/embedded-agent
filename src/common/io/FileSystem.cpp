@@ -59,7 +59,13 @@ Result<std::string> config_dir() {
 }
 
 Result<std::string> data_dir() {
-    return config_dir();
+    const char* env_dir = getenv("EA_DATA_DIR");
+    if (env_dir && env_dir[0] != '\0') {
+        return expand_tilde(std::string(env_dir));
+    }
+    auto cfg = config_dir();
+    if (!cfg.ok()) return cfg.error();
+    return cfg.value() + "/data";
 }
 
 Result<std::string> resolve_data_path(const std::string& filename) {
