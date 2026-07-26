@@ -119,3 +119,25 @@ TEST_CASE("resolve_data_path with empty filename", "[common][filesystem]") {
     // Empty filename should still produce a valid path ending in /
     REQUIRE(result.ok());
 }
+
+TEST_CASE("expand_tilde expands ~ to home dir", "[filesystem]") {
+    auto home = home_dir();
+    REQUIRE(home.ok());
+    REQUIRE(expand_tilde("~") == home.value());
+}
+
+TEST_CASE("expand_tilde expands ~/path", "[filesystem]") {
+    auto home = home_dir();
+    REQUIRE(home.ok());
+    REQUIRE(expand_tilde("~/some/path") == home.value() + "/some/path");
+}
+
+TEST_CASE("expand_tilde returns non-tilde path unchanged", "[filesystem]") {
+    REQUIRE(expand_tilde("/absolute/path") == "/absolute/path");
+    REQUIRE(expand_tilde("relative/path") == "relative/path");
+    REQUIRE(expand_tilde("") == "");
+}
+
+TEST_CASE("expand_tilde does not expand ~otheruser", "[filesystem]") {
+    REQUIRE(expand_tilde("~otheruser/docs").substr(0, 1) == "~");
+}

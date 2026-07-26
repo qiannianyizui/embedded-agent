@@ -8,6 +8,7 @@ namespace ea::fs {
 Result<std::string> home_dir();
 Result<std::string> config_dir();
 Result<std::string> data_dir();
+std::string expand_tilde(const std::string& path);
 // Resolve a data file path: prefers config_dir()/filename,
 // falls back to home_dir()/.embedded-agent/filename
 Result<std::string> resolve_data_path(const std::string& filename);

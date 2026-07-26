@@ -26,6 +26,15 @@ static std::string android_home_fallback() {
     return "/data/local/tmp";
 }
 
+std::string expand_tilde(const std::string& path) {
+    if (path.empty() || path[0] != '~') return path;
+    auto home = home_dir();
+    if (!home.ok()) return path;
+    if (path.size() == 1) return home.value();
+    if (path[1] == '/') return home.value() + path.substr(1);
+    return path;
+}
+
 Result<std::string> home_dir() {
     const char* home = getenv("HOME");
     if (home && home[0] != '\0') return std::string(home);
