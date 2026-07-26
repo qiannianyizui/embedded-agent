@@ -97,6 +97,15 @@ TEST_CASE("FileSystem home_dir returns non-empty path", "[filesystem]") {
     REQUIRE_FALSE(result.value().empty());
 }
 
+TEST_CASE("FileSystem home_dir returns a writable-looking absolute path", "[filesystem]") {
+    // On all supported platforms (Linux, WSL, Termux, native Android fallback),
+    // home_dir() should return an absolute path starting with '/'.
+    auto result = home_dir();
+    REQUIRE(result.ok());
+    REQUIRE_FALSE(result.value().empty());
+    REQUIRE(result.value().front() == '/');
+}
+
 TEST_CASE("resolve_data_path returns config_dir/filename when config_dir ok", "[common][filesystem]") {
     auto result = ea::fs::resolve_data_path("test.db");
     REQUIRE(result.ok());

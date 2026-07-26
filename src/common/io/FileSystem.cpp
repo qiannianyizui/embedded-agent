@@ -10,10 +10,47 @@
 
 namespace ea::fs {
 
+// Detect whether we are running on Android (native or Termux) by probing the
+// system shell path. This avoids hard platform-ifdefs and works regardless of
+// how the binary was built — it reflects the actual runtime environment.
+static bool is_android_runtime() {
+    // /system/bin/sh exists on both native Android and Termux (Termux inherits
+    // the host Android filesystem layout for /system).
+    return access("/system/bin/sh", X_OK) == 0;
+}
+
+// Termux sets HOME to /data/data/com.termux/files/home and exposes
+// TERMUX_VERSION. Native Android does neither, so we fall back to a
+// per-process-writable data path.
+static std::string android_home_fallback() {
+    // Termux exposes its prefix via TERMUX_HOME (custom) or the standard
+    // /data/data/com.termux/files/home layout.
+    if (const char* termux_home = getenv("TERMUX_HOME")) {
+        if (termux_home[0] != '\0') return std::string(termux_home);
+    }
+    // Native Android (no Termux): /data/local/tmp is world-writable and
+    // survives across app restarts for adb-pushed binaries. This is the
+    // best-effort home for an embedded agent running outside Termux.
+    return "/data/local/tmp";
+}
+
 Result<std::string> home_dir() {
+    // 1. HOME env var — works on Linux, WSL, and Termux (which sets HOME).
     const char* home = getenv("HOME");
     if (home && home[0] != '\0') return std::string(home);
-    return Error::io("HOME not set");
+
+    // 2. Android fallback — native Android does not set HOME, so probe the
+    // runtime and use a writable data path. Detecting the runtime (rather
+    // than relying on a build-time #ifdef) keeps the same binary working
+    // across Linux/WSL/Termux/native-Android without recompilation.
+    if (is_android_runtime()) {
+        return android_home_fallback();
+    }
+
+    // 3. No home directory could be determined. Return an error so callers
+    // can decide how to handle it (embedded callers should pass an explicit
+    // config path) rather than silently writing to an unexpected location.
+    return Error::io("HOME not set and no Android home directory detected");
 }
 
 Result<std::string> config_dir() {
