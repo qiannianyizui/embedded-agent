@@ -8,6 +8,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # --- Build mode presets ---
 option(EA_MODE_CLI       "Build CLI agent mode"       ON)
 option(EA_MODE_EMBEDDED  "Build embedded device mode" OFF)
