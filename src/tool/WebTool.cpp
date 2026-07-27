@@ -1,5 +1,5 @@
 #include "WebTool.h"
-#include "common/net/HttpClient.h"
+#include "net/HttpClient.h"
 
 namespace ea::tool {
 

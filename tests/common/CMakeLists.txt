@@ -10,7 +10,8 @@ target_include_directories(ea-test-common PUBLIC
     ${CMAKE_BINARY_DIR}/include
 )
 target_link_libraries(ea-test-common PUBLIC
-    ea-core
+    ea-base ea-io ea-net
+    ea-log
     ea-mcp
     nlohmann_json::nlohmann_json
     Catch2::Catch2WithMain

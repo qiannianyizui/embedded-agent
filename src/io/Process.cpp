@@ -1,5 +1,5 @@
 #include "Process.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>

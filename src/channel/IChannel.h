@@ -1,5 +1,5 @@
 #pragma once
-#include "common/base/Result.h"
+#include "base/Result.h"
 #include <string>
 
 namespace ea {

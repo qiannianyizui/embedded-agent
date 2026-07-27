@@ -5,7 +5,7 @@
 #include "provider/IProvider.h"
 #include "tool/ToolRegistry.h"
 #include "memory/IMemory.h"
-#include "common/base/Result.h"
+#include "base/Result.h"
 #include <map>
 #include <memory>
 #include <string>

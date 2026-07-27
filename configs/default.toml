@@ -4,6 +4,25 @@ max_iterations = 90
 auto_memory = true
 soul = "You are a helpful AI assistant running on a Linux/Android device."
 
+[agent.compression]
+enable = true
+max_tokens = 8000
+keep_recent_turns = 4
+
+[log]
+level = "debug"
+persist = true
+verbose = false
+max_file_bytes = 10485760      # 10MB
+max_total_bytes = 104857600    # 100MB
+
+[trace]
+persist = "rolling"
+max_entries = 10000
+tool_io = "redacted"
+tool_io_truncate_bytes = 40960   # 40KB
+llm_payload = "off"
+
 [provider]
 type = "openai_compatible"
 base_url = "https://api.deepseek.com/v1"
@@ -16,6 +35,14 @@ backend = "sqlite"
 path = ""
 enable_fts5 = true
 
+[memory.strategy]
+type = "progressive"
+working_turns = 6
+short_term_max = 20
+long_term_importance = 8
+enable_fact_extraction = true
+enable_auto_summarize = true
+
 [security]
 autonomy = "supervised"
 workspace = ""
@@ -24,3 +51,7 @@ allowed_commands = [
     "pwd", "echo", "date", "whoami", "uname",
     "git", "curl", "wget"
 ]
+
+[security.approval]
+mode = "auto"
+auto_approve_dangerous = false

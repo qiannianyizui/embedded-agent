@@ -2,7 +2,7 @@
 #include "SetupWizard.h"
 #include "Theme.h"
 #include "Banner.h"
-#include "common/io/FileSystem.h"
+#include "io/FileSystem.h"
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>

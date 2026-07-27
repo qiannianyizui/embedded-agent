@@ -18,6 +18,10 @@ void TuiEventListener::on_event(const ea::agent::AgentEvent& event) {
             });
             break;
 
+        case ea::agent::AgentEventType::LLMRequest:
+            // LLM request is trace data — no TUI action needed
+            break;
+
         case ea::agent::AgentEventType::LLMResponse:
             post_fn_([this, usage = event.usage] {
                 status_bar_.update_usage(usage.input_tokens, usage.output_tokens);

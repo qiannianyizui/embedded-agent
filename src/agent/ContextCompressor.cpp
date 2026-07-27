@@ -1,6 +1,6 @@
 // src/agent/ContextCompressor.cpp
 #include "ContextCompressor.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
 
 namespace ea::agent {
 

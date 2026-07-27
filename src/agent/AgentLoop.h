@@ -3,7 +3,7 @@
 #include "provider/IProvider.h"
 #include "tool/ToolRegistry.h"
 #include "memory/IMemory.h"
-#include "common/base/Result.h"
+#include "base/Result.h"
 #include "TurnContext.h"
 #include "ITurnStep.h"
 #include "IEventListener.h"
@@ -33,6 +33,7 @@ public:
         bool auto_memory = true;
         bool stream = true;  // Enable streaming output
         bool auto_persist = true;
+        std::string model;  // Model name for trace attribution
     };
 
     using OutputFn = std::function<void(const std::string&)>;
@@ -102,6 +103,7 @@ private:
     std::vector<std::unique_ptr<ITurnStep>> steps_;
     LoopDetector loop_detector_;
     std::vector<std::shared_ptr<IEventListener>> listeners_;
+    std::string current_trace_id_;   // trace_id for the current run()
 };
 
 }  // namespace ea::agent

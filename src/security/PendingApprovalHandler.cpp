@@ -1,6 +1,6 @@
 // src/security/PendingApprovalHandler.cpp
 #include "PendingApprovalHandler.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
 #include <chrono>
 
 namespace ea::security {

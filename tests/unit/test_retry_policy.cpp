@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include "common/net/RetryPolicy.h"
+#include "net/RetryPolicy.h"
 
 using namespace ea::net;
 

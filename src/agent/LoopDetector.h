@@ -2,7 +2,7 @@
 // Patterns: exact repeat, ping-pong, no-progress
 // Escalation: Continue → Warn → Block → Break
 #pragma once
-#include "common/base/Types.h"
+#include "base/Types.h"
 #include <deque>
 #include <string>
 

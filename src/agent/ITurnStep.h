@@ -1,7 +1,7 @@
 // ITurnStep — pluggable step interface for the agent loop
 #pragma once
 #include "TurnContext.h"
-#include "common/base/Result.h"
+#include "base/Result.h"
 #include <string>
 #include <memory>
 #include <vector>

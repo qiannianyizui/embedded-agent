@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include "provider/ErrorClassifier.h"
-#include "common/base/Error.h"
+#include "base/Error.h"
 
 using namespace ea;
 using namespace ea::provider;

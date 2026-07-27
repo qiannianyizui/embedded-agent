@@ -1,6 +1,6 @@
 // src/server/HttpServer.cpp
 #include "HttpServer.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
 #include <httplib.h>
 #include <chrono>
 #include <set>
@@ -92,6 +92,7 @@ void HttpServer::setup_routes() {
         std::string conversation_id = body.value("conversation_id", "");
 
         AgentLoop::Config loop_cfg;
+        loop_cfg.model = model;
         auto* session = sessions_.create(provider_, registry_, shared_memory_, policy_, loop_cfg, model, system_prompt, conversation_id);
 
         if (!session) {

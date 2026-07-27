@@ -1,6 +1,6 @@
 // src/mcp/ITransport.h
 #pragma once
-#include "common/base/Result.h"
+#include "base/Result.h"
 #include "nlohmann/json.hpp"
 
 namespace ea::mcp {

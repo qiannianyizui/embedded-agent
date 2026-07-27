@@ -1,5 +1,5 @@
 #include "MemoryManager.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
 
 namespace ea::memory {
 

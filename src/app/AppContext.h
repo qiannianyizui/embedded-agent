@@ -1,5 +1,6 @@
 // AppContext — holds all runtime objects for the application
 #pragma once
+#include "app/IRunner.h"
 #include "config/Config.h"
 #include "provider/IProvider.h"
 #include "memory/SqliteMemory.h"
@@ -13,7 +14,7 @@
 #include "budget/SqliteUsageStore.h"
 #include "conversation/SqliteConversationStore.h"
 #include "mcp/McpClient.h"
-#include "common/net/HttpClient.h"
+#include "net/HttpClient.h"
 #include <memory>
 #include <vector>
 #include <string>
@@ -21,6 +22,7 @@
 namespace ea::app {
 
 struct AppContext {
+    RunMode run_mode = RunMode::Cli;  // Runtime mode selection
     config::AppConfig config;
 
     // Provider layer

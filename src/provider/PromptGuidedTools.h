@@ -1,5 +1,5 @@
 #pragma once
-#include "common/base/Types.h"
+#include "base/Types.h"
 #include <string>
 #include <vector>
 

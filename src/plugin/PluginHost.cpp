@@ -1,5 +1,5 @@
 #include "PluginHost.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>

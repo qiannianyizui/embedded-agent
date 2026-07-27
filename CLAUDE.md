@@ -34,7 +34,7 @@ cd build && cmake --build . --clean-first -j$(nproc)
 
 **Layered Microkernel** — core interfaces define contracts; pluggable strategies and decorators provide behavior. Compile-time mode switching (CLI/Embedded/Server) via CMake `configure_file`.
 
-### Core Interfaces (`src/core/`)
+### Core Interfaces
 
 - `IProvider` — LLM provider contract: `chat()`, `stream_chat()`, `capabilities()`
 - `ITool` — Tool contract: `execute()`, `is_mutating()`, `is_dangerous()`
@@ -82,8 +82,8 @@ CMake generates `build_config.h` with `#cmakedefine` macros. Source code uses `#
 
 - **Error construction**: `Error` is an aggregate struct. Always initialize all fields: `Error{ErrorCode::X, "message", 0, {}}` or use factory methods (`Error::net()`, `Error::timeout()`, `Error::db()`, etc.)
 - **Compile flags**: Use `ea_target_compile_options(target)` for project targets — it applies `-fno-rtti` only in release builds. Never add `-fno-exceptions` (spdlog requires exceptions). Never add `-fno-rtti` globally (breaks mbedtls C compilation).
-- **Object libraries**: Each module (`ea-memory`, `ea-provider`, etc.) is a CMake `OBJECT` library. The final executable links all of them.
+- **Object libraries**: Each module (`ea-memory`, `ea-provider`, `ea-log`, etc.) is a CMake `OBJECT` library. The final executable links all of them.
 - **Test tags**: Use Catch2 tag `[module]` patterns: `[memory]`, `[agent]`, `[loopdetect]`, `[provider]`, `[tool]`, `[security]`, `[config]`, `[result]`.
 - **Namespace**: `ea::agent`, `ea::provider`, `ea::memory`, `ea::tool`, `ea::security`, `ea::config`, `ea::net`, `ea::log`, `ea::fs`. Core types are in `ea` (no sub-namespace).
-- **Header-only steps**: TurnStep implementations in `src/agent/steps/` are header-only unless they depend on `Logger.h` or other .cpp-only includes (CallProviderStep, ExecuteToolsStep, LoopDetectStep have .cpp files).
+- **Header-only steps**: TurnStep implementations in `src/agent/steps/` are header-only unless they depend on `log/Logger.h` or other .cpp-only includes (CallProviderStep, ExecuteToolsStep, LoopDetectStep have .cpp files).
 - **Design docs**: Architecture specs live in `docs/superpowers/specs/`, implementation plans in `docs/superpowers/plans/`.

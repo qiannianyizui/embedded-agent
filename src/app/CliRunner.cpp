@@ -4,7 +4,8 @@
 #include "agent/AgentLoop.h"
 #include "agent/LoggingEventListener.h"
 #include "agent/BudgetEventListener.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
+#include "trace/Trace.h"
 #include <iostream>
 #include <string>
 #include <fstream>
@@ -156,7 +157,9 @@ int CliRunner::run(AppContext& ctx) {
         ctx.effective_provider, ctx.registry.get(), ctx.memory.get(),
         ea::agent::AgentLoop::Config{
             ctx.config.agent.max_iterations, 65536, 100, true,
-            ctx.config.agent.stream, ctx.config.conversation.auto_persist
+            ctx.config.agent.stream, ctx.config.conversation.auto_persist,
+            ctx.config.provider.default_model.empty()
+                ? ctx.config.agent.model : ctx.config.provider.default_model
         },
         [](const std::string& text) { std::cout << text << std::endl; },
         stream_fn,
@@ -174,6 +177,10 @@ int CliRunner::run(AppContext& ctx) {
     }
     if (ctx.budget_tracker) {
         loop.add_listener(std::make_shared<ea::agent::BudgetEventListener>(ctx.budget_tracker.get()));
+    }
+    // Trace listener — captures structured events to runtime-trace.jsonl
+    if (auto trace_listener = ea::trace::create_listener()) {
+        loop.add_listener(trace_listener);
     }
 
     // Auto-resume

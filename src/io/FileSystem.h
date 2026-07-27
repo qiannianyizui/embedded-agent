@@ -1,5 +1,5 @@
 #pragma once
-#include "common/base/Result.h"
+#include "base/Result.h"
 #include <string>
 #include <vector>
 
@@ -8,6 +8,7 @@ namespace ea::fs {
 Result<std::string> home_dir();
 Result<std::string> config_dir();
 Result<std::string> data_dir();
+Result<std::string> trace_dir();
 std::string expand_tilde(const std::string& path);
 // Resolve a data file path: prefers config_dir()/filename,
 // falls back to home_dir()/.embedded-agent/filename

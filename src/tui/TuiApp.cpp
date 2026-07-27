@@ -1,6 +1,7 @@
 // TuiApp — assembles all FTXUI components and drives the TUI event loop
 #include "TuiApp.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
+#include "trace/Trace.h"
 #include "Theme.h"
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/component.hpp>
@@ -379,6 +380,11 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
         chat_area_, status_bar_,
         [this](std::function<void()> fn) { screen_.Post(std::move(fn)); });
     loop.add_listener(event_listener_);
+
+    // Trace listener — captures structured events to runtime-trace.jsonl
+    if (auto trace_listener = ea::trace::create_listener()) {
+        loop.add_listener(trace_listener);
+    }
 
     // Set up input bar submit callback
     input_bar_.set_on_submit([this](const std::string& input) {

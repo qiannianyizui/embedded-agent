@@ -1,21 +1,19 @@
 #include "app/SetupWizardRunner.h"
 #include "platform/Platform.h"
-#include "common/io/Logger.h"
-#include "common/io/FileSystem.h"
+#include "log/Logger.h"
+#include "io/FileSystem.h"
 #include "config/Config.h"
-#include "ea/build_config.h"
-#include <iostream>
-
-#ifdef EA_ENABLE_TUI
 #include "tui/SetupWizard.h"
 #include <ftxui/component/screen_interactive.hpp>
-#endif
+#include <iostream>
 
 namespace ea::app {
 
 int SetupWizardRunner::run(const SetupArgs& args) {
     auto cfg_dir = ea::fs::config_dir();
-    ea::log::init(cfg_dir.ok() ? cfg_dir.value() : "/tmp/.embedded-agent", false);
+    ea::log::Config log_cfg;
+    log_cfg.log_dir = cfg_dir.ok() ? cfg_dir.value() + "/logs" : "/tmp/.embedded-agent/logs";
+    ea::log::init(log_cfg);
 
     if (args.non_interactive) {
         auto cfg = ea::tui::run_non_interactive_setup();
@@ -31,7 +29,6 @@ int SetupWizardRunner::run(const SetupArgs& args) {
         return 0;
     }
 
-#ifdef EA_ENABLE_TUI
     ea::tui::WizardState state;
 
     std::string cfg_path = args.config_path;
@@ -87,11 +84,6 @@ int SetupWizardRunner::run(const SetupArgs& args) {
 
     std::cout << "✓ Configuration saved to " << cfg.config_path << std::endl;
     return 0;
-#else
-    std::cerr << "Setup wizard requires TUI support. "
-              << "Rebuild with EA_ENABLE_TUI=ON or use --non-interactive." << std::endl;
-    return 1;
-#endif
 }
 
 }  // namespace ea::app

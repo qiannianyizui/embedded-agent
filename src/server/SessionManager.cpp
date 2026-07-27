@@ -1,6 +1,6 @@
 // src/server/SessionManager.cpp
 #include "SessionManager.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
 #include <sstream>
 #include <iomanip>
 
@@ -41,9 +41,9 @@ Session* SessionManager::create(IProvider* provider,
     auto session = std::make_unique<Session>();
     session->id = generate_id();
     session->model = model;
-    // TODO: pass model to AgentLoop when supported — currently AgentLoop::Config
-    // and TurnContext do not accept a model override, so the model specified at
-    // session creation is stored but unused. This is a known limitation.
+    // The model is threaded into AgentLoop via loop_cfg.model (set by the
+    // caller, e.g. HttpServer). Session::model mirrors it for the session
+    // record and is also surfaced via the /sessions API.
     session->last_active = std::chrono::steady_clock::now();
 
     // Create scoped memory for this session

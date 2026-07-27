@@ -1,7 +1,7 @@
 // ChatArea — main chat message display with Hermes-style role glyphs and gutter layout
 #pragma once
 #include <ftxui/component/component.hpp>
-#include "common/base/Types.h"
+#include "base/Types.h"
 #include <string>
 #include <vector>
 #include <chrono>

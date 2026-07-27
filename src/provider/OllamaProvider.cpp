@@ -1,6 +1,6 @@
 #include "OllamaProvider.h"
-#include "common/base/Error.h"
-#include "common/io/Logger.h"
+#include "base/Error.h"
+#include "log/Logger.h"
 #include "spdlog/spdlog.h"
 
 namespace ea::provider {

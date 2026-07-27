@@ -1,6 +1,6 @@
 #include "AnthropicProvider.h"
-#include "common/net/SseParser.h"
-#include "common/base/Error.h"
+#include "net/SseParser.h"
+#include "base/Error.h"
 #include "spdlog/spdlog.h"
 
 namespace ea::provider {

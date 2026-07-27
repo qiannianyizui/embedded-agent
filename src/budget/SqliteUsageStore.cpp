@@ -1,7 +1,7 @@
 // src/budget/SqliteUsageStore.cpp
 #include "SqliteUsageStore.h"
-#include "common/io/Logger.h"
-#include "common/io/FileSystem.h"
+#include "log/Logger.h"
+#include "io/FileSystem.h"
 #include <sqlite3.h>
 #include <sstream>
 #include <iomanip>

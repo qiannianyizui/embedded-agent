@@ -11,4 +11,4 @@ add_library(ea-provider OBJECT
 )
 ea_target_compile_options(ea-provider)
 target_include_directories(ea-provider PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(ea-provider PUBLIC ea-core ea-common)
+target_link_libraries(ea-provider PUBLIC ea-base ea-net ea-log)

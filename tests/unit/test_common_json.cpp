@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include "common/base/JsonHelper.h"
+#include "base/JsonHelper.h"
 
 using namespace ea::util;
 

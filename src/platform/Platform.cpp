@@ -1,6 +1,6 @@
 #include "Platform.h"
-#include "common/io/FileSystem.h"
-#include "common/base/StringUtil.h"
+#include "io/FileSystem.h"
+#include "base/StringUtil.h"
 #include <unistd.h>
 #include <sys/utsname.h>
 

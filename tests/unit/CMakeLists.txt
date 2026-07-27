@@ -61,11 +61,12 @@ add_executable(ea-unit-tests
 )
 target_link_libraries(ea-unit-tests PRIVATE
     ea-test-common
-    ea-common ea-config ea-memory ea-conversation ea-budget
-    ea-provider ea-tool ea-agent ea-mcp ea-platform ea-security
+    ea-base ea-io ea-net ea-log ea-config ea-memory ea-conversation ea-budget
+    ea-provider ea-tool ea-agent ea-trace ea-mcp ea-platform ea-security
     ea-server ea-plugin ea-app ea-tui
     nlohmann_json::nlohmann_json
     httplib::httplib
+    PkgConfig::UUID PkgConfig::ZSTD
     Catch2::Catch2WithMain
     ${CMAKE_DL_LIBS}
 )
@@ -79,9 +80,8 @@ target_compile_definitions(ea-unit-tests PRIVATE
     CMAKE_BINARY_DIR="${CMAKE_BINARY_DIR}"
 )
 
-# TUI unit tests (only when TUI is enabled)
-if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
-    add_executable(ea-tui-tests
+# TUI unit tests
+add_executable(ea-tui-tests
         test_tui_chat_area.cpp
         test_tui_approval_handler.cpp
         test_tui_event_listener.cpp
@@ -93,13 +93,14 @@ if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
     )
     target_link_libraries(ea-tui-tests PRIVATE
         ea-test-common
-        ea-common ea-config ea-core ea-security
-        ea-agent ea-conversation ea-budget
+        ea-base ea-io ea-net ea-log ea-config ea-security
+        ea-agent ea-trace ea-conversation ea-budget
         ea-provider ea-tool ea-mcp ea-platform
         ea-tui
         ftxui::component
         nlohmann_json::nlohmann_json
         httplib::httplib
+        PkgConfig::UUID PkgConfig::ZSTD
         Catch2::Catch2WithMain
         ${CMAKE_DL_LIBS}
     )
@@ -108,6 +109,6 @@ if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
         ${CMAKE_BINARY_DIR}/include
     )
     add_test(NAME ea-tui-tests COMMAND ea-tui-tests)
-endif()
+
 include(CTest)
 add_test(NAME ea-unit-tests COMMAND ea-unit-tests)

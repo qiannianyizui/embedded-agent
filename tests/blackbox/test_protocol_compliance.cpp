@@ -6,8 +6,8 @@
 #include "provider/OpenAIProvider.h"
 #include "provider/AnthropicProvider.h"
 #include "provider/OllamaProvider.h"
-#include "common/base/Types.h"
-#include "common/base/Result.h"
+#include "base/Types.h"
+#include "base/Result.h"
 #include "nlohmann/json.hpp"
 
 using namespace ea;

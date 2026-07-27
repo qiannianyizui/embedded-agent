@@ -1,7 +1,7 @@
 // ProgressiveMemoryStrategy — active, incremental memory management
 // Extract facts → summarize → inject across turns
 #include "ProgressiveMemoryStrategy.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
 #include "agent/ContextCompressor.h"
 #include <sstream>
 #include <algorithm>

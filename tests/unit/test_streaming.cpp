@@ -7,7 +7,7 @@
 #include "provider/IProvider.h"
 #include "tool/ToolRegistry.h"
 #include "config/Config.h"
-#include "common/io/FileSystem.h"
+#include "io/FileSystem.h"
 
 using namespace ea;
 using namespace ea::agent;
@@ -141,6 +141,12 @@ TEST_CASE("Streaming accumulates complete LLMResponse", "[streaming]") {
 }
 
 TEST_CASE("Streaming tool call accumulation", "[streaming]") {
+    // Verifies that CallProviderStep collects ToolCallEnd chunks into
+    // ctx.response.tool_calls AND sets stop_reason to "tool_calls".
+    // Regression: stop_reason must be computed BEFORE moving accumulated_calls
+    // (a previous bug used accumulated_calls.empty() after std::move, which is
+    // always empty, so stop_reason was always "stop" and tool calls were never
+    // executed by the loop — ParseResponseStep set should_stop prematurely).
     auto provider = std::make_shared<MockStreamProvider>();
 
     ToolCall tc;
@@ -158,12 +164,17 @@ TEST_CASE("Streaming tool call accumulation", "[streaming]") {
     std::vector<StreamChunk> received;
     auto stream_fn = [&](const StreamChunk& chunk) { received.push_back(chunk); };
 
-    AgentLoop loop(provider.get(), &registry, nullptr,
-                   AgentLoop::Config{}, [](const std::string&) {}, stream_fn);
+    std::vector<Message> messages;
+    std::atomic<bool> interrupted{false};
+    TurnContext ctx{messages, interrupted};
+    ctx.provider = provider.get();
+    ctx.stream_callback = stream_fn;
 
-    auto result = loop.run("test");
+    CallProviderStep step(nullptr);
+    auto result = step.execute(ctx);
     REQUIRE(result.ok());
-    // Should have received ToolCallBegin and ToolCallEnd
+
+    // stream_fn should have received ToolCallBegin and ToolCallEnd
     bool has_begin = false, has_end = false;
     for (const auto& c : received) {
         if (c.type == StreamChunk::Type::ToolCallBegin) has_begin = true;
@@ -171,6 +182,14 @@ TEST_CASE("Streaming tool call accumulation", "[streaming]") {
     }
     REQUIRE(has_begin);
     REQUIRE(has_end);
+
+    // Tool call must be collected into the response
+    REQUIRE(ctx.response.tool_calls.size() == 1);
+    REQUIRE(ctx.response.tool_calls[0].name == "shell");
+
+    // stop_reason must reflect the tool call so the loop continues
+    REQUIRE(ctx.response.stop_reason == "tool_calls");
+    REQUIRE(ctx.response.is_tool_use());
 }
 
 TEST_CASE("Degraded streaming with non-streaming provider", "[streaming]") {

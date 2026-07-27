@@ -1,5 +1,5 @@
 #include "PluginManifest.h"
-#include "common/io/FileSystem.h"
+#include "io/FileSystem.h"
 #include <toml.hpp>
 
 namespace ea::plugin {

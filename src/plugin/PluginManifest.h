@@ -1,6 +1,6 @@
 #pragma once
 #include "PluginApi.h"
-#include "common/base/Result.h"
+#include "base/Result.h"
 #include <string>
 #include <map>
 

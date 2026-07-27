@@ -23,15 +23,15 @@
 #include "budget/BudgetTracker.h"
 #include "budget/SqliteUsageStore.h"
 #include "conversation/SqliteConversationStore.h"
-#include "common/io/Logger.h"
-#include "common/io/FileSystem.h"
-#include "common/net/HttpClient.h"
-#include "ea/build_config.h"
+#include "log/Logger.h"
+#include "io/FileSystem.h"
+#include "net/HttpClient.h"
 
 namespace ea::app {
 
-Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug) {
+Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug, RunMode mode) {
     AppContext ctx;
+    ctx.run_mode = mode;
     ctx.config = cfg;
     ctx.debug = debug;
 
@@ -107,38 +107,41 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug) {
     }
 
     // 5.5. Create approval handler
-    if (ctx.security->level() == security::AutonomyLevel::Full && cfg.security.auto_approve_dangerous) {
+    if (ctx.security->level() == security::AutonomyLevel::Full && cfg.security.approval.auto_approve_dangerous) {
         ctx.approval = nullptr;  // Full mode + auto-approve = no approval needed
-    } else if (cfg.security.approval_mode == "auto") {
-#if defined(EA_MODE_SERVER)
-        ctx.approval = std::make_unique<security::PendingApprovalHandler>(cfg.security.approval_timeout);
-#elif defined(EA_MODE_CLI)
+    } else if (cfg.security.approval.mode == "auto") {
+        switch (ctx.run_mode) {
+            case RunMode::Server:
+                ctx.approval = std::make_unique<security::PendingApprovalHandler>(cfg.security.approval_timeout);
+                break;
+            case RunMode::Cli:
+            case RunMode::Tui:
+                ctx.approval = std::make_unique<security::StdinApprovalHandler>();
+                break;
+        }
+    } else if (cfg.security.approval.mode == "stdin") {
         ctx.approval = std::make_unique<security::StdinApprovalHandler>();
-#else
-        ctx.approval = nullptr;  // Embedded mode: no interactive interface
-#endif
-    } else if (cfg.security.approval_mode == "stdin") {
-        ctx.approval = std::make_unique<security::StdinApprovalHandler>();
-    } else if (cfg.security.approval_mode == "pending") {
+    } else if (cfg.security.approval.mode == "pending") {
         ctx.approval = std::make_unique<security::PendingApprovalHandler>(cfg.security.approval_timeout);
     }
 
     // 5.6. Create context compressor
-    if (cfg.agent.compression_enable) {
+    if (cfg.agent.compression.enable) {
         agent::CompressionConfig comp_cfg;
-        comp_cfg.max_tokens = cfg.agent.compression_max_tokens;
-        comp_cfg.keep_recent_turns = cfg.agent.compression_keep_recent_turns;
+        comp_cfg.enable = cfg.agent.compression.enable;
+        comp_cfg.max_tokens = cfg.agent.compression.max_tokens;
+        comp_cfg.keep_recent_turns = cfg.agent.compression.keep_recent_turns;
         ctx.compressor = std::make_unique<agent::ContextCompressor>(ctx.effective_provider, comp_cfg);
     }
 
     // 5.7. Create memory strategy
-    if (cfg.memory_strategy.type == "progressive") {
+    if (cfg.memory.strategy.type == "progressive") {
         agent::ProgressiveMemoryConfig strat_cfg;
-        strat_cfg.working_turns = cfg.memory_strategy.working_turns;
-        strat_cfg.short_term_max = cfg.memory_strategy.short_term_max;
-        strat_cfg.long_term_importance = cfg.memory_strategy.long_term_importance;
-        strat_cfg.enable_fact_extraction = cfg.memory_strategy.enable_fact_extraction;
-        strat_cfg.enable_auto_summarize = cfg.memory_strategy.enable_auto_summarize;
+        strat_cfg.working_turns = cfg.memory.strategy.working_turns;
+        strat_cfg.short_term_max = cfg.memory.strategy.short_term_max;
+        strat_cfg.long_term_importance = cfg.memory.strategy.long_term_importance;
+        strat_cfg.enable_fact_extraction = cfg.memory.strategy.enable_fact_extraction;
+        strat_cfg.enable_auto_summarize = cfg.memory.strategy.enable_auto_summarize;
         ctx.memory_strategy = std::make_unique<agent::ProgressiveMemoryStrategy>(strat_cfg);
     }
     // type == "none" -> strategy stays nullptr -> NullMemoryStrategy behavior (no-op)

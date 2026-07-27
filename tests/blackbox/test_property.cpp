@@ -9,9 +9,9 @@
 #include "agent/AgentLoop.h"
 #include "tool/ToolRegistry.h"
 #include "security/SecurityPolicy.h"
-#include "common/base/Error.h"
-#include "common/base/Result.h"
-#include "common/net/SseParser.h"
+#include "base/Error.h"
+#include "base/Result.h"
+#include "net/SseParser.h"
 #include "nlohmann/json.hpp"
 
 using namespace ea;

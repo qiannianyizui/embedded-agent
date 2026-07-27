@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include "tool/SearchTool.h"
-#include "common/io/FileSystem.h"
+#include "io/FileSystem.h"
 
 using namespace ea;
 using namespace ea::tool;

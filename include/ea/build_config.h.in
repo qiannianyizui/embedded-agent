@@ -1,17 +1,4 @@
 #pragma once
 
-// Run mode (exactly one should be defined)
-#cmakedefine EA_MODE_CLI
-#cmakedefine EA_MODE_EMBEDDED
-#cmakedefine EA_MODE_SERVER
-
-// Subsystem toggles
-#cmakedefine EA_ENABLE_MEMORY
-#cmakedefine EA_ENABLE_STREAMING
-#cmakedefine EA_ENABLE_TOOLS_WEB
-#cmakedefine EA_ENABLE_TOOLS_SHELL
-#cmakedefine EA_ENABLE_ROUTER
-#cmakedefine EA_ENABLE_FALLBACK
-#cmakedefine EA_ENABLE_MCP
-#cmakedefine EA_ENABLE_PLUGINS
-#cmakedefine EA_ENABLE_TUI
+// All subsystems are always enabled. This file is kept as a placeholder
+// for any future compile-time toggles if needed.

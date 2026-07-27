@@ -4,4 +4,4 @@ add_library(ea-budget OBJECT
 )
 ea_target_compile_options(ea-budget)
 target_include_directories(ea-budget PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(ea-budget PUBLIC ea-core ea-common sqlite3)
+target_link_libraries(ea-budget PUBLIC ea-base ea-io ea-log sqlite3)

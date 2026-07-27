@@ -1,6 +1,6 @@
 #pragma once
-#include "common/base/Types.h"
-#include "common/base/Result.h"
+#include "base/Types.h"
+#include "base/Result.h"
 
 namespace ea {
 

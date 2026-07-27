@@ -1,8 +1,57 @@
 #include "CallProviderStep.h"
 #include "agent/AgentEvent.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
 
 namespace ea::agent {
+
+namespace {
+
+const char* role_str(Role r) {
+    switch (r) {
+    case Role::System:    return "system";
+    case Role::User:      return "user";
+    case Role::Assistant: return "assistant";
+    case Role::Tool:      return "tool";
+    }
+    return "unknown";
+}
+
+void emit_llm_request(TurnContext& ctx, const std::vector<Message>& messages) {
+    if (!ctx.emit_fn) return;
+
+    AgentEvent event;
+    event.type = AgentEventType::LLMRequest;
+    event.iteration = ctx.iteration;
+    event.agent_id = ctx.agent_id;
+    event.messages_count = static_cast<int>(messages.size());
+    event.model = ctx.model;
+
+    // Serialize messages as [{role, content}, ...]
+    json msgs_array = json::array();
+    for (const auto& msg : messages) {
+        msgs_array.push_back(json{{"role", role_str(msg.role)}, {"content", msg.content}});
+    }
+    event.request_messages = msgs_array.dump();
+
+    ctx.emit_fn(event);
+}
+
+void emit_llm_response(TurnContext& ctx) {
+    if (!ctx.emit_fn) return;
+
+    AgentEvent event;
+    event.type = AgentEventType::LLMResponse;
+    event.iteration = ctx.iteration;
+    event.agent_id = ctx.agent_id;
+    event.assistant_output = ctx.response.content;
+    event.usage = ctx.response.usage;
+    event.model = ctx.model;
+    event.tool_calls_count = static_cast<int>(ctx.response.tool_calls.size());
+
+    ctx.emit_fn(event);
+}
+
+}  // anonymous namespace
 
 CallProviderStep::CallProviderStep(ContextCompressor* compressor)
     : compressor_(compressor) {}
@@ -29,6 +78,9 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
         }
         // If compression fails, use original messages (graceful degradation)
     }
+
+    // Emit LLMRequest BEFORE the provider call
+    emit_llm_request(ctx, messages);
 
     ChatOptions opts;
 
@@ -65,19 +117,11 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
         }
 
         ctx.response.content = std::move(accumulated_content);
+        bool has_tool_calls = !accumulated_calls.empty();
         ctx.response.tool_calls = std::move(accumulated_calls);
-        ctx.response.stop_reason = accumulated_calls.empty() ? "stop" : "tool_calls";
+        ctx.response.stop_reason = has_tool_calls ? "tool_calls" : "stop";
 
-        // Emit LLMResponse event
-        if (ctx.emit_fn) {
-            AgentEvent event;
-            event.type = AgentEventType::LLMResponse;
-            event.iteration = ctx.iteration;
-            event.agent_id = ctx.agent_id;
-            event.assistant_output = ctx.response.content;
-            event.usage = ctx.response.usage;
-            ctx.emit_fn(event);
-        }
+        emit_llm_response(ctx);
 
         return {};
     }
@@ -111,16 +155,7 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
         done.type = StreamChunk::Type::Done;
         ctx.stream_callback(done);
 
-        // Emit LLMResponse event
-        if (ctx.emit_fn) {
-            AgentEvent event;
-            event.type = AgentEventType::LLMResponse;
-            event.iteration = ctx.iteration;
-            event.agent_id = ctx.agent_id;
-            event.assistant_output = ctx.response.content;
-            event.usage = ctx.response.usage;
-            ctx.emit_fn(event);
-        }
+        emit_llm_response(ctx);
 
         return {};
     }
@@ -134,16 +169,7 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
 
     ctx.response = std::move(response.value());
 
-    // Emit LLMResponse event
-    if (ctx.emit_fn) {
-        AgentEvent event;
-        event.type = AgentEventType::LLMResponse;
-        event.iteration = ctx.iteration;
-        event.agent_id = ctx.agent_id;
-        event.assistant_output = ctx.response.content;
-        event.usage = ctx.response.usage;
-        ctx.emit_fn(event);
-    }
+    emit_llm_response(ctx);
 
     return {};
 }

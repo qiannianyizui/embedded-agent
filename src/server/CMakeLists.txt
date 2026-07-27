@@ -4,4 +4,4 @@ add_library(ea-server OBJECT
 )
 ea_target_compile_options(ea-server)
 target_include_directories(ea-server PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(ea-server PUBLIC spdlog::spdlog nlohmann_json::nlohmann_json ea-conversation ea-budget PRIVATE httplib::httplib)
+target_link_libraries(ea-server PUBLIC ea-base ea-io ea-net ea-log spdlog::spdlog nlohmann_json::nlohmann_json ea-conversation ea-budget PRIVATE httplib::httplib)

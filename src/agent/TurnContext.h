@@ -1,6 +1,6 @@
 // TurnContext — per-iteration state for the agent loop step chain
 #pragma once
-#include "common/base/Types.h"
+#include "base/Types.h"
 #include "provider/IProvider.h"
 #include "tool/ToolRegistry.h"
 #include "AgentEvent.h"
@@ -51,6 +51,9 @@ struct TurnContext {
 
     // System prompt (built once, reused)
     std::string system_prompt;
+
+    // Resolved model name for this turn (for trace attribution)
+    std::string model;
 
     // Streaming callback — when set, CallProviderStep uses stream_chat
     std::function<void(const StreamChunk&)> stream_callback;

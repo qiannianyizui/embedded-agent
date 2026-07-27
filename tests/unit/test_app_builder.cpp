@@ -3,8 +3,8 @@
 #include "app/AppBuilder.h"
 #include "app/AppContext.h"
 #include "config/Config.h"
-#include "common/io/FileSystem.h"
-#include "common/io/Logger.h"
+#include "io/FileSystem.h"
+#include "log/Logger.h"
 #include <cstdio>
 #include <filesystem>
 
@@ -31,10 +31,10 @@ AppConfig make_test_config(const std::string& temp_dir) {
     cfg.conversation.path = temp_dir + "/conversations.db";
     cfg.budget.path = temp_dir + "/usage.db";
     cfg.security.autonomy = "full";
-    cfg.security.auto_approve_dangerous = true;
-    cfg.security.approval_mode = "auto";
-    cfg.agent.compression_enable = false;
-    cfg.memory_strategy.type = "none";
+    cfg.security.approval.auto_approve_dangerous = true;
+    cfg.security.approval.mode = "auto";
+    cfg.agent.compression.enable = false;
+    cfg.memory.strategy.type = "none";
     cfg.agent.stream = false;
     return cfg;
 }
@@ -117,9 +117,9 @@ TEST_CASE("AppBuilder skips budget tracker when budget is not configured", "[app
 TEST_CASE("AppBuilder creates compressor when compression is enabled", "[app]") {
     auto temp_dir = make_temp_dir();
     auto cfg = make_test_config(temp_dir);
-    cfg.agent.compression_enable = true;
-    cfg.agent.compression_max_tokens = 4000;
-    cfg.agent.compression_keep_recent_turns = 2;
+    cfg.agent.compression.enable = true;
+    cfg.agent.compression.max_tokens = 4000;
+    cfg.agent.compression.keep_recent_turns = 2;
 
     auto result = AppBuilder::build(cfg, false);
     REQUIRE(result.ok());

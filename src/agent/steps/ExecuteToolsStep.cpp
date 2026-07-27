@@ -1,7 +1,7 @@
 #include "ExecuteToolsStep.h"
 #include "agent/AgentEvent.h"
 #include "tool/ToolOutputConfig.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
 
 namespace ea::agent {
 

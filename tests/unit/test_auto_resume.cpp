@@ -5,7 +5,7 @@
 #include "app/AppContext.h"
 #include "agent/AgentLoop.h"
 #include "config/Config.h"
-#include "common/io/FileSystem.h"
+#include "io/FileSystem.h"
 #include <filesystem>
 
 using namespace ea::app;
@@ -31,10 +31,10 @@ AppConfig make_test_config(const std::string& temp_dir) {
     cfg.conversation.path = temp_dir + "/conversations.db";
     cfg.budget.path = temp_dir + "/usage.db";
     cfg.security.autonomy = "full";
-    cfg.security.auto_approve_dangerous = true;
-    cfg.security.approval_mode = "auto";
-    cfg.agent.compression_enable = false;
-    cfg.memory_strategy.type = "none";
+    cfg.security.approval.auto_approve_dangerous = true;
+    cfg.security.approval.mode = "auto";
+    cfg.agent.compression.enable = false;
+    cfg.memory.strategy.type = "none";
     cfg.agent.stream = false;
     return cfg;
 }

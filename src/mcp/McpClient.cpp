@@ -1,6 +1,6 @@
 // src/mcp/McpClient.cpp
 #include "McpClient.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
 
 namespace ea::mcp {
 

@@ -2,7 +2,7 @@
 #include "AgentEvent.h"
 #include "SystemPrompt.h"
 #include "platform/Platform.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
 #include "steps/HistoryPruneStep.h"
 #include "steps/BuildToolSpecsStep.h"
 #include "steps/CallProviderStep.h"
@@ -10,6 +10,7 @@
 #include "steps/LoopDetectStep.h"
 #include "steps/ExecuteToolsStep.h"
 #include "steps/CollectResultsStep.h"
+#include "trace/TraceEvent.h"
 #include <algorithm>
 
 namespace ea::agent {
@@ -52,6 +53,7 @@ AgentLoop::AgentLoop(IProvider* provider,
 Result<void> AgentLoop::run(const std::string& user_input) {
     interrupted_ = false;
     loop_detector_.reset();
+    current_trace_id_ = trace::generate_uuid();
 
     // Add user message to history
     history_.push_back({Role::User, user_input, std::nullopt, std::nullopt, std::nullopt});
@@ -94,6 +96,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         ctx.provider = provider_;
         ctx.registry = registry_;
         ctx.system_prompt = system_prompt_;
+        ctx.model = config_.model;
         ctx.stream_callback = stream_fn_;
         ctx.emit_fn = [this](const AgentEvent& e) { emit_event(e); };
         ctx.budget_tracker = budget_tracker_;
@@ -109,6 +112,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
             err_event.iteration = ctx.iteration;
             err_event.agent_id = ctx.agent_id;
             err_event.error_message = result.error().message;
+            err_event.trace_id = current_trace_id_;
             emit_event(err_event);
             return result;
         }
@@ -243,6 +247,7 @@ void AgentLoop::emit(AgentEventType type, const TurnContext& ctx) {
     event.type = type;
     event.iteration = ctx.iteration;
     event.agent_id = ctx.agent_id;
+    event.trace_id = current_trace_id_;
 
     switch (type) {
     case AgentEventType::TurnStart:

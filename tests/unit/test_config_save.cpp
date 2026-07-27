@@ -1,7 +1,7 @@
 // Unit tests for Config::save() — TOML serialization roundtrip
 #include <catch2/catch_test_macros.hpp>
 #include "config/Config.h"
-#include "common/io/FileSystem.h"
+#include "io/FileSystem.h"
 #include <cstdio>
 #include <filesystem>
 

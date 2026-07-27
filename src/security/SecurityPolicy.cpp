@@ -1,5 +1,5 @@
 #include "SecurityPolicy.h"
-#include "common/base/StringUtil.h"
+#include "base/StringUtil.h"
 
 namespace ea::security {
 

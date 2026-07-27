@@ -4,9 +4,9 @@
 #pragma once
 #include "provider/IProvider.h"
 #include "memory/IMemory.h"
-#include "common/base/Types.h"
-#include "common/base/Result.h"
-#include "common/base/Error.h"
+#include "base/Types.h"
+#include "base/Result.h"
+#include "base/Error.h"
 #include <memory>
 #include <string>
 #include <vector>

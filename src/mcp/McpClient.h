@@ -1,8 +1,8 @@
 // src/mcp/McpClient.h
 #pragma once
 #include "ITransport.h"
-#include "common/base/Types.h"
-#include "common/base/Result.h"
+#include "base/Types.h"
+#include "base/Result.h"
 #include <memory>
 #include <string>
 #include <vector>

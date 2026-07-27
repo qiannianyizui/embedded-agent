@@ -4,19 +4,12 @@ add_library(ea-app OBJECT
     auto_resume.cpp
     IRunner.cpp
     CliRunner.cpp
+    ServerRunner.cpp
+    SetupWizardRunner.cpp
+    TuiRunner.cpp
 )
 
-if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
-    target_sources(ea-app PRIVATE
-        TuiRunner.cpp
-        SetupWizardRunner.cpp
-    )
-    target_link_libraries(ea-app PUBLIC ea-tui)
-endif()
-
-if(EA_MODE_SERVER)
-    target_sources(ea-app PRIVATE ServerRunner.cpp)
-endif()
+target_link_libraries(ea-app PUBLIC ea-tui)
 
 ea_target_compile_options(ea-app)
 target_include_directories(ea-app PUBLIC
@@ -24,7 +17,7 @@ target_include_directories(ea-app PUBLIC
     ${CMAKE_BINARY_DIR}/include
 )
 target_link_libraries(ea-app PUBLIC
-    ea-core ea-common ea-platform ea-config
+    ea-base ea-io ea-net ea-log ea-platform ea-config
     ea-provider ea-tool ea-memory ea-conversation ea-budget
     ea-agent ea-mcp ea-security
 )

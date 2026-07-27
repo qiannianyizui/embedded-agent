@@ -10,4 +10,4 @@ add_library(ea-tool OBJECT
 )
 ea_target_compile_options(ea-tool)
 target_include_directories(ea-tool PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(ea-tool PUBLIC ea-core ea-common)
+target_link_libraries(ea-tool PUBLIC ea-base ea-io ea-net ea-log)

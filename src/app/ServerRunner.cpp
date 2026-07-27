@@ -1,7 +1,7 @@
 #include "app/ServerRunner.h"
 #include "app/AppContext.h"
 #include "server/HttpServer.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
 #include <chrono>
 
 namespace ea::app {

@@ -1,7 +1,10 @@
-// LoggingEventListener — built-in listener that logs agent lifecycle events
+// LoggingEventListener — logs only problem-level agent events.
+// Normal operation (turn start, tool call names, tool result sizes) is trace
+// data and does NOT belong in the log system — it belongs in a future trace
+// channel. Here we record only failures and interrupts.
 #pragma once
 #include "IEventListener.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
 
 namespace ea::agent {
 
@@ -10,16 +13,10 @@ public:
     void on_event(const AgentEvent& event) override {
         std::string aid = event.agent_id.empty() ? "" : " " + event.agent_id;
         switch (event.type) {
-        case AgentEventType::TurnStart:
-            EA_INFO("[agent{}] Turn {} start: {}", aid, event.iteration,
-                    event.user_input.substr(0, 80));
-            break;
-        case AgentEventType::ToolCallStart:
-            EA_INFO("[agent{}] Tool call: {}", aid, event.tool_name);
-            break;
         case AgentEventType::ToolCallEnd:
-            EA_DEBUG("[agent{}] Tool result: {} ({} bytes, error={})",
-                     aid, event.tool_name, event.tool_result.size(), event.tool_error);
+            if (event.tool_error) {
+                EA_WARN("[agent{}] Tool {} failed", aid, event.tool_name);
+            }
             break;
         case AgentEventType::Error:
             EA_ERROR("[agent{}] Error: {}", aid, event.error_message);
@@ -28,6 +25,7 @@ public:
             EA_WARN("[agent{}] Interrupted at iteration {}", aid, event.iteration);
             break;
         default:
+            // TurnStart, TurnEnd, LLMRequest, ToolCallStart, LLMResponse — trace data, not logged
             break;
         }
     }

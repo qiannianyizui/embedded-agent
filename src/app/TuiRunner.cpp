@@ -4,7 +4,7 @@
 #include "agent/AgentLoop.h"
 #include "agent/LoggingEventListener.h"
 #include "tui/TuiApp.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
 
 namespace ea::app {
 
@@ -18,7 +18,9 @@ int TuiRunner::run(AppContext& ctx) {
         ctx.effective_provider, ctx.registry.get(), ctx.memory.get(),
         ea::agent::AgentLoop::Config{
             ctx.config.agent.max_iterations, 65536, 100, true,
-            ctx.config.agent.stream, ctx.config.conversation.auto_persist
+            ctx.config.agent.stream, ctx.config.conversation.auto_persist,
+            ctx.config.provider.default_model.empty()
+                ? ctx.config.agent.model : ctx.config.provider.default_model
         },
         tui_output,
         tui_stream,

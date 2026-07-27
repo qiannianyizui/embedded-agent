@@ -6,7 +6,7 @@
 #include "tool/ToolRegistry.h"
 #include "security/SecurityPolicy.h"
 #include "provider/IProvider.h"
-#include "common/base/Types.h"
+#include "base/Types.h"
 #include "nlohmann/json.hpp"
 #include <httplib.h>
 #include <thread>

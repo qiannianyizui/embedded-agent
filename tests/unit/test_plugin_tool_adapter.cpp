@@ -1,8 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include "plugin/PluginToolAdapter.h"
 #include "tool/ITool.h"
-#include "common/base/Types.h"
-#include "common/base/Result.h"
+#include "base/Types.h"
+#include "base/Result.h"
 #include <memory>
 #include <atomic>
 

@@ -1,7 +1,7 @@
 #pragma once
-#include "common/base/Result.h"
-#include "common/net/TlsConfig.h"
-#include "common/net/RetryPolicy.h"
+#include "base/Result.h"
+#include "net/TlsConfig.h"
+#include "net/RetryPolicy.h"
 #include "agent/SubagentConfig.h"
 #include "budget/Types.h"
 #include <map>
@@ -10,6 +10,22 @@
 #include <chrono>
 
 namespace ea::config {
+
+struct LogConfig {
+    std::string level = "debug";                      // error | warn | info | debug
+    bool persist = true;                              // 是否持久化日志到磁盘
+    bool verbose = false;                             // 终端也输出日志
+    int max_file_bytes = 10 * 1024 * 1024;           // 单个日志文件最大 10MB
+    int max_total_bytes = 100 * 1024 * 1024;         // 日志目录最大总占用 100MB
+};
+
+struct TraceConfig {
+    std::string persist = "rolling";                  // none | rolling | full
+    int max_entries = 10000;                          // rolling 策略最大行数
+    std::string tool_io = "redacted";                 // off | redacted | full
+    int tool_io_truncate_bytes = 40960;               // 工具 I/O 截断字节数 (40KB)
+    std::string llm_payload = "off";                  // off | redacted | full
+};
 
 struct ProviderConfig {
     std::string type = "openai_compatible";
@@ -21,10 +37,21 @@ struct ProviderConfig {
     std::chrono::milliseconds timeout{60000};
 };
 
+struct MemoryStrategyConfig {
+    std::string type = "progressive";       // "progressive" | "none"
+    int working_turns = 6;
+    int short_term_max = 20;
+    int long_term_importance = 8;
+    bool enable_fact_extraction = true;
+    bool enable_auto_summarize = true;
+};
+
 struct MemoryConfig {
     std::string backend = "sqlite";
     std::string path;
     bool enable_fts5 = true;
+    // Nested strategy config — corresponds to [memory.strategy]
+    MemoryStrategyConfig strategy;
 };
 
 struct SecurityConfig {
@@ -32,8 +59,10 @@ struct SecurityConfig {
     std::vector<std::string> allowed_commands;
     std::string workspace;
     int approval_timeout = 300;              // Approval timeout in seconds (Server mode)
-    std::string approval_mode = "auto";      // stdin / pending / auto
-    bool auto_approve_dangerous = false;     // Only effective in Full autonomy
+    struct Approval {                        // corresponds to [security.approval]
+        std::string mode = "auto";           // stdin / pending / auto
+        bool auto_approve_dangerous = false; // Only effective in Full autonomy
+    } approval;
 };
 
 struct AgentConfig {
@@ -41,10 +70,12 @@ struct AgentConfig {
     int max_iterations = 90;
     bool auto_memory = true;
     std::string soul;
-    // Context compression
-    bool compression_enable = true;
-    int compression_max_tokens = 8000;
-    int compression_keep_recent_turns = 4;
+    // Context compression — corresponds to [agent.compression]
+    struct Compression {
+        bool enable = true;
+        int max_tokens = 8000;
+        int keep_recent_turns = 4;
+    } compression;
     // Subagent delegation
     std::vector<agent::SubagentConfig> subagents;
     // Streaming output
@@ -67,15 +98,6 @@ struct ServerConfig {
     int session_idle_timeout = 3600;  // seconds
 };
 
-struct MemoryStrategyConfig {
-    std::string type = "progressive";       // "progressive" | "none"
-    int working_turns = 6;
-    int short_term_max = 20;
-    int long_term_importance = 8;
-    bool enable_fact_extraction = true;
-    bool enable_auto_summarize = true;
-};
-
 struct ConversationConfig {
     std::string path;             // conversations.db path (empty = auto)
     bool auto_resume = true;      // CLI: auto-resume last conversation
@@ -84,9 +106,10 @@ struct ConversationConfig {
 };
 
 struct AppConfig {
+    LogConfig log;
+    TraceConfig trace;
     ProviderConfig provider;
     MemoryConfig memory;
-    MemoryStrategyConfig memory_strategy;
     ConversationConfig conversation;
     budget::BudgetConfig budget;
     SecurityConfig security;

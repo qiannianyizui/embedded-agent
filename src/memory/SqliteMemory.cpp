@@ -1,6 +1,6 @@
 #include "SqliteMemory.h"
-#include "common/io/Logger.h"
-#include "common/io/FileSystem.h"
+#include "log/Logger.h"
+#include "io/FileSystem.h"
 #include <sqlite3.h>
 #include <cstring>
 #include <random>

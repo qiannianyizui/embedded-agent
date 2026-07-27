@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include "common/base/Types.h"
+#include "base/Types.h"
 
 using namespace ea;
 

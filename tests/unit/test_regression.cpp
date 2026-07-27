@@ -9,7 +9,7 @@
 #include "memory/InMemoryBackend.h"
 #include "memory/ScopedMemory.h"
 #include "plugin/PluginToolAdapter.h"
-#include "common/base/Error.h"
+#include "base/Error.h"
 
 using namespace ea;
 using namespace ea::test;

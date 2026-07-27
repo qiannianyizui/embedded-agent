@@ -10,7 +10,7 @@
 #include "memory/InMemoryBackend.h"
 #include "memory/MemoryManager.h"
 #include "security/SecurityPolicy.h"
-#include "common/base/Result.h"
+#include "base/Result.h"
 
 using namespace ea;
 using namespace ea::test;

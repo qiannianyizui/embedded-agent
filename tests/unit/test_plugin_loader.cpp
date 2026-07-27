@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "plugin/PluginLoader.h"
 #include "plugin/PluginManifest.h"
-#include "common/io/FileSystem.h"
+#include "io/FileSystem.h"
 #include <dlfcn.h>
 
 using namespace ea::plugin;

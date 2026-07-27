@@ -1,6 +1,6 @@
 // AgentEvent — lifecycle event types for the agent loop
 #pragma once
-#include "common/base/Types.h"
+#include "base/Types.h"
 #include "budget/Types.h"
 #include <string>
 
@@ -9,6 +9,7 @@ namespace ea::agent {
 enum class AgentEventType {
     TurnStart,       // Iteration begins
     TurnEnd,         // Iteration ends (should_stop)
+    LLMRequest,      // LLM provider call begins
     ToolCallStart,   // Tool execution begins
     ToolCallEnd,     // Tool execution completes (with result)
     LLMResponse,     // LLM returns a response
@@ -32,6 +33,15 @@ struct AgentEvent {
     Usage usage;                    // LLMResponse (token usage)
     budget::UsageSnapshot turn_usage;     // TurnEnd
     budget::CostSnapshot turn_cost;       // TurnEnd
+
+    // LLM interaction data
+    std::string request_messages;   // LLMRequest (serialized JSON [{role,content},...])
+    int messages_count = 0;         // LLMRequest
+    std::string model;              // LLMRequest, LLMResponse
+    int tool_calls_count = 0;       // LLMResponse
+
+    // Trace correlation — groups events from one agent run()
+    std::string trace_id;
 };
 
 }  // namespace ea::agent

@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include "agent/SystemPrompt.h"
-#include "common/base/Types.h"
+#include "base/Types.h"
 
 using namespace ea;
 using namespace ea::agent;

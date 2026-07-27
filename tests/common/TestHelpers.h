@@ -1,6 +1,6 @@
 // tests/common/TestHelpers.h
 #pragma once
-#include "common/base/Types.h"
+#include "base/Types.h"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>

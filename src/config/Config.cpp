@@ -1,6 +1,7 @@
 #include "Config.h"
-#include "common/io/FileSystem.h"
-#include "common/io/Logger.h"
+#include "TomlConversion.h"
+#include "io/FileSystem.h"
+#include "log/Logger.h"
 #include <toml.hpp>
 #include <cstdlib>
 #include <filesystem>
@@ -37,151 +38,15 @@ Result<AppConfig> load(const std::string& config_path) {
 
     try {
         auto data = toml::parse(path);
-
-        if (data.contains("agent")) {
-            auto agent = toml::find(data, "agent");
-            cfg.agent.model = toml::find_or<std::string>(agent, "model", cfg.agent.model);
-            cfg.agent.max_iterations = toml::find_or<int>(agent, "max_iterations", cfg.agent.max_iterations);
-            cfg.agent.auto_memory = toml::find_or<bool>(agent, "auto_memory", cfg.agent.auto_memory);
-            cfg.agent.soul = toml::find_or<std::string>(agent, "soul", cfg.agent.soul);
-            cfg.agent.stream = toml::find_or<bool>(agent, "stream", cfg.agent.stream);
-            if (agent.contains("compression")) {
-                auto compression = toml::find(agent, "compression");
-                cfg.agent.compression_enable = toml::find_or<bool>(compression, "enable", cfg.agent.compression_enable);
-                cfg.agent.compression_max_tokens = toml::find_or<int>(compression, "max_tokens", cfg.agent.compression_max_tokens);
-                cfg.agent.compression_keep_recent_turns = toml::find_or<int>(compression, "keep_recent_turns", cfg.agent.compression_keep_recent_turns);
-            }
-            if (agent.contains("subagents")) {
-                auto subs = toml::find<std::vector<toml::value>>(agent, "subagents");
-                for (const auto& sub_val : subs) {
-                    const auto& sub = sub_val.as_table();
-                    agent::SubagentConfig sc;
-                    sc.name = toml::find<std::string>(sub_val, "name");
-                    sc.description = toml::find<std::string>(sub_val, "description");
-                    sc.model = toml::find_or<std::string>(sub_val, "model", "");
-                    sc.system_prompt = toml::find_or<std::string>(sub_val, "system_prompt", "");
-                    if (sub.find("toolsets") != sub.end()) {
-                        sc.toolsets = toml::find<std::vector<std::string>>(sub_val, "toolsets");
-                    }
-                    sc.shared_memory = toml::find_or<bool>(sub_val, "shared_memory", true);
-                    sc.max_iterations = toml::find_or<int>(sub_val, "max_iterations", 20);
-                    sc.dangerous = toml::find_or<bool>(sub_val, "dangerous", false);
-                    cfg.agent.subagents.push_back(std::move(sc));
-                }
-            }
-        }
-
-        if (data.contains("provider")) {
-            auto provider = toml::find(data, "provider");
-            cfg.provider.type = toml::find_or<std::string>(provider, "type", cfg.provider.type);
-            cfg.provider.base_url = toml::find_or<std::string>(provider, "base_url", cfg.provider.base_url);
-            cfg.provider.api_key = toml::find_or<std::string>(provider, "api_key", cfg.provider.api_key);
-            cfg.provider.default_model = toml::find_or<std::string>(provider, "default_model", cfg.provider.default_model);
-            cfg.provider.timeout = std::chrono::milliseconds(
-                toml::find_or<int>(provider, "timeout", 60) * 1000);
-        }
-
-        if (data.contains("memory")) {
-            auto memory = toml::find(data, "memory");
-            cfg.memory.backend = toml::find_or<std::string>(memory, "backend", cfg.memory.backend);
-            cfg.memory.path = toml::find_or<std::string>(memory, "path", cfg.memory.path);
-            cfg.memory.enable_fts5 = toml::find_or<bool>(memory, "enable_fts5", cfg.memory.enable_fts5);
-            if (memory.contains("strategy")) {
-                auto strategy = toml::find(memory, "strategy");
-                cfg.memory_strategy.type = toml::find_or<std::string>(strategy, "type", cfg.memory_strategy.type);
-                cfg.memory_strategy.working_turns = toml::find_or<int>(strategy, "working_turns", cfg.memory_strategy.working_turns);
-                cfg.memory_strategy.short_term_max = toml::find_or<int>(strategy, "short_term_max", cfg.memory_strategy.short_term_max);
-                cfg.memory_strategy.long_term_importance = toml::find_or<int>(strategy, "long_term_importance", cfg.memory_strategy.long_term_importance);
-                cfg.memory_strategy.enable_fact_extraction = toml::find_or<bool>(strategy, "enable_fact_extraction", cfg.memory_strategy.enable_fact_extraction);
-                cfg.memory_strategy.enable_auto_summarize = toml::find_or<bool>(strategy, "enable_auto_summarize", cfg.memory_strategy.enable_auto_summarize);
-            }
-        }
-
-        if (data.contains("security")) {
-            auto security = toml::find(data, "security");
-            cfg.security.autonomy = toml::find_or<std::string>(security, "autonomy", cfg.security.autonomy);
-            cfg.security.workspace = toml::find_or<std::string>(security, "workspace", cfg.security.workspace);
-            if (security.contains("allowed_commands")) {
-                cfg.security.allowed_commands = toml::find<std::vector<std::string>>(security, "allowed_commands");
-            }
-            cfg.security.approval_timeout = toml::find_or<int>(security, "approval_timeout", cfg.security.approval_timeout);
-            if (security.contains("approval")) {
-                auto approval = toml::find(security, "approval");
-                cfg.security.approval_mode = toml::find_or<std::string>(approval, "mode", cfg.security.approval_mode);
-                cfg.security.auto_approve_dangerous = toml::find_or<bool>(approval, "auto_approve_dangerous", cfg.security.auto_approve_dangerous);
-            }
-        }
-
-        if (data.contains("mcp")) {
-            auto mcp = toml::find(data, "mcp");
-            if (mcp.contains("servers")) {
-                auto servers = toml::find<std::vector<toml::value>>(mcp, "servers");
-                for (const auto& server_val : servers) {
-                    const auto& server = server_val.as_table();
-                    McpServerConfig sc;
-                    sc.name = toml::find<std::string>(server_val, "name");
-                    sc.command = toml::find<std::string>(server_val, "command");
-                    if (server.find("args") != server.end()) {
-                        sc.args = toml::find<std::vector<std::string>>(server_val, "args");
-                    }
-                    if (server.find("env") != server.end()) {
-                        auto env_table = toml::find<toml::table>(server_val, "env");
-                        for (const auto& [k, v] : env_table) {
-                            sc.env[k] = v.as_string();
-                        }
-                    }
-                    sc.dangerous = toml::find_or<bool>(server_val, "dangerous", false);
-                    cfg.mcp_servers.push_back(std::move(sc));
-                }
-            }
-        }
-
-        if (data.contains("server")) {
-            auto server = toml::find(data, "server");
-            cfg.server.host = toml::find_or<std::string>(server, "host", cfg.server.host);
-            cfg.server.port = toml::find_or<int>(server, "port", cfg.server.port);
-            cfg.server.max_sessions = toml::find_or<int>(server, "max_sessions", cfg.server.max_sessions);
-            cfg.server.cors_origin = toml::find_or<std::string>(server, "cors_origin", cfg.server.cors_origin);
-            cfg.server.session_idle_timeout = toml::find_or<int>(server, "session_idle_timeout", cfg.server.session_idle_timeout);
-        }
-
-        if (data.contains("conversation")) {
-            auto conv = toml::find(data, "conversation");
-            cfg.conversation.path = toml::find_or<std::string>(conv, "path", cfg.conversation.path);
-            cfg.conversation.auto_resume = toml::find_or<bool>(conv, "auto_resume", cfg.conversation.auto_resume);
-            cfg.conversation.auto_persist = toml::find_or<bool>(conv, "auto_persist", cfg.conversation.auto_persist);
-            cfg.conversation.max_conversations = toml::find_or<int>(conv, "max_conversations", cfg.conversation.max_conversations);
-        }
-
-        if (data.contains("budget")) {
-            auto budget = toml::find(data, "budget");
-            cfg.budget.path = toml::find_or<std::string>(budget, "path", cfg.budget.path);
-            cfg.budget.warn_input_tokens = toml::find_or<int>(budget, "warn_input_tokens", cfg.budget.warn_input_tokens);
-            cfg.budget.warn_output_tokens = toml::find_or<int>(budget, "warn_output_tokens", cfg.budget.warn_output_tokens);
-            cfg.budget.warn_cost_usd = toml::find_or<double>(budget, "warn_cost_usd", cfg.budget.warn_cost_usd);
-            cfg.budget.max_input_tokens = toml::find_or<int>(budget, "max_input_tokens", cfg.budget.max_input_tokens);
-            cfg.budget.max_output_tokens = toml::find_or<int>(budget, "max_output_tokens", cfg.budget.max_output_tokens);
-            cfg.budget.max_cost_usd = toml::find_or<double>(budget, "max_cost_usd", cfg.budget.max_cost_usd);
-            if (budget.contains("pricing")) {
-                auto pricings = toml::find<std::vector<toml::value>>(budget, "pricing");
-                for (const auto& pv : pricings) {
-                    budget::ModelPricing mp;
-                    mp.model_id = toml::find<std::string>(pv, "model_id");
-                    mp.input_per_mtok = toml::find_or<double>(pv, "input_per_mtok", 0.0);
-                    mp.output_per_mtok = toml::find_or<double>(pv, "output_per_mtok", 0.0);
-                    mp.cache_read_per_mtok = toml::find_or<double>(pv, "cache_read_per_mtok", 0.0);
-                    mp.cache_write_per_mtok = toml::find_or<double>(pv, "cache_write_per_mtok", 0.0);
-                    cfg.budget.pricing.push_back(std::move(mp));
-                }
-            }
-        }
-
+        cfg = toml::get<AppConfig>(data);
+        cfg.config_path = path;
     } catch (const toml::syntax_error& e) {
         return Error::parse(std::string("TOML parse error: ") + e.what());
     } catch (const std::exception& e) {
         return Error::parse(std::string("Config error: ") + e.what());
     }
 
+    // Environment variable overrides (take precedence over TOML)
     const char* api_key = getenv("EMBEDDED_AGENT_API_KEY");
     if (api_key && api_key[0] != '\0') cfg.provider.api_key = api_key;
     const char* model = getenv("EMBEDDED_AGENT_MODEL");
@@ -211,132 +76,9 @@ Result<void> save(const AppConfig& cfg, const std::string& config_path) {
     }
 
     try {
-        // Build toml::value from AppConfig
-        toml::table agent_tbl;
-        if (!cfg.agent.model.empty())          agent_tbl["model"] = cfg.agent.model;
-        agent_tbl["max_iterations"] = cfg.agent.max_iterations;
-        agent_tbl["auto_memory"]    = cfg.agent.auto_memory;
-        if (!cfg.agent.soul.empty())            agent_tbl["soul"] = cfg.agent.soul;
-        agent_tbl["stream"]         = cfg.agent.stream;
-
-        // Agent compression sub-table
-        toml::table compression_tbl;
-        compression_tbl["enable"]              = cfg.agent.compression_enable;
-        compression_tbl["max_tokens"]          = cfg.agent.compression_max_tokens;
-        compression_tbl["keep_recent_turns"]   = cfg.agent.compression_keep_recent_turns;
-        agent_tbl["compression"] = compression_tbl;
-
-        toml::table provider_tbl;
-        provider_tbl["type"]          = cfg.provider.type;
-        if (!cfg.provider.base_url.empty())       provider_tbl["base_url"] = cfg.provider.base_url;
-        if (!cfg.provider.api_key.empty())        provider_tbl["api_key"] = cfg.provider.api_key;
-        if (!cfg.provider.default_model.empty())  provider_tbl["default_model"] = cfg.provider.default_model;
-        provider_tbl["timeout"] = static_cast<int>(cfg.provider.timeout.count() / 1000);
-
-        toml::table memory_tbl;
-        memory_tbl["backend"]     = cfg.memory.backend;
-        if (!cfg.memory.path.empty()) memory_tbl["path"] = cfg.memory.path;
-        memory_tbl["enable_fts5"] = cfg.memory.enable_fts5;
-
-        // Memory strategy sub-table
-        toml::table strategy_tbl;
-        strategy_tbl["type"]                    = cfg.memory_strategy.type;
-        strategy_tbl["working_turns"]           = cfg.memory_strategy.working_turns;
-        strategy_tbl["short_term_max"]          = cfg.memory_strategy.short_term_max;
-        strategy_tbl["long_term_importance"]    = cfg.memory_strategy.long_term_importance;
-        strategy_tbl["enable_fact_extraction"]  = cfg.memory_strategy.enable_fact_extraction;
-        strategy_tbl["enable_auto_summarize"]   = cfg.memory_strategy.enable_auto_summarize;
-        memory_tbl["strategy"] = strategy_tbl;
-
-        toml::table security_tbl;
-        security_tbl["autonomy"] = cfg.security.autonomy;
-        if (!cfg.security.workspace.empty())  security_tbl["workspace"] = cfg.security.workspace;
-        if (!cfg.security.allowed_commands.empty()) {
-            security_tbl["allowed_commands"] = cfg.security.allowed_commands;
-        }
-        security_tbl["approval_timeout"] = cfg.security.approval_timeout;
-        toml::table approval_tbl;
-        approval_tbl["mode"]                  = cfg.security.approval_mode;
-        approval_tbl["auto_approve_dangerous"] = cfg.security.auto_approve_dangerous;
-        security_tbl["approval"] = approval_tbl;
-
-        toml::table conv_tbl;
-        if (!cfg.conversation.path.empty())  conv_tbl["path"] = cfg.conversation.path;
-        conv_tbl["auto_resume"]       = cfg.conversation.auto_resume;
-        conv_tbl["auto_persist"]      = cfg.conversation.auto_persist;
-        conv_tbl["max_conversations"] = cfg.conversation.max_conversations;
-
-        toml::table server_tbl;
-        server_tbl["host"]                  = cfg.server.host;
-        server_tbl["port"]                  = cfg.server.port;
-        server_tbl["max_sessions"]          = cfg.server.max_sessions;
-        server_tbl["cors_origin"]           = cfg.server.cors_origin;
-        server_tbl["session_idle_timeout"]  = cfg.server.session_idle_timeout;
-
-        // Assemble root table
-        toml::table root;
-        root["agent"]       = agent_tbl;
-        root["provider"]    = provider_tbl;
-        root["memory"]      = memory_tbl;
-        root["security"]    = security_tbl;
-        root["conversation"] = conv_tbl;
-        root["server"]      = server_tbl;
-
-        // Budget section (only if non-trivial)
-        if (!cfg.budget.pricing.empty() || cfg.budget.warn_cost_usd > 0) {
-            toml::table budget_tbl;
-            if (!cfg.budget.path.empty()) budget_tbl["path"] = cfg.budget.path;
-            budget_tbl["warn_input_tokens"]  = cfg.budget.warn_input_tokens;
-            budget_tbl["warn_output_tokens"] = cfg.budget.warn_output_tokens;
-            budget_tbl["warn_cost_usd"]      = cfg.budget.warn_cost_usd;
-            budget_tbl["max_input_tokens"]   = cfg.budget.max_input_tokens;
-            budget_tbl["max_output_tokens"]  = cfg.budget.max_output_tokens;
-            budget_tbl["max_cost_usd"]       = cfg.budget.max_cost_usd;
-            if (!cfg.budget.pricing.empty()) {
-                std::vector<toml::value> pricing_arr;
-                for (const auto& mp : cfg.budget.pricing) {
-                    toml::table p;
-                    p["model_id"]             = mp.model_id;
-                    p["input_per_mtok"]       = mp.input_per_mtok;
-                    p["output_per_mtok"]      = mp.output_per_mtok;
-                    p["cache_read_per_mtok"]  = mp.cache_read_per_mtok;
-                    p["cache_write_per_mtok"] = mp.cache_write_per_mtok;
-                    pricing_arr.push_back(toml::value(p));
-                }
-                budget_tbl["pricing"] = pricing_arr;
-            }
-            root["budget"] = budget_tbl;
-        }
-
-        // MCP servers (only if configured)
-        if (!cfg.mcp_servers.empty()) {
-            std::vector<toml::value> servers_arr;
-            for (const auto& sc : cfg.mcp_servers) {
-                toml::table s;
-                s["name"]    = sc.name;
-                s["command"] = sc.command;
-                if (!sc.args.empty())     s["args"] = sc.args;
-                if (!sc.env.empty()) {
-                    toml::table env_tbl;
-                    for (const auto& [k, v] : sc.env) {
-                        env_tbl[k] = v;
-                    }
-                    s["env"] = env_tbl;
-                }
-                s["dangerous"] = sc.dangerous;
-                servers_arr.push_back(toml::value(s));
-            }
-            toml::table mcp_tbl;
-            mcp_tbl["servers"] = servers_arr;
-            root["mcp"] = mcp_tbl;
-        }
-
-        // Serialize to TOML string and write
-        toml::value root_val(root);
-        std::string content = toml::format(root_val);
-
+        toml::value root = toml::into<AppConfig>::into_toml<toml::type_config>(cfg);
+        std::string content = toml::format(root);
         return fs::write_file(path, content);
-
     } catch (const std::exception& e) {
         return Error::parse(std::string("Config save error: ") + e.what());
     }

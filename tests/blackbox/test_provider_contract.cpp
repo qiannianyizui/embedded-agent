@@ -13,8 +13,8 @@
 #include "provider/OllamaProvider.h"
 #include "provider/ReliableProvider.h"
 #include "plugin/PluginProviderAdapter.h"
-#include "common/base/Types.h"
-#include "common/base/Result.h"
+#include "base/Types.h"
+#include "base/Result.h"
 #include "nlohmann/json.hpp"
 
 using namespace ea;

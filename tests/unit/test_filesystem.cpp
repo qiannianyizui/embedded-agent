@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include "common/io/FileSystem.h"
+#include "io/FileSystem.h"
 #include <fstream>
 
 using namespace ea;

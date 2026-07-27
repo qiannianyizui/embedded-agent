@@ -10,38 +10,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# --- Build mode presets ---
-option(EA_MODE_CLI       "Build CLI agent mode"       ON)
-option(EA_MODE_EMBEDDED  "Build embedded device mode" OFF)
-option(EA_MODE_SERVER    "Build server runtime mode"  OFF)
-
-# --- Subsystem toggles ---
-option(EA_ENABLE_MEMORY     "Enable persistent memory"     ON)
-option(EA_ENABLE_STREAMING  "Enable SSE streaming"         ON)
-option(EA_ENABLE_TOOLS_WEB  "Enable web tool (requires TLS)" ON)
-option(EA_ENABLE_TOOLS_SHELL "Enable shell tool"           ON)
-option(EA_ENABLE_ROUTER     "Enable model router provider" OFF)
-option(EA_ENABLE_FALLBACK   "Enable provider fallback"     OFF)
-option(EA_ENABLE_MCP        "Enable MCP client"            ON)
-option(EA_ENABLE_PLUGINS   "Enable plugin system"         ON)
-option(EA_ENABLE_TUI       "Enable FTXUI-based TUI for CLI mode" ON)
-
-# --- Embedded mode auto-configuration ---
-if(EA_MODE_EMBEDDED)
-    set(EA_ENABLE_STREAMING OFF CACHE BOOL "Disable streaming for embedded" FORCE)
-    set(EA_ENABLE_TOOLS_WEB OFF CACHE BOOL "Disable web tool for embedded" FORCE)
-    set(EA_ENABLE_ROUTER OFF CACHE BOOL "Disable router for embedded" FORCE)
-    set(EA_ENABLE_FALLBACK OFF CACHE BOOL "Disable fallback for embedded" FORCE)
-    set(EA_ENABLE_MCP OFF CACHE BOOL "Disable MCP for embedded" FORCE)
-    set(EA_ENABLE_PLUGINS OFF CACHE BOOL "Disable plugins for embedded" FORCE)
-    set(EA_ENABLE_TUI OFF CACHE BOOL "Disable TUI for embedded" FORCE)
-endif()
-
-if(EA_MODE_SERVER)
-    set(EA_ENABLE_ROUTER ON CACHE BOOL "Enable router for server" FORCE)
-    set(EA_ENABLE_FALLBACK ON CACHE BOOL "Enable fallback for server" FORCE)
-endif()
-
 # Generate build config header
 configure_file(
     ${CMAKE_SOURCE_DIR}/include/ea/build_config.h.in
@@ -91,17 +59,34 @@ FetchContent_Declare(mbedtls
 
 FetchContent_MakeAvailable(json toml11 spdlog cli11 httplib mbedtls)
 
-# --- FTXUI (TUI library for CLI mode) ---
-if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
-    FetchContent_Declare(ftxui
-        URL https://github.com/ArthurSonzogni/FTXUI/archive/v7.0.1.tar.gz
-    )
-    FetchContent_MakeAvailable(ftxui)
+# --- zstd (system-installed, for compressed log sink) ---
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(ZSTD IMPORTED_TARGET libzstd)
+endif()
+if(NOT ZSTD_FOUND)
+    find_package(zstd REQUIRED)
 endif()
 
-add_subdirectory(src/common)
+# --- libuuid (system-installed, for trace event IDs) ---
+if(PkgConfig_FOUND)
+    pkg_check_modules(UUID IMPORTED_TARGET uuid)
+endif()
+if(NOT UUID_FOUND)
+    find_package(uuid REQUIRED)
+endif()
+
+# --- FTXUI (TUI library) ---
+FetchContent_Declare(ftxui
+    URL https://github.com/ArthurSonzogni/FTXUI/archive/v7.0.1.tar.gz
+)
+FetchContent_MakeAvailable(ftxui)
+
+add_subdirectory(src/base)
+add_subdirectory(src/io)
+add_subdirectory(src/net)
+add_subdirectory(src/log)
 add_subdirectory(src/config)
-add_subdirectory(src/core)
 add_subdirectory(src/platform)
 add_subdirectory(src/security)
 add_subdirectory(src/memory)
@@ -110,14 +95,13 @@ add_subdirectory(src/budget)
 add_subdirectory(src/provider)
 add_subdirectory(src/tool)
 add_subdirectory(src/agent)
+add_subdirectory(src/trace)
 add_subdirectory(src/mcp)
 add_subdirectory(src/plugin)
 add_subdirectory(src/server)
 add_subdirectory(src/app)
 
-if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
-    add_subdirectory(src/tui)
-endif()
+add_subdirectory(src/tui)
 
 option(ENABLE_TESTS "Build tests" OFF)
 if(ENABLE_TESTS)
@@ -160,13 +144,16 @@ target_compile_definitions(sqlite3 PUBLIC
 
 # --- final targets ---
 add_library(embedded-agent-core STATIC
-    $<TARGET_OBJECTS:ea-common>
+    $<TARGET_OBJECTS:ea-io>
+    $<TARGET_OBJECTS:ea-net>
+    $<TARGET_OBJECTS:ea-log>
     $<TARGET_OBJECTS:ea-provider>
     $<TARGET_OBJECTS:ea-tool>
     $<TARGET_OBJECTS:ea-memory>
     $<TARGET_OBJECTS:ea-conversation>
     $<TARGET_OBJECTS:ea-budget>
     $<TARGET_OBJECTS:ea-agent>
+    $<TARGET_OBJECTS:ea-trace>
     $<TARGET_OBJECTS:ea-mcp>
     $<TARGET_OBJECTS:ea-platform>
     $<TARGET_OBJECTS:ea-config>
@@ -176,7 +163,9 @@ add_library(embedded-agent-core STATIC
     $<TARGET_OBJECTS:ea-app>
 )
 target_link_libraries(embedded-agent-core PUBLIC
-    ea-core
+    ea-base
+    ea-io
+    ea-net
     nlohmann_json::nlohmann_json
     spdlog::spdlog
     httplib::httplib
@@ -184,6 +173,8 @@ target_link_libraries(embedded-agent-core PUBLIC
     mbedx509
     mbedcrypto
     sqlite3
+    PkgConfig::UUID
+    PkgConfig::ZSTD
 )
 target_include_directories(embedded-agent-core PUBLIC
     ${CMAKE_SOURCE_DIR}/src
@@ -193,12 +184,7 @@ target_include_directories(embedded-agent-core PUBLIC
 
 add_executable(embedded-agent src/main.cpp)
 ea_target_compile_options(embedded-agent)
-if(EA_ENABLE_TUI AND NOT EA_MODE_EMBEDDED)
-    target_link_libraries(embedded-agent PRIVATE
-        embedded-agent-core CLI11::CLI11 ea-tui ftxui::component)
-else()
-    target_link_libraries(embedded-agent PRIVATE
-        embedded-agent-core CLI11::CLI11)
-endif()
+target_link_libraries(embedded-agent PRIVATE
+    embedded-agent-core CLI11::CLI11 ea-tui ftxui::component)
 # Export symbols for dlopen-based plugin loading
 set_target_properties(embedded-agent PROPERTIES ENABLE_EXPORTS ON)

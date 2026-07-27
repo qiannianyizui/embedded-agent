@@ -1,6 +1,6 @@
 #pragma once
 #include "memory/IMemory.h"
-#include "common/base/Result.h"
+#include "base/Result.h"
 #include <string>
 #include <memory>
 

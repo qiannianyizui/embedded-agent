@@ -1,5 +1,5 @@
 #include "FileSystem.h"
-#include "common/io/Logger.h"
+#include "log/Logger.h"
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <dirent.h>
@@ -79,6 +79,16 @@ Result<std::string> data_dir() {
     auto cfg = config_dir();
     if (!cfg.ok()) return cfg.error();
     return cfg.value() + "/data";
+}
+
+Result<std::string> trace_dir() {
+    const char* env_dir = getenv("EA_TRACE_DIR");
+    if (env_dir && env_dir[0] != '\0') {
+        return expand_tilde(std::string(env_dir));
+    }
+    auto cfg = config_dir();
+    if (!cfg.ok()) return cfg.error();
+    return cfg.value() + "/trace";
 }
 
 Result<std::string> resolve_data_path(const std::string& filename) {
