@@ -5,8 +5,10 @@
 #include "memory/InMemoryBackend.h"
 #include "memory/MemoryManager.h"
 #include "tool/ToolRegistry.h"
-#include "common/base/Types.h"
+#include "base/Types.h"
 #include <cstdio>
+#include <filesystem>
+#include <random>
 
 using namespace ea;
 using namespace ea::agent;
@@ -51,7 +53,7 @@ struct ConvIntegrationFixture {
     MemoryManager memory;
 
     ConvIntegrationFixture()
-        : db_path(std::tmpnam(nullptr) + std::string("_conv_int.db")),
+        : db_path(make_temp_path("_conv_int.db")),
           conv_store(SqliteConversationStore::Config{db_path, false}),
           memory(std::make_unique<InMemoryBackend>()) {
         conv_store.open();
@@ -59,6 +61,16 @@ struct ConvIntegrationFixture {
     ~ConvIntegrationFixture() {
         conv_store.close();
         std::remove(db_path.c_str());
+    }
+
+private:
+    static std::string make_temp_path(const std::string& suffix) {
+        static std::atomic<unsigned> counter{0};
+        auto dir = std::filesystem::temp_directory_path();
+        std::random_device rd;
+        unsigned val = rd() + counter.fetch_add(1);
+        auto p = dir / ("ea_test_" + std::to_string(val) + suffix);
+        return p.string();
     }
 };
 

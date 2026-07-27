@@ -3,6 +3,9 @@
 #include <catch2/catch_approx.hpp>
 #include "budget/SqliteUsageStore.h"
 #include <cstdio>
+#include <filesystem>
+#include <random>
+#include <atomic>
 
 using namespace ea;
 using namespace ea::budget;
@@ -13,7 +16,7 @@ struct TempUsageStore {
     SqliteUsageStore store;
 
     TempUsageStore()
-        : path(std::tmpnam(nullptr) + std::string("_usage.db")),
+        : path(make_temp_path("_usage.db")),
           store(SqliteUsageStore::Config{path, false}) {
         auto r = store.open();
         REQUIRE(r.ok());
@@ -21,6 +24,16 @@ struct TempUsageStore {
     ~TempUsageStore() {
         store.close();
         std::remove(path.c_str());
+    }
+
+private:
+    static std::string make_temp_path(const std::string& suffix) {
+        static std::atomic<unsigned> counter{0};
+        auto dir = std::filesystem::temp_directory_path();
+        std::random_device rd;
+        unsigned val = rd() + counter.fetch_add(1);
+        auto p = dir / ("ea_test_" + std::to_string(val) + suffix);
+        return p.string();
     }
 };
 
