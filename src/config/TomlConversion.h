@@ -156,6 +156,7 @@ struct from<ea::config::AgentConfig> {
         cfg.max_iterations = toml::find_or<int>(v, "max_iterations", cfg.max_iterations);
         cfg.auto_memory    = toml::find_or<bool>(v, "auto_memory", cfg.auto_memory);
         cfg.soul           = toml::find_or<std::string>(v, "soul", cfg.soul);
+        cfg.context_file_max_chars = toml::find_or<int>(v, "context_file_max_chars", cfg.context_file_max_chars);
         cfg.stream         = toml::find_or<bool>(v, "stream", cfg.stream);
         if (v.contains("compression")) {
             cfg.compression = toml::find<ea::config::AgentConfig::Compression>(v, "compression");
@@ -176,6 +177,7 @@ struct into<ea::config::AgentConfig> {
         v["max_iterations"] = cfg.max_iterations;
         v["auto_memory"]    = cfg.auto_memory;
         if (!cfg.soul.empty()) v["soul"] = cfg.soul;
+        v["context_file_max_chars"] = cfg.context_file_max_chars;
         v["stream"]         = cfg.stream;
         v["compression"]    = into<ea::config::AgentConfig::Compression>::into_toml<TC>(cfg.compression);
         if (!cfg.subagents.empty()) {

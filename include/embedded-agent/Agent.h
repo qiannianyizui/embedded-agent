@@ -27,8 +27,12 @@ public:
         if (!provider_ || !memory_ || !registry_) return "Agent not initialized";
 
         std::string output;
+        agent::AgentLoop::Config loop_cfg;
+        loop_cfg.max_iterations = config_.agent.max_iterations;
+        loop_cfg.soul = config_.agent.soul;
+
         agent::AgentLoop loop(provider_.get(), registry_.get(), memory_.get(),
-            agent::AgentLoop::Config{config_.agent.max_iterations},
+            loop_cfg,
             [&](const std::string& t) { output = t; });
 
         auto result = loop.run(input);

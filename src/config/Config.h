@@ -70,6 +70,7 @@ struct AgentConfig {
     int max_iterations = 90;
     bool auto_memory = true;
     std::string soul;
+    int context_file_max_chars = 20000;  // Context file char limit
     // Context compression — corresponds to [agent.compression]
     struct Compression {
         bool enable = true;

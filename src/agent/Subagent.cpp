@@ -20,9 +20,15 @@ Result<std::string> Subagent::execute(const std::string& task) {
     EA_INFO("Subagent '{}' executing task: {}", id_, task.substr(0, 100));
 
     std::string output;
+    AgentLoop::Config sub_cfg;
+    sub_cfg.max_iterations = config_.max_iterations;
+    if (!config_.system_prompt.empty()) {
+        sub_cfg.soul = config_.system_prompt;
+    }
+
     AgentLoop loop(
         provider_, registry_, memory_,
-        AgentLoop::Config{config_.max_iterations},
+        sub_cfg,
         [&](const std::string& text) { output = text; },
         nullptr,  // stream_fn — subagents don't stream
         nullptr,  // policy — subagents don't need approval flow

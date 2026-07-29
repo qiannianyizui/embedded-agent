@@ -185,4 +185,93 @@ Result<std::vector<std::string>> list_dir(const std::string& path) {
     return entries;
 }
 
+std::string parent_path(const std::string& path) {
+    if (path.empty()) return "";
+
+    // Remove trailing slashes (except root "/")
+    std::string p = path;
+    while (p.size() > 1 && p.back() == '/') {
+        p.pop_back();
+    }
+
+    auto pos = p.rfind('/');
+    if (pos == std::string::npos) return "";
+    if (pos == 0) return "/";  // root
+    return p.substr(0, pos);
+}
+
+Result<std::string> find_git_root(const std::string& start_dir) {
+    std::string current = start_dir;
+
+    // Normalize: remove trailing slashes
+    while (current.size() > 1 && current.back() == '/') {
+        current.pop_back();
+    }
+
+    for (int i = 0; i < 256; ++i) {  // safety limit
+        std::string git_path = current + "/.git";
+        auto ex = exists(git_path);
+        if (ex.ok() && ex.value()) {
+            return current;
+        }
+
+        std::string parent = parent_path(current);
+        if (parent.empty() || parent == current) {
+            break;  // reached filesystem root
+        }
+        current = std::move(parent);
+    }
+
+    return Error::not_found("No .git directory found from: " + start_dir);
+}
+
+Result<std::string> walk_up_find(const std::string& start_dir,
+                                 const std::vector<std::string>& filenames,
+                                 const std::string& stop_at) {
+    // Safety: if no stop_at, only check start_dir itself
+    if (stop_at.empty()) {
+        for (const auto& name : filenames) {
+            std::string candidate = start_dir + "/" + name;
+            auto ex = exists(candidate);
+            if (ex.ok() && ex.value()) {
+                return candidate;
+            }
+        }
+        return std::string{};
+    }
+
+    std::string current = start_dir;
+
+    // Normalize: remove trailing slashes
+    while (current.size() > 1 && current.back() == '/') {
+        current.pop_back();
+    }
+    std::string normalized_stop = stop_at;
+    while (normalized_stop.size() > 1 && normalized_stop.back() == '/') {
+        normalized_stop.pop_back();
+    }
+
+    for (int i = 0; i < 256; ++i) {  // safety limit
+        for (const auto& name : filenames) {
+            std::string candidate = current + "/" + name;
+            auto ex = exists(candidate);
+            if (ex.ok() && ex.value()) {
+                return candidate;
+            }
+        }
+
+        if (current == normalized_stop) {
+            break;  // stop at git root (inclusive)
+        }
+
+        std::string parent = parent_path(current);
+        if (parent.empty() || parent == current) {
+            break;  // reached filesystem root
+        }
+        current = std::move(parent);
+    }
+
+    return std::string{};
+}
+
 }  // namespace ea::fs

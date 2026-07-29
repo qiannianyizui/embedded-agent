@@ -11,37 +11,61 @@ static std::string current_timestamp() {
     return buf;
 }
 
-std::string build_system_prompt(const PromptContext& ctx) {
-    std::ostringstream ss;
+SystemPromptParts build_system_prompt_parts(const PromptContext& ctx) {
+    SystemPromptParts parts;
 
-    // Stable layer: identity + tools + platform
-    ss << "# Identity\n";
-    if (!ctx.soul.empty()) ss << ctx.soul << "\n\n";
+    // ── Stable tier ──
+    std::ostringstream stable;
+    stable << "# Identity\n";
+    if (!ctx.soul.empty()) stable << ctx.soul << "\n\n";
 
     if (!ctx.tool_guidance.empty()) {
-        ss << "# Tool Guidance\n" << ctx.tool_guidance << "\n\n";
+        stable << "# Tool Guidance\n" << ctx.tool_guidance << "\n\n";
     }
 
     if (!ctx.platform_info.empty()) {
-        ss << "# Environment\n" << ctx.platform_info << "\n\n";
+        stable << "# Environment\n" << ctx.platform_info << "\n\n";
+    }
+    parts.stable = stable.str();
+
+    // ── Context tier ──
+    if (!ctx.context_files.empty()) {
+        parts.context = "# Project Context\n\n" + ctx.context_files + "\n\n";
     }
 
-    // Volatile layer: memories + timestamp
+    // ── Volatile tier ──
+    std::ostringstream vol;
     if (!ctx.relevant_memories.empty()) {
-        ss << "# Relevant Memories\n";
+        vol << "# Relevant Memories\n";
         for (const auto& mem : ctx.relevant_memories) {
-            ss << "- [" << mem.category << "] " << mem.content << "\n";
+            vol << "- [" << mem.category << "] " << mem.content << "\n";
         }
-        ss << "\n";
+        vol << "\n";
     }
 
     if (!ctx.user_profile.empty()) {
-        ss << "# User Profile\n" << ctx.user_profile << "\n\n";
+        vol << "# User Profile\n" << ctx.user_profile << "\n\n";
     }
 
-    ss << "Current time: " << current_timestamp() << "\n";
+    vol << "Current time: " << current_timestamp() << "\n";
+    parts.volatile_ = vol.str();
 
-    return ss.str();
+    return parts;
+}
+
+std::string build_system_prompt(const PromptContext& ctx) {
+    auto parts = build_system_prompt_parts(ctx);
+    std::string result;
+    if (!parts.stable.empty()) result += parts.stable;
+    if (!parts.context.empty()) {
+        if (!result.empty()) result += "\n";
+        result += parts.context;
+    }
+    if (!parts.volatile_.empty()) {
+        if (!result.empty()) result += "\n";
+        result += parts.volatile_;
+    }
+    return result;
 }
 
 }  // namespace ea::agent

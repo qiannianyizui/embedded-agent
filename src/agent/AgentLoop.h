@@ -34,6 +34,8 @@ public:
         bool stream = true;  // Enable streaming output
         bool auto_persist = true;
         std::string model;  // Model name for trace attribution
+        std::string soul;   // Identity text (from SOUL.md or config)
+        std::string context_files;  // Project context file content
     };
 
     using OutputFn = std::function<void(const std::string&)>;

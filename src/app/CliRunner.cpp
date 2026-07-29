@@ -159,7 +159,9 @@ int CliRunner::run(AppContext& ctx) {
             ctx.config.agent.max_iterations, 65536, 100, true,
             ctx.config.agent.stream, ctx.config.conversation.auto_persist,
             ctx.config.provider.default_model.empty()
-                ? ctx.config.agent.model : ctx.config.provider.default_model
+                ? ctx.config.agent.model : ctx.config.provider.default_model,
+            ctx.soul,
+            ctx.context_files
         },
         [](const std::string& text) { std::cout << text << std::endl; },
         stream_fn,

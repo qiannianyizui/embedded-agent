@@ -13,6 +13,7 @@
 #include "agent/ProgressiveMemoryStrategy.h"
 #include "agent/SubagentOrchestrator.h"
 #include "agent/DelegateTool.h"
+#include "agent/ContextDiscovery.h"
 #include "mcp/McpClient.h"
 #include "mcp/StdioTransport.h"
 #include "mcp/McpToolAdapter.h"
@@ -217,6 +218,24 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug, R
 
     if (!cfg.agent.subagents.empty()) {
         ctx.registry->register_tool(std::make_unique<agent::DelegateTool>(ctx.orchestrator.get()));
+    }
+
+    // 8. Discover context files (SOUL.md + project context)
+    agent::ContextDiscoveryConfig disc_cfg;
+    disc_cfg.max_chars = cfg.agent.context_file_max_chars;
+    agent::ContextDiscovery ctx_disc(disc_cfg);
+    auto soul_result = ctx_disc.load_soul();
+    if (soul_result) {
+        ctx.soul = std::move(*soul_result);
+    }
+    // If TOML [agent].soul is set, it overrides SOUL.md
+    if (!cfg.agent.soul.empty()) {
+        ctx.soul = cfg.agent.soul;
+    }
+
+    auto project_ctx = ctx_disc.discover_project_context();
+    if (project_ctx) {
+        ctx.context_files = "## " + project_ctx->filename + "\n\n" + project_ctx->content;
     }
 
     return ctx;

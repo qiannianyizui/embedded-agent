@@ -1,6 +1,7 @@
 add_library(ea-agent OBJECT
     AgentLoop.cpp
     SystemPrompt.cpp
+    ContextDiscovery.cpp
     LoopDetector.cpp
     ContextCompressor.cpp
     ProgressiveMemoryStrategy.cpp

@@ -53,6 +53,10 @@ struct AppContext {
 
     // Debug
     bool debug = false;
+
+    // Context files
+    std::string soul;              // Identity text (from SOUL.md or config)
+    std::string context_files;     // Project context file content
 };
 
 }  // namespace ea::app

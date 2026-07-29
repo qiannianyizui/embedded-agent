@@ -171,7 +171,11 @@ void AgentLoop::build_system_prompt_once() {
     if (!base_system_prompt_.empty()) return;
 
     PromptContext ctx;
-    ctx.soul = "You are a helpful AI assistant.";
+
+    // Stable layer: soul (config overrides default)
+    ctx.soul = config_.soul.empty()
+        ? "You are a helpful AI assistant."
+        : config_.soul;
     ctx.platform_info = platform::platform_description();
 
     // Get tool guidance
@@ -182,7 +186,10 @@ void AgentLoop::build_system_prompt_once() {
     }
     ctx.tool_guidance = tool_guide;
 
-    // Auto-inject relevant memories
+    // Context layer: project context files
+    ctx.context_files = config_.context_files;
+
+    // Volatile layer: memories
     if (memory_ && config_.auto_memory) {
         for (auto it = history_.rbegin(); it != history_.rend(); ++it) {
             if (it->role == Role::User) {

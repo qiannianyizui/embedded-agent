@@ -29,7 +29,7 @@ Session* SessionManager::create(IProvider* provider,
                                  security::SecurityPolicy* policy,
                                  const AgentLoop::Config& loop_cfg,
                                  const std::string& model,
-                                 const std::string& /*system_prompt*/,
+                                 const std::string& system_prompt,
                                  const std::string& conversation_id) {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -61,6 +61,11 @@ Session* SessionManager::create(IProvider* provider,
         300);  // 5 minute default timeout
 
     // Create AgentLoop for this session
+    // If system_prompt is provided, use it as the soul (identity)
+    auto effective_cfg = loop_cfg;
+    if (!system_prompt.empty()) {
+        effective_cfg.soul = system_prompt;
+    }
     // TODO: pass IMemoryStrategy to AgentLoop constructor so server-mode sessions
     // can use multi-turn memory strategies (e.g., SummarizeStrategy). Requires
     // SessionManager to accept and store strategy objects, plus HttpServer to
@@ -69,7 +74,7 @@ Session* SessionManager::create(IProvider* provider,
         provider,
         registry,
         session->memory.get(),
-        loop_cfg,
+        effective_cfg,
         [](const std::string& text) { (void)text; },  // Output captured via history
         nullptr,  // StreamFn set per-request
         policy,
