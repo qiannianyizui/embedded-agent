@@ -1,12 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
 #include "memory/MemoryManager.h"
-#include "memory/InMemoryBackend.h"
+#include "memory/HolographicMemory.h"
 
 using namespace ea;
 using namespace ea::memory;
 
 TEST_CASE("MemoryManager prefetch returns relevant memories", "[memory][manager]") {
-    auto backend = std::make_unique<InMemoryBackend>();
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    backend->open();
     backend->store("C++ is great", "core", 5);
     backend->store("Python is nice", "core", 5);
 
@@ -17,7 +18,8 @@ TEST_CASE("MemoryManager prefetch returns relevant memories", "[memory][manager]
 }
 
 TEST_CASE("MemoryManager store and recall", "[memory][manager]") {
-    auto backend = std::make_unique<InMemoryBackend>();
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    backend->open();
     MemoryManager mgr(std::move(backend));
 
     auto id = mgr.store("test content", "core", 5);
@@ -29,7 +31,8 @@ TEST_CASE("MemoryManager store and recall", "[memory][manager]") {
 }
 
 TEST_CASE("MemoryManager forget", "[memory][manager]") {
-    auto backend = std::make_unique<InMemoryBackend>();
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    backend->open();
     MemoryManager mgr(std::move(backend));
 
     auto id = mgr.store("to delete", "core", 3);
@@ -40,7 +43,8 @@ TEST_CASE("MemoryManager forget", "[memory][manager]") {
 }
 
 TEST_CASE("MemoryManager count", "[memory][manager]") {
-    auto backend = std::make_unique<InMemoryBackend>();
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    backend->open();
     MemoryManager mgr(std::move(backend));
 
     REQUIRE(mgr.count().value() == 0);
@@ -50,7 +54,8 @@ TEST_CASE("MemoryManager count", "[memory][manager]") {
 }
 
 TEST_CASE("MemoryManager system_prompt_block", "[memory][manager]") {
-    auto backend = std::make_unique<InMemoryBackend>();
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    backend->open();
     MemoryManager mgr(std::move(backend));
 
     REQUIRE(mgr.system_prompt_block().empty());
@@ -61,7 +66,8 @@ TEST_CASE("MemoryManager system_prompt_block", "[memory][manager]") {
 }
 
 TEST_CASE("MemoryManager sync_turn clears cached context", "[memory][manager]") {
-    auto backend = std::make_unique<InMemoryBackend>();
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    backend->open();
     backend->store("some memory", "core", 5);
 
     MemoryManager mgr(std::move(backend));
@@ -75,7 +81,7 @@ TEST_CASE("MemoryManager sync_turn clears cached context", "[memory][manager]") 
 }
 
 TEST_CASE("MemoryManager open and close", "[memory][manager]") {
-    auto backend = std::make_unique<InMemoryBackend>();
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
     MemoryManager mgr(std::move(backend));
 
     REQUIRE(mgr.open().ok());
@@ -83,7 +89,7 @@ TEST_CASE("MemoryManager open and close", "[memory][manager]") {
 }
 
 TEST_CASE("MemoryManager backend accessor", "[memory][manager]") {
-    auto backend = std::make_unique<InMemoryBackend>();
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
     MemoryManager mgr(std::move(backend));
 
     REQUIRE(mgr.backend() != nullptr);

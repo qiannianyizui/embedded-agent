@@ -8,9 +8,8 @@ add_executable(ea-unit-tests
     test_build_config.cpp
     test_core_types.cpp
     test_filesystem.cpp
-    test_memory_sqlite.cpp
-    test_in_memory_backend.cpp
-    test_memory_factory.cpp
+    test_hrr_vector.cpp
+    test_holographic_memory.cpp
     test_scoped_memory.cpp
     test_memory_manager.cpp
     test_memory_strategy.cpp
@@ -61,7 +60,7 @@ add_executable(ea-unit-tests
 )
 target_link_libraries(ea-unit-tests PRIVATE
     ea-test-common
-    ea-base ea-io ea-net ea-log ea-config ea-memory ea-conversation ea-budget
+    ea-base ea-io ea-net ea-log ea-config ea-hrr ea-memory ea-conversation ea-budget
     ea-provider ea-tool ea-agent ea-trace ea-mcp ea-platform ea-security
     ea-server ea-plugin ea-app ea-tui
     nlohmann_json::nlohmann_json

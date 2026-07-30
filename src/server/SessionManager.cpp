@@ -49,10 +49,12 @@ Session* SessionManager::create(IProvider* provider,
     // Create scoped memory for this session
     memory::MemoryScope scope;
     scope.agent_id = session->id;
-    // Create a new InMemoryBackend per session for simplicity.
-    // In production, shared_backend would be a shared SqliteMemory
+    // Create a new in-memory HolographicMemory per session for isolation.
+    // In production, shared_backend would be a shared HolographicMemory
     // wrapped with ScopedMemory for isolation.
-    auto per_session_backend = std::make_unique<memory::InMemoryBackend>();
+    auto per_session_backend = std::make_unique<memory::HolographicMemory>(
+        memory::HolographicMemoryConfig{":memory:", false});
+    per_session_backend->open();
     session->memory = std::make_unique<memory::ScopedMemory>(
         std::move(per_session_backend), scope);
 

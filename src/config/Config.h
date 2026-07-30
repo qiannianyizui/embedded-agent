@@ -47,9 +47,11 @@ struct MemoryStrategyConfig {
 };
 
 struct MemoryConfig {
-    std::string backend = "sqlite";
-    std::string path;
-    bool enable_fts5 = true;
+    std::string path;               // SQLite database path (empty = auto)
+    bool enable_wal = true;         // WAL mode for file-based DBs
+    double trust_positive = 0.05;   // Trust delta for helpful feedback
+    double trust_negative = -0.10;  // Trust delta for unhelpful feedback
+    int hrr_dim = 1024;            // HRR vector dimension
     // Nested strategy config — corresponds to [memory.strategy]
     MemoryStrategyConfig strategy;
 };

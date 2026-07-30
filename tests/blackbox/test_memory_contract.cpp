@@ -2,33 +2,26 @@
 #include "MockProvider.h"
 #include "TestHelpers.h"
 #include "ContractTestHelper.h"
-#include "memory/InMemoryBackend.h"
-#include "memory/SqliteMemory.h"
-#include "memory/NullMemory.h"
+#include "memory/HolographicMemory.h"
 #include "memory/ScopedMemory.h"
 
 using namespace ea;
 using namespace ea::test;
 using namespace ea::test::contract;
 
-// ── InMemoryBackend satisfies memory contract ────────────────────────────────
+// ── HolographicMemory satisfies memory contract ────────────────────────────────
 
-TEST_CASE("InMemoryBackend satisfies memory contract", "[contract][greybox][memory]") {
-    ea::memory::InMemoryBackend memory;
+TEST_CASE("HolographicMemory satisfies memory contract", "[contract][greybox][memory]") {
+    ea::memory::HolographicMemory memory(ea::memory::HolographicMemoryConfig{":memory:", false});
+    memory.open();
     MemoryContract::verify_all(memory);
 }
 
-// ── SqliteMemory in-memory satisfies memory contract ─────────────────────────
+// ── HolographicMemory store returns ID, recall works ───────────────────────────
 
-TEST_CASE("SqliteMemory in-memory satisfies memory contract", "[contract][greybox][memory]") {
-    ea::memory::SqliteMemory memory(ea::memory::SqliteMemory::Config{":memory:", true, false});
-    MemoryContract::verify_all(memory);
-}
-
-// ── NullMemory store returns ID, recall returns empty ────────────────────────
-
-TEST_CASE("NullMemory store returns ID, recall returns empty", "[contract][greybox][memory]") {
-    ea::memory::NullMemory memory;
+TEST_CASE("HolographicMemory store returns ID, recall works", "[contract][greybox][memory]") {
+    ea::memory::HolographicMemory memory(ea::memory::HolographicMemoryConfig{":memory:", false});
+    memory.open();
 
     auto store_result = memory.store("some content", "test", 5);
     REQUIRE(store_result.ok());
@@ -36,13 +29,14 @@ TEST_CASE("NullMemory store returns ID, recall returns empty", "[contract][greyb
 
     auto recall_result = memory.recall("some content", 10);
     REQUIRE(recall_result.ok());
-    REQUIRE(recall_result.value().empty());
+    REQUIRE_FALSE(recall_result.value().empty());
 }
 
 // ── ScopedMemory scopes writes by agent_id ───────────────────────────────────
 
 TEST_CASE("ScopedMemory scopes writes by agent_id", "[contract][greybox][memory]") {
-    auto backend = std::make_unique<ea::memory::InMemoryBackend>();
+    auto backend = std::make_unique<ea::memory::HolographicMemory>(ea::memory::HolographicMemoryConfig{":memory:", false});
+    backend->open();
     ea::memory::ScopedMemory memory(
         std::move(backend),
         ea::memory::MemoryScope{"agent-A", "", {}});
@@ -67,8 +61,9 @@ TEST_CASE("ScopedMemory scopes writes by agent_id", "[contract][greybox][memory]
 
 TEST_CASE("ScopedMemory filters reads by scope", "[contract][greybox][memory]") {
     // Create a shared backend and write entries from two different agents
-    auto backend = std::make_unique<ea::memory::InMemoryBackend>();
-    ea::memory::InMemoryBackend* raw_backend = backend.get();
+    auto backend = std::make_unique<ea::memory::HolographicMemory>(ea::memory::HolographicMemoryConfig{":memory:", false});
+    ea::memory::HolographicMemory* raw_backend = backend.get();
+    raw_backend->open();
 
     // Create ScopedMemory for agent-A with no allowlist
     ea::memory::ScopedMemory memory_a(
@@ -96,8 +91,9 @@ TEST_CASE("ScopedMemory filters reads by scope", "[contract][greybox][memory]") 
     }
 
     // Now create a ScopedMemory for agent-C with agent-B in its allowlist
-    auto backend2 = std::make_unique<ea::memory::InMemoryBackend>();
-    ea::memory::InMemoryBackend* raw2 = backend2.get();
+    auto backend2 = std::make_unique<ea::memory::HolographicMemory>(ea::memory::HolographicMemoryConfig{":memory:", false});
+    ea::memory::HolographicMemory* raw2 = backend2.get();
+    raw2->open();
     raw2->store("agent-B shared content", "agent-B:shared", 5);
     raw2->store("agent-C own content", "agent-C:own", 5);
     raw2->store("unscoped content", "general", 5);

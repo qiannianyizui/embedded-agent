@@ -82,6 +82,17 @@ FetchContent_Declare(ftxui
 )
 FetchContent_MakeAvailable(ftxui)
 
+# --- HRR holographic memory (compile-time gate) ---
+option(EA_ENABLE_HRR "Enable HRR holographic memory features" ON)
+
+# --- Eigen (linear algebra for HRR vector operations) ---
+if(EA_ENABLE_HRR)
+    FetchContent_Declare(eigen
+        URL https://gitlab.com/libeigen/Eigen/-/archive/3.4.0/Eigen-3.4.0.tar.gz
+    )
+    FetchContent_MakeAvailable(eigen)
+endif()
+
 add_subdirectory(src/base)
 add_subdirectory(src/io)
 add_subdirectory(src/net)
@@ -89,6 +100,7 @@ add_subdirectory(src/log)
 add_subdirectory(src/config)
 add_subdirectory(src/platform)
 add_subdirectory(src/security)
+add_subdirectory(src/hrr)
 add_subdirectory(src/memory)
 add_subdirectory(src/conversation)
 add_subdirectory(src/budget)
@@ -161,6 +173,7 @@ add_library(embedded-agent-core STATIC
     $<TARGET_OBJECTS:ea-server>
     $<TARGET_OBJECTS:ea-plugin>
     $<TARGET_OBJECTS:ea-app>
+    $<TARGET_OBJECTS:ea-hrr>
 )
 target_link_libraries(embedded-agent-core PUBLIC
     ea-base
@@ -176,6 +189,11 @@ target_link_libraries(embedded-agent-core PUBLIC
     PkgConfig::UUID
     PkgConfig::ZSTD
 )
+# HRR / Eigen (conditionally linked)
+if(EA_ENABLE_HRR)
+    target_compile_definitions(embedded-agent-core PUBLIC EA_ENABLE_HRR)
+    target_link_libraries(embedded-agent-core PUBLIC Eigen3::Eigen)
+endif()
 target_include_directories(embedded-agent-core PUBLIC
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/include

@@ -7,7 +7,7 @@
 #include "tool/FileTool.h"
 #include "tool/SearchTool.h"
 #include "tool/MemoryTool.h"
-#include "memory/InMemoryBackend.h"
+#include "memory/HolographicMemory.h"
 
 using namespace ea;
 using namespace ea::test;
@@ -61,7 +61,8 @@ TEST_CASE("SearchTool is non-mutating and non-dangerous", "[contract][greybox][t
 // ── MemoryTool is mutating and non-dangerous ─────────────────────────────────
 
 TEST_CASE("MemoryTool is mutating and non-dangerous", "[contract][greybox][tool]") {
-    ea::memory::InMemoryBackend backend;
+    ea::memory::HolographicMemory backend(ea::memory::HolographicMemoryConfig{":memory:", false});
+    backend.open();
     ea::tool::MemoryTool tool(&backend);
     REQUIRE(tool.is_mutating() == true);
     REQUIRE(tool.is_dangerous() == false);

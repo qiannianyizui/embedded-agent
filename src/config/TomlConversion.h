@@ -123,9 +123,11 @@ struct from<ea::config::MemoryConfig> {
     template<typename TC>
     static ea::config::MemoryConfig from_toml(const basic_value<TC>& v) {
         ea::config::MemoryConfig cfg;
-        cfg.backend    = toml::find_or<std::string>(v, "backend", cfg.backend);
-        cfg.path       = toml::find_or<std::string>(v, "path", cfg.path);
-        cfg.enable_fts5 = toml::find_or<bool>(v, "enable_fts5", cfg.enable_fts5);
+        cfg.path            = toml::find_or<std::string>(v, "path", cfg.path);
+        cfg.enable_wal      = toml::find_or<bool>(v, "enable_wal", cfg.enable_wal);
+        cfg.trust_positive  = toml::find_or<double>(v, "trust_positive", cfg.trust_positive);
+        cfg.trust_negative  = toml::find_or<double>(v, "trust_negative", cfg.trust_negative);
+        cfg.hrr_dim         = toml::find_or<int>(v, "hrr_dim", cfg.hrr_dim);
         if (v.contains("strategy")) {
             cfg.strategy = toml::find<ea::config::MemoryStrategyConfig>(v, "strategy");
         }
@@ -138,10 +140,12 @@ struct into<ea::config::MemoryConfig> {
     template<typename TC>
     static basic_value<TC> into_toml(const ea::config::MemoryConfig& cfg) {
         basic_value<TC> v;
-        v["backend"]     = cfg.backend;
-        if (!cfg.path.empty()) v["path"] = cfg.path;
-        v["enable_fts5"] = cfg.enable_fts5;
-        v["strategy"]    = into<ea::config::MemoryStrategyConfig>::into_toml<TC>(cfg.strategy);
+        if (!cfg.path.empty()) v["path"]           = cfg.path;
+        v["enable_wal"]      = cfg.enable_wal;
+        v["trust_positive"]  = cfg.trust_positive;
+        v["trust_negative"]  = cfg.trust_negative;
+        v["hrr_dim"]         = cfg.hrr_dim;
+        v["strategy"]        = into<ea::config::MemoryStrategyConfig>::into_toml<TC>(cfg.strategy);
         return v;
     }
 };

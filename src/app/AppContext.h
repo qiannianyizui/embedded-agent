@@ -3,7 +3,7 @@
 #include "app/IRunner.h"
 #include "config/Config.h"
 #include "provider/IProvider.h"
-#include "memory/SqliteMemory.h"
+#include "memory/HolographicMemory.h"
 #include "tool/ToolRegistry.h"
 #include "security/SecurityPolicy.h"
 #include "security/IApprovalHandler.h"
@@ -31,7 +31,7 @@ struct AppContext {
     ea::IProvider* effective_provider = nullptr;
 
     // Storage
-    std::unique_ptr<ea::memory::SqliteMemory> memory;
+    std::unique_ptr<ea::memory::HolographicMemory> memory;
     std::unique_ptr<ea::conversation::SqliteConversationStore> conversation_store;
     std::shared_ptr<ea::budget::SqliteUsageStore> usage_store;
 

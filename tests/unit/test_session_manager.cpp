@@ -1,7 +1,7 @@
 // tests/test_session_manager.cpp
 #include <catch2/catch_test_macros.hpp>
 #include "server/SessionManager.h"
-#include "memory/InMemoryBackend.h"
+#include "memory/HolographicMemory.h"
 #include "memory/ScopedMemory.h"
 #include "tool/ToolRegistry.h"
 #include "security/SecurityPolicy.h"
@@ -28,12 +28,19 @@ public:
                               const ChatOptions&) override { return {}; }
 };
 
+// Helper: create an opened HolographicMemory shared_ptr for session tests
+static std::shared_ptr<HolographicMemory> make_session_backend() {
+    auto mem = std::make_shared<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    mem->open();
+    return mem;
+}
+
 TEST_CASE("SessionManager creates session with unique ID", "[server][session]") {
     ServerConfig cfg;
     auto provider = std::make_shared<SessionTestProvider>();
     auto registry = std::make_shared<tool::ToolRegistry>();
     auto policy = std::make_shared<security::SecurityPolicy>();
-    auto backend = std::make_shared<InMemoryBackend>();
+    auto backend = make_session_backend();
     SessionManager mgr(cfg);
 
     auto* s1 = mgr.create(provider.get(), registry.get(), backend.get(), policy.get(), {});
@@ -50,7 +57,7 @@ TEST_CASE("SessionManager get returns session by ID", "[server][session]") {
     auto provider = std::make_shared<SessionTestProvider>();
     auto registry = std::make_shared<tool::ToolRegistry>();
     auto policy = std::make_shared<security::SecurityPolicy>();
-    auto backend = std::make_shared<InMemoryBackend>();
+    auto backend = make_session_backend();
     SessionManager mgr(cfg);
 
     auto* created = mgr.create(provider.get(), registry.get(), backend.get(), policy.get(), {});
@@ -72,7 +79,7 @@ TEST_CASE("SessionManager remove deletes session", "[server][session]") {
     auto provider = std::make_shared<SessionTestProvider>();
     auto registry = std::make_shared<tool::ToolRegistry>();
     auto policy = std::make_shared<security::SecurityPolicy>();
-    auto backend = std::make_shared<InMemoryBackend>();
+    auto backend = make_session_backend();
     SessionManager mgr(cfg);
 
     auto* s = mgr.create(provider.get(), registry.get(), backend.get(), policy.get(), {});
@@ -93,7 +100,7 @@ TEST_CASE("SessionManager list returns all sessions", "[server][session]") {
     auto provider = std::make_shared<SessionTestProvider>();
     auto registry = std::make_shared<tool::ToolRegistry>();
     auto policy = std::make_shared<security::SecurityPolicy>();
-    auto backend = std::make_shared<InMemoryBackend>();
+    auto backend = make_session_backend();
     SessionManager mgr(cfg);
 
     mgr.create(provider.get(), registry.get(), backend.get(), policy.get(), {});
@@ -109,7 +116,7 @@ TEST_CASE("SessionManager respects max_sessions limit", "[server][session]") {
     auto provider = std::make_shared<SessionTestProvider>();
     auto registry = std::make_shared<tool::ToolRegistry>();
     auto policy = std::make_shared<security::SecurityPolicy>();
-    auto backend = std::make_shared<InMemoryBackend>();
+    auto backend = make_session_backend();
     SessionManager mgr(cfg);
 
     auto* s1 = mgr.create(provider.get(), registry.get(), backend.get(), policy.get(), {});
@@ -127,7 +134,7 @@ TEST_CASE("SessionManager cleanup_idle removes expired sessions", "[server][sess
     auto provider = std::make_shared<SessionTestProvider>();
     auto registry = std::make_shared<tool::ToolRegistry>();
     auto policy = std::make_shared<security::SecurityPolicy>();
-    auto backend = std::make_shared<InMemoryBackend>();
+    auto backend = make_session_backend();
     SessionManager mgr(cfg);
 
     auto* s = mgr.create(provider.get(), registry.get(), backend.get(), policy.get(), {});

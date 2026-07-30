@@ -1,6 +1,6 @@
 // tests/security/test_injection.cpp
 #include <catch2/catch_test_macros.hpp>
-#include "memory/SqliteMemory.h"
+#include "memory/HolographicMemory.h"
 #include "security/SecurityPolicy.h"
 #include "SecurityTestHelper.h"
 
@@ -10,7 +10,7 @@ using namespace ea::security;
 using namespace ea::test;
 
 TEST_CASE("Injection: SQL injection in memory recall returns empty results", "[security][injection]") {
-    SqliteMemory mem(SqliteMemory::Config{":memory:", true, false});
+    HolographicMemory mem(HolographicMemoryConfig{":memory:", false});
     mem.open();
     // Store normal data
     mem.store("normal fact about C++", "core", 7);
@@ -26,7 +26,7 @@ TEST_CASE("Injection: SQL injection in memory recall returns empty results", "[s
 }
 
 TEST_CASE("Injection: SQL injection in memory store does not corrupt data", "[security][injection]") {
-    SqliteMemory mem(SqliteMemory::Config{":memory:", true, false});
+    HolographicMemory mem(HolographicMemoryConfig{":memory:", false});
     mem.open();
 
     auto payloads = InjectionPayloads::sql_injections();
@@ -72,7 +72,7 @@ TEST_CASE("Injection: path traversal blocked with workspace set", "[security][in
 }
 
 TEST_CASE("Injection: prompt injection strings stored safely in memory", "[security][injection]") {
-    SqliteMemory mem(SqliteMemory::Config{":memory:", true, false});
+    HolographicMemory mem(HolographicMemoryConfig{":memory:", false});
     mem.open();
 
     auto payloads = InjectionPayloads::prompt_injections();

@@ -4,6 +4,7 @@
 #include "log/Logger.h"
 #include "agent/ContextCompressor.h"
 #include <sstream>
+#include <iomanip>
 #include <algorithm>
 
 namespace ea::agent {
@@ -75,11 +76,21 @@ void ProgressiveMemoryStrategy::extract_facts(MemoryStrategyContext& ctx) {
         if (line.size() > 2 && line[0] == '-' && line[1] == ' ') {
             std::string fact = line.substr(2);
             if (!fact.empty()) {
-                auto store_result = ctx.memory->store(fact, "long_term", config_.long_term_importance);
-                if (!store_result.ok()) {
-                    EA_WARN("Failed to store extracted fact: {}", store_result.error().message);
+                // Use add_fact() when holographic, otherwise fall back to store()
+                if (ctx.memory->is_holographic()) {
+                    auto add_result = ctx.memory->add_fact(fact, "long_term");
+                    if (!add_result.ok()) {
+                        EA_WARN("Failed to add extracted fact: {}", add_result.error().message);
+                    } else {
+                        count++;
+                    }
                 } else {
-                    count++;
+                    auto store_result = ctx.memory->store(fact, "long_term", config_.long_term_importance);
+                    if (!store_result.ok()) {
+                        EA_WARN("Failed to store extracted fact: {}", store_result.error().message);
+                    } else {
+                        count++;
+                    }
                 }
             }
         }
@@ -243,20 +254,32 @@ std::string ProgressiveMemoryStrategy::build_memory_prompt(const std::vector<Mes
     bool has_any = false;
 
     if (!last_user_msg.empty()) {
-        auto lt_result = memory->recall(last_user_msg, 3);
-        if (lt_result.ok() && !lt_result.value().empty()) {
-            // Filter to long_term category
-            std::vector<MemoryEntry> long_term;
-            for (const auto& entry : lt_result.value()) {
-                if (entry.category == "long_term") {
-                    long_term.push_back(entry);
-                }
-            }
-            if (!long_term.empty()) {
+        // Use search_facts() for holographic memory (includes trust + entity scoring)
+        if (memory->is_holographic()) {
+            auto lt_result = memory->search_facts(last_user_msg, "long_term", 0.3, 3);
+            if (lt_result.ok() && !lt_result.value().empty()) {
                 has_any = true;
                 prompt << "# Conversation Context\n## Key Facts\n";
-                for (const auto& entry : long_term) {
-                    prompt << "- " << entry.content << "\n";
+                for (const auto& fe : lt_result.value()) {
+                    prompt << "- " << fe.content << " [trust: "
+                           << std::fixed << std::setprecision(1) << fe.trust_score << "]\n";
+                }
+            }
+        } else {
+            auto lt_result = memory->recall(last_user_msg, 3);
+            if (lt_result.ok() && !lt_result.value().empty()) {
+                std::vector<MemoryEntry> long_term;
+                for (const auto& entry : lt_result.value()) {
+                    if (entry.category == "long_term") {
+                        long_term.push_back(entry);
+                    }
+                }
+                if (!long_term.empty()) {
+                    has_any = true;
+                    prompt << "# Conversation Context\n## Key Facts\n";
+                    for (const auto& entry : long_term) {
+                        prompt << "- " << entry.content << "\n";
+                    }
                 }
             }
         }

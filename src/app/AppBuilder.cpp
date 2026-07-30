@@ -2,13 +2,15 @@
 // Extracted from main.cpp initialization steps 3~7.6
 #include "AppBuilder.h"
 #include "provider/ProviderFactory.h"
-#include "memory/SqliteMemory.h"
+#include "memory/HolographicMemory.h"
 #include "tool/ToolRegistry.h"
 #include "tool/ShellTool.h"
 #include "tool/FileTool.h"
 #include "tool/SearchTool.h"
 #include "tool/WebTool.h"
 #include "tool/MemoryTool.h"
+#include "tool/FactStoreTool.h"
+#include "tool/FactFeedbackTool.h"
 #include "agent/ContextCompressor.h"
 #include "agent/ProgressiveMemoryStrategy.h"
 #include "agent/SubagentOrchestrator.h"
@@ -95,8 +97,13 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug, R
             memory_path = "memory.db";
         }
     }
-    ctx.memory = std::make_unique<memory::SqliteMemory>(
-        memory::SqliteMemory::Config{memory_path, cfg.memory.enable_fts5});
+    ctx.memory = std::make_unique<memory::HolographicMemory>(
+        memory::HolographicMemoryConfig{
+            memory_path,
+            cfg.memory.enable_wal,
+            cfg.memory.trust_positive,
+            cfg.memory.trust_negative,
+        });
 
     // 5. Create security policy
     ctx.security = std::make_unique<security::SecurityPolicy>();
@@ -171,6 +178,8 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug, R
     ctx.registry->register_tool(std::make_unique<tool::SearchTool>());
     ctx.registry->register_tool(std::make_unique<tool::WebTool>(&ctx.http_client));
     ctx.registry->register_tool(std::make_unique<tool::MemoryTool>(ctx.memory.get()));
+    ctx.registry->register_tool(std::make_unique<tool::FactStoreTool>(ctx.memory.get()));
+    ctx.registry->register_tool(std::make_unique<tool::FactFeedbackTool>(ctx.memory.get()));
 
     // 7.5. Connect MCP servers and register their tools
     for (auto& server_cfg : cfg.mcp_servers) {

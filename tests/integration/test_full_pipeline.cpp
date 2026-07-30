@@ -8,7 +8,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "agent/AgentLoop.h"
 #include "provider/IProvider.h"
-#include "memory/InMemoryBackend.h"
+#include "memory/HolographicMemory.h"
 #include "memory/ScopedMemory.h"
 #include "tool/ToolRegistry.h"
 #include "tool/ITool.h"
@@ -109,7 +109,8 @@ static LLMResponse make_tools(std::vector<ToolCall> calls) {
 }
 
 TEST_CASE("Full pipeline: user → LLM → tool → memory → response", "[integration][full]") {
-    auto backend = std::make_unique<InMemoryBackend>();
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    backend->open();
     auto mem_ptr = backend.get();
 
     auto provider = std::make_unique<PipelineProvider>();
@@ -175,15 +176,17 @@ TEST_CASE("Full pipeline: multi-tool call in single turn", "[integration][full]"
 }
 
 TEST_CASE("Full pipeline: ScopedMemory with agent isolation", "[integration][full]") {
-    // Each agent gets its own ScopedMemory wrapping its own InMemoryBackend
+    // Each agent gets its own ScopedMemory wrapping its own HolographicMemory
     MemoryScope scope_a;
     scope_a.agent_id = "agent-A";
-    ScopedMemory scoped_a(std::make_unique<InMemoryBackend>(), scope_a);
+    ScopedMemory scoped_a(std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false}), scope_a);
+    scoped_a.open();
     scoped_a.store("agent-A secret", "core", 5);
 
     MemoryScope scope_b;
     scope_b.agent_id = "agent-B";
-    ScopedMemory scoped_b(std::make_unique<InMemoryBackend>(), scope_b);
+    ScopedMemory scoped_b(std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false}), scope_b);
+    scoped_b.open();
     scoped_b.store("agent-B secret", "core", 5);
 
     // Agent-A can read own entries

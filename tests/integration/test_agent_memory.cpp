@@ -1,4 +1,4 @@
-// Integration: AgentLoop + InMemoryBackend + MemoryManager
+// Integration: AgentLoop + HolographicMemory + MemoryManager
 // Verifies memory recall is injected into system prompt and
 // auto-memory stores/recalls work across turns.
 
@@ -6,7 +6,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "agent/AgentLoop.h"
 #include "provider/IProvider.h"
-#include "memory/InMemoryBackend.h"
+#include "memory/HolographicMemory.h"
 #include "memory/MemoryManager.h"
 #include "tool/ToolRegistry.h"
 
@@ -51,8 +51,9 @@ private:
     std::vector<Message> last_messages_;
 };
 
-TEST_CASE("Integration: AgentLoop with InMemoryBackend prefetches memories", "[integration][agent][memory]") {
-    auto backend = std::make_unique<InMemoryBackend>();
+TEST_CASE("Integration: AgentLoop with HolographicMemory prefetches memories", "[integration][agent][memory]") {
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    backend->open();
     backend->store("user prefers dark mode", "preference", 7);
     auto mem_ptr = backend.get();
 
@@ -103,7 +104,8 @@ TEST_CASE("Integration: AgentLoop with null memory still works", "[integration][
 }
 
 TEST_CASE("Integration: MemoryManager sync_turn lifecycle", "[integration][memory]") {
-    auto backend = std::make_unique<InMemoryBackend>();
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    backend->open();
     backend->store("fact about C++", "core", 7);
 
     MemoryManager mgr(std::move(backend));

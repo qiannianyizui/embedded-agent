@@ -3,8 +3,7 @@
 #include "MockProvider.h"
 #include "MockTool.h"
 #include "TestHelpers.h"
-#include "memory/InMemoryBackend.h"
-#include "memory/SqliteMemory.h"
+#include "memory/HolographicMemory.h"
 #include "memory/MemoryManager.h"
 #include "tool/ToolRegistry.h"
 #include "agent/AgentLoop.h"
@@ -12,10 +11,11 @@
 namespace ea::test {
 
 struct MemoryFixture {
-    std::unique_ptr<memory::InMemoryBackend> in_memory;
+    std::unique_ptr<memory::HolographicMemory> in_memory;
 
     MemoryFixture() {
-        in_memory = std::make_unique<memory::InMemoryBackend>();
+        in_memory = std::make_unique<memory::HolographicMemory>(memory::HolographicMemoryConfig{":memory:", false});
+        in_memory->open();
     }
     ~MemoryFixture() = default;
 };
@@ -28,7 +28,8 @@ struct AgentLoopFixture {
     std::unique_ptr<agent::AgentLoop> loop;
 
     AgentLoopFixture() {
-        auto backend = std::make_unique<memory::InMemoryBackend>();
+        auto backend = std::make_unique<memory::HolographicMemory>(memory::HolographicMemoryConfig{":memory:", false});
+        backend->open();
         memory = std::make_unique<memory::MemoryManager>(std::move(backend));
         loop = std::make_unique<agent::AgentLoop>(
             &provider, &registry, nullptr,

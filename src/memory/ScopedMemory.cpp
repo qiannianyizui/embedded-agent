@@ -73,4 +73,63 @@ void ScopedMemory::on_turn_start(const std::string& user_input) { backend_->on_t
 void ScopedMemory::on_turn_end(const std::string& assistant_output) { backend_->on_turn_end(assistant_output); }
 void ScopedMemory::on_pre_compress() { backend_->on_pre_compress(); }
 
+// Holographic delegation
+Result<int> ScopedMemory::add_fact(const std::string& content,
+                                     const std::string& category,
+                                     const std::string& tags) {
+    std::string scoped_category = scope_.agent_id + ":" + category;
+    return backend_->add_fact(content, scoped_category, tags);
+}
+
+Result<std::vector<FactEntry>> ScopedMemory::search_facts(
+    const std::string& query, const std::string& category,
+    double min_trust, int limit) {
+    return backend_->search_facts(query, category, min_trust, limit);
+}
+
+Result<bool> ScopedMemory::update_fact(int fact_id,
+                                         const std::string* content,
+                                         const double* trust_delta,
+                                         const std::string* tags,
+                                         const std::string* category) {
+    return backend_->update_fact(fact_id, content, trust_delta, tags, category);
+}
+
+Result<bool> ScopedMemory::remove_fact(int fact_id) {
+    return backend_->remove_fact(fact_id);
+}
+
+Result<std::vector<FactEntry>> ScopedMemory::list_facts(
+    const std::string& category, double min_trust, int limit) {
+    return backend_->list_facts(category, min_trust, limit);
+}
+
+Result<FeedbackResult> ScopedMemory::record_feedback(int fact_id, bool helpful) {
+    return backend_->record_feedback(fact_id, helpful);
+}
+
+Result<std::vector<FactEntry>> ScopedMemory::probe(
+    const std::string& entity, const std::string& category, int limit) {
+    return backend_->probe(entity, category, limit);
+}
+
+Result<std::vector<FactEntry>> ScopedMemory::related(
+    const std::string& entity, const std::string& category, int limit) {
+    return backend_->related(entity, category, limit);
+}
+
+Result<std::vector<FactEntry>> ScopedMemory::reason(
+    const std::vector<std::string>& entities, const std::string& category, int limit) {
+    return backend_->reason(entities, category, limit);
+}
+
+Result<std::vector<ContradictionPair>> ScopedMemory::contradict(
+    const std::string& category, double threshold, int limit) {
+    return backend_->contradict(category, threshold, limit);
+}
+
+bool ScopedMemory::is_holographic() const {
+    return backend_->is_holographic();
+}
+
 }  // namespace ea::memory

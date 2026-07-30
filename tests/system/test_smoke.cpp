@@ -5,7 +5,7 @@
 #include "MockTool.h"
 #include "TestHelpers.h"
 #include "Fixtures.h"
-#include "memory/InMemoryBackend.h"
+#include "memory/HolographicMemory.h"
 #include "memory/MemoryManager.h"
 #include "tool/ToolRegistry.h"
 #include "agent/AgentLoop.h"

@@ -2,7 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "agent/AgentLoop.h"
 #include "conversation/SqliteConversationStore.h"
-#include "memory/InMemoryBackend.h"
+#include "memory/HolographicMemory.h"
 #include "memory/MemoryManager.h"
 #include "tool/ToolRegistry.h"
 #include "base/Types.h"
@@ -49,13 +49,16 @@ struct ConvIntegrationFixture {
     SqliteConversationStore conv_store;
     EchoProvider provider;
     tool::ToolRegistry registry;
-    InMemoryBackend mem_backend;
+    HolographicMemory mem_backend;
     MemoryManager memory;
 
     ConvIntegrationFixture()
         : db_path(make_temp_path("_conv_int.db")),
           conv_store(SqliteConversationStore::Config{db_path, false}),
-          memory(std::make_unique<InMemoryBackend>()) {
+          mem_backend(HolographicMemoryConfig{":memory:", false}),
+          memory(std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false})) {
+        mem_backend.open();
+        memory.open();
         conv_store.open();
     }
     ~ConvIntegrationFixture() {
@@ -148,8 +151,11 @@ TEST_CASE("AgentLoop restore_conversation", "[agent][conversation]") {
 TEST_CASE("AgentLoop without conv_store works normally", "[agent][conversation]") {
     EchoProvider provider;
     tool::ToolRegistry registry;
-    InMemoryBackend mem_backend;
-    MemoryManager memory(std::make_unique<InMemoryBackend>());
+    HolographicMemory mem_backend(HolographicMemoryConfig{":memory:", false});
+    mem_backend.open();
+    MemoryManager memory(std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false}));
+    // Need to open the backend inside MemoryManager too
+    memory.open();
 
     AgentLoop loop(
         &provider, &registry, &memory,

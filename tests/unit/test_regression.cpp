@@ -6,7 +6,7 @@
 #include "TestHelpers.h"
 #include "agent/AgentLoop.h"
 #include "tool/ToolRegistry.h"
-#include "memory/InMemoryBackend.h"
+#include "memory/HolographicMemory.h"
 #include "memory/ScopedMemory.h"
 #include "plugin/PluginToolAdapter.h"
 #include "base/Error.h"
@@ -45,7 +45,9 @@ TEST_CASE("Regression: ScopedMemory empty read_allowlist allows own scope",
     MemoryScope scope;
     scope.agent_id = "test-agent";
     // read_allowlist is empty
-    ScopedMemory scoped(std::make_unique<InMemoryBackend>(), scope);
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    backend->open();
+    ScopedMemory scoped(std::move(backend), scope);
     scoped.store("my fact", "core", 5);
 
     auto results = scoped.recall("fact", 5);

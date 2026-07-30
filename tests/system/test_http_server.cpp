@@ -2,7 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "server/HttpServer.h"
 #include "server/ServerConfig.h"
-#include "memory/InMemoryBackend.h"
+#include "memory/HolographicMemory.h"
 #include "tool/ToolRegistry.h"
 #include "security/SecurityPolicy.h"
 #include "provider/IProvider.h"
@@ -38,7 +38,7 @@ struct ServerFixture {
     std::shared_ptr<HttpTestProvider> provider;
     std::shared_ptr<tool::ToolRegistry> registry;
     std::shared_ptr<security::SecurityPolicy> policy;
-    std::shared_ptr<InMemoryBackend> backend;
+    std::shared_ptr<HolographicMemory> backend;
     std::unique_ptr<HttpServer> server;
     std::thread server_thread;
     int port;
@@ -47,7 +47,8 @@ struct ServerFixture {
         provider = std::make_shared<HttpTestProvider>();
         registry = std::make_shared<tool::ToolRegistry>();
         policy = std::make_shared<security::SecurityPolicy>();
-        backend = std::make_shared<InMemoryBackend>();
+        backend = std::make_shared<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+        backend->open();
 
         ServerConfig cfg;
         cfg.host = "127.0.0.1";

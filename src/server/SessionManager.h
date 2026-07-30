@@ -7,7 +7,7 @@
 #include "memory/IMemory.h"
 #include "security/SecurityPolicy.h"
 #include "memory/ScopedMemory.h"
-#include "memory/InMemoryBackend.h"
+#include "memory/HolographicMemory.h"
 #include "security/PendingApprovalHandler.h"
 #include "conversation/IConversationStore.h"
 #include "budget/BudgetTracker.h"

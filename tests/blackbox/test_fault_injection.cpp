@@ -1,6 +1,6 @@
 // tests/blackbox/test_fault_injection.cpp
 // Fault injection tests — verify system resilience under controlled failures.
-// Uses FaultyProvider wrapping MockProvider and FaultyMemory wrapping InMemoryBackend.
+// Uses FaultyProvider wrapping MockProvider and FaultyMemory wrapping HolographicMemory.
 #include <catch2/catch_test_macros.hpp>
 #include "MockProvider.h"
 #include "MockTool.h"
@@ -8,7 +8,7 @@
 #include "FaultInjector.h"
 #include "agent/AgentLoop.h"
 #include "tool/ToolRegistry.h"
-#include "memory/InMemoryBackend.h"
+#include "memory/HolographicMemory.h"
 #include "security/SecurityPolicy.h"
 #include "provider/OpenAIProvider.h"
 #include "nlohmann/json.hpp"
@@ -151,7 +151,8 @@ TEST_CASE("Fault injection: memory open failure doesn't crash AgentLoop", "[faul
     auto mock = std::make_shared<MockProvider>();
     mock->enqueue_text("response");
 
-    auto backend = std::make_unique<memory::InMemoryBackend>();
+    auto backend = std::make_unique<memory::HolographicMemory>(memory::HolographicMemoryConfig{":memory:", false});
+    backend->open();
     FaultyMemory faulty_mem(std::move(backend));
     faulty_mem.inject_open_failure();
 
@@ -174,7 +175,8 @@ TEST_CASE("Fault injection: memory open failure doesn't crash AgentLoop", "[faul
 // ── 8. Memory store failure returns Error ──────────────────────────────────────
 
 TEST_CASE("Fault injection: memory store failure returns Error", "[fault][greybox]") {
-    auto backend = std::make_unique<memory::InMemoryBackend>();
+    auto backend = std::make_unique<memory::HolographicMemory>(memory::HolographicMemoryConfig{":memory:", false});
+    backend->open();
     FaultyMemory faulty_mem(std::move(backend));
     faulty_mem.inject_store_failure();
 

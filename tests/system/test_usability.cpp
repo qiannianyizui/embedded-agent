@@ -7,7 +7,7 @@
 #include "TestHelpers.h"
 #include "agent/AgentLoop.h"
 #include "tool/ToolRegistry.h"
-#include "memory/InMemoryBackend.h"
+#include "memory/HolographicMemory.h"
 #include "memory/MemoryManager.h"
 #include "security/SecurityPolicy.h"
 #include "base/Result.h"
@@ -57,8 +57,9 @@ TEST_CASE("Usability: ToolRegistry easy to populate", "[usability]") {
     REQUIRE(registry.find("tool2") != nullptr);
 }
 
-TEST_CASE("Usability: InMemoryBackend works out of the box", "[usability]") {
-    auto mem = std::make_unique<memory::InMemoryBackend>();
+TEST_CASE("Usability: HolographicMemory works out of the box", "[usability]") {
+    auto mem = std::make_unique<memory::HolographicMemory>(memory::HolographicMemoryConfig{":memory:", false});
+    mem->open();
     mem->store("fact", "core", 7);
     auto results = mem->recall("fact", 5);
     REQUIRE(results.ok());

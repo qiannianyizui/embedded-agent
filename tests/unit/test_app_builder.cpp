@@ -27,7 +27,7 @@ AppConfig make_test_config(const std::string& temp_dir) {
     cfg.provider.base_url = "http://localhost:11434";
     cfg.provider.default_model = "test-model";
     cfg.memory.path = temp_dir + "/memory.db";
-    cfg.memory.enable_fts5 = false;
+    cfg.memory.enable_wal = false;
     cfg.conversation.path = temp_dir + "/conversations.db";
     cfg.budget.path = temp_dir + "/usage.db";
     cfg.security.autonomy = "full";

@@ -1,12 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
 #include "memory/ScopedMemory.h"
-#include "memory/InMemoryBackend.h"
+#include "memory/HolographicMemory.h"
 
 using namespace ea;
 using namespace ea::memory;
 
 TEST_CASE("ScopedMemory store attaches agent_id to category", "[memory][scoped]") {
-    auto backend = std::make_unique<InMemoryBackend>();
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    backend->open();
     MemoryScope scope;
     scope.agent_id = "agent-A";
     ScopedMemory scoped(std::move(backend), scope);
@@ -22,7 +23,8 @@ TEST_CASE("ScopedMemory store attaches agent_id to category", "[memory][scoped]"
 }
 
 TEST_CASE("ScopedMemory can read own agent entries", "[memory][scoped]") {
-    auto backend = std::make_unique<InMemoryBackend>();
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    backend->open();
     MemoryScope scope;
     scope.agent_id = "agent-A";
     ScopedMemory scoped(std::move(backend), scope);
@@ -35,7 +37,8 @@ TEST_CASE("ScopedMemory can read own agent entries", "[memory][scoped]") {
 
 TEST_CASE("ScopedMemory blocks other agent entries", "[memory][scoped]") {
     // Create shared backend, store from agent-B, then read from agent-A
-    auto backend = std::make_unique<InMemoryBackend>();
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    backend->open();
 
     // Store from agent-B directly into backend
     backend->store("agent-B secret", "agent-B:core", 5);
@@ -53,7 +56,8 @@ TEST_CASE("ScopedMemory blocks other agent entries", "[memory][scoped]") {
 }
 
 TEST_CASE("ScopedMemory read_allowlist allows cross-agent reads", "[memory][scoped]") {
-    auto backend = std::make_unique<InMemoryBackend>();
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    backend->open();
     backend->store("shared entry from B", "agent-B:core", 5);
     backend->store("unscoped entry", "core", 5);
 
@@ -68,7 +72,8 @@ TEST_CASE("ScopedMemory read_allowlist allows cross-agent reads", "[memory][scop
 }
 
 TEST_CASE("ScopedMemory lifecycle delegates to backend", "[memory][scoped]") {
-    auto backend = std::make_unique<InMemoryBackend>();
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    backend->open();
     MemoryScope scope;
     scope.agent_id = "agent-A";
     ScopedMemory scoped(std::move(backend), scope);
@@ -78,7 +83,8 @@ TEST_CASE("ScopedMemory lifecycle delegates to backend", "[memory][scoped]") {
 }
 
 TEST_CASE("ScopedMemory rejects empty agent_id", "[memory][scoped]") {
-    auto backend = std::make_unique<InMemoryBackend>();
+    auto backend = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    backend->open();
     MemoryScope scope;
     scope.agent_id = "";  // empty
     REQUIRE_THROWS_AS(ScopedMemory(std::move(backend), scope), std::invalid_argument);

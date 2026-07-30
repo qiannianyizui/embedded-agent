@@ -7,7 +7,7 @@
 #include "agent/AgentLoop.h"
 #include "tool/ToolRegistry.h"
 #include "security/SecurityPolicy.h"
-#include "memory/InMemoryBackend.h"
+#include "memory/HolographicMemory.h"
 #include "provider/ReliableProvider.h"
 #include "budget/BudgetTracker.h"
 #include "budget/Types.h"

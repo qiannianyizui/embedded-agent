@@ -6,6 +6,8 @@ add_library(ea-tool OBJECT
     SearchTool.cpp
     WebTool.cpp
     MemoryTool.cpp
+    FactStoreTool.cpp
+    FactFeedbackTool.cpp
     ToolOutputConfig.cpp
 )
 ea_target_compile_options(ea-tool)

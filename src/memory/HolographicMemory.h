@@ -1,19 +1,38 @@
-// MemoryManager — orchestration layer for IMemory backends
-// Inherits IMemory so it can be used wherever IMemory* is expected.
-// Adds turn-level prefetch/sync and system prompt injection.
 #pragma once
+// HolographicMemory — IMemory implementation with structured fact storage,
+// entity knowledge graph, trust scoring, and hybrid retrieval.
+// Replaces SqliteMemory/InMemoryBackend/NullMemory as the sole backend.
+
 #include "memory/IMemory.h"
-#include <memory>
+#include "memory/FactEntry.h"
+#include "memory/EntityExtractor.h"
+#include "memory/FactRetriever.h"
 #include <string>
-#include <vector>
+#include <memory>
+
+struct sqlite3;
 
 namespace ea::memory {
 
-class MemoryManager : public IMemory {
-public:
-    explicit MemoryManager(std::unique_ptr<IMemory> backend);
+struct HolographicMemoryConfig {
+    std::string path = ":memory:";     // SQLite database path
+    bool enable_wal = true;            // WAL mode for file-based DBs
+    double trust_positive = 0.05;      // Trust delta for helpful feedback
+    double trust_negative = -0.10;     // Trust delta for unhelpful feedback
+    double trust_floor = 0.0;          // Minimum trust score
+    double trust_ceiling = 1.0;        // Maximum trust score
+    int hrr_dim = 1024;               // HRR vector dimension (Phase 2)
+};
 
-    // Legacy IMemory interface — delegated to backend
+class HolographicMemory : public ea::IMemory {
+public:
+    explicit HolographicMemory(HolographicMemoryConfig config = HolographicMemoryConfig{});
+    ~HolographicMemory() override;
+
+    HolographicMemory(const HolographicMemory&) = delete;
+    HolographicMemory& operator=(const HolographicMemory&) = delete;
+
+    // === Legacy IMemory CRUD (mapped to fact operations) ===
     Result<std::string> store(const std::string& content,
                                const std::string& category = "core",
                                int importance = 5) override;
@@ -23,13 +42,15 @@ public:
     Result<std::vector<MemoryEntry>> list(int limit = 50, int offset = 0) override;
     Result<int> count() override;
 
-    // Lifecycle — delegated to backend
+    // === Lifecycle ===
     Result<void> open() override;
     Result<void> close() override;
     std::string system_prompt_block() const override;
+    void on_turn_start(const std::string& user_input) override;
+    void on_turn_end(const std::string& assistant_output) override;
     void on_pre_compress() override;
 
-    // Holographic delegation
+    // === Holographic extensions ===
     Result<int> add_fact(const std::string& content,
                           const std::string& category = "general",
                           const std::string& tags = "") override;
@@ -45,7 +66,11 @@ public:
     Result<std::vector<FactEntry>> list_facts(
         const std::string& category = "", double min_trust = 0.0,
         int limit = 50) override;
+
+    // Trust feedback
     Result<FeedbackResult> record_feedback(int fact_id, bool helpful) override;
+
+    // Algebraic queries
     Result<std::vector<FactEntry>> probe(
         const std::string& entity, const std::string& category = "",
         int limit = 10) override;
@@ -58,20 +83,32 @@ public:
     Result<std::vector<ContradictionPair>> contradict(
         const std::string& category = "", double threshold = 0.3,
         int limit = 10) override;
-    bool is_holographic() const override;
 
-    // Turn lifecycle (MemoryManager extensions)
-    std::vector<MemoryEntry> prefetch(const std::string& user_input);
-    void sync_turn(const std::string& user_input,
-                   const std::string& assistant_output);
+    // Capability
+    bool is_holographic() const override { return true; }
 
-    // Access the underlying backend (for MemoryTool integration)
-    IMemory* backend() const { return backend_.get(); }
+    // === Statistics ===
+    struct Stats {
+        int total_facts = 0;
+        int total_entities = 0;
+        int64_t db_size_bytes = 0;
+        int low_trust_facts = 0;   // trust < 0.3
+        int high_trust_facts = 0;  // trust >= 0.7
+    };
+    Result<Stats> stats() const;
 
 private:
-    std::unique_ptr<IMemory> backend_;
-    std::vector<MemoryEntry> cached_context_;
-    std::string last_user_input_;
+    Result<void> create_tables();
+    Result<void> ensure_entity(const std::string& name, const std::string& entity_type = "auto");
+    Result<void> link_fact_entity(int fact_id, const std::string& entity_name);
+    Result<std::vector<std::string>> get_fact_entities(int fact_id) const;
+    FactEntry row_to_fact(void* stmt) const;
+
+    HolographicMemoryConfig config_;
+    sqlite3* db_ = nullptr;
+    bool opened_ = false;
+    std::unique_ptr<FactRetriever> retriever_;
+    EntityExtractor entity_extractor_;
 };
 
 }  // namespace ea::memory

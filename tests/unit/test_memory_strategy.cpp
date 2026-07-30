@@ -4,7 +4,7 @@
 #include "agent/IMemoryStrategy.h"
 #include "agent/ProgressiveMemoryStrategy.h"
 #include "agent/AgentLoop.h"
-#include "memory/InMemoryBackend.h"
+#include "memory/HolographicMemory.h"
 #include "provider/IProvider.h"
 
 using namespace ea;
@@ -76,6 +76,13 @@ private:
     std::vector<Message> last_messages_;
 };
 
+// Helper: create an opened HolographicMemory for tests
+static std::unique_ptr<HolographicMemory> make_test_memory() {
+    auto mem = std::make_unique<HolographicMemory>(HolographicMemoryConfig{":memory:", false});
+    mem->open();
+    return mem;
+}
+
 // --- NullMemoryStrategy tests ---
 
 TEST_CASE("NullMemoryStrategy returns empty prompt", "[memory][strategy]") {
@@ -86,13 +93,13 @@ TEST_CASE("NullMemoryStrategy returns empty prompt", "[memory][strategy]") {
 
 TEST_CASE("NullMemoryStrategy on_turn_end is no-op", "[memory][strategy]") {
     NullMemoryStrategy strategy;
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
     auto provider = std::make_shared<StrategyTestProvider>();
     std::vector<Message> history;
     std::string input = "hello";
     std::string output = "world";
 
-    MemoryStrategyContext ctx{history, &memory, provider.get(), input, output};
+    MemoryStrategyContext ctx{history, memory.get(), provider.get(), input, output};
     strategy.on_turn_end(ctx);
 
     REQUIRE(history.empty());
@@ -123,12 +130,12 @@ TEST_CASE("ProgressiveMemoryStrategy is active", "[memory][strategy]") {
 
 TEST_CASE("build_memory_prompt returns empty with no memories", "[memory][strategy]") {
     ProgressiveMemoryStrategy strategy;
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
     std::vector<Message> history = {
         {Role::User, "hello", std::nullopt, std::nullopt, std::nullopt}
     };
 
-    REQUIRE(strategy.build_memory_prompt(history, &memory).empty());
+    REQUIRE(strategy.build_memory_prompt(history, memory.get()).empty());
 }
 
 TEST_CASE("build_memory_prompt returns empty with null memory", "[memory][strategy]") {
@@ -142,16 +149,16 @@ TEST_CASE("build_memory_prompt returns empty with null memory", "[memory][strate
 
 TEST_CASE("build_memory_prompt includes long-term facts", "[memory][strategy]") {
     ProgressiveMemoryStrategy strategy;
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
 
-    memory.store("User prefers dark mode", "long_term", 8);
-    memory.store("Project uses CMake", "long_term", 8);
+    memory->store("User prefers dark mode", "long_term", 8);
+    memory->store("Project uses CMake", "long_term", 8);
 
     std::vector<Message> history = {
         {Role::User, "dark mode", std::nullopt, std::nullopt, std::nullopt}
     };
 
-    std::string prompt = strategy.build_memory_prompt(history, &memory);
+    std::string prompt = strategy.build_memory_prompt(history, memory.get());
     REQUIRE(!prompt.empty());
     REQUIRE(prompt.find("Key Facts") != std::string::npos);
     REQUIRE(prompt.find("dark mode") != std::string::npos);
@@ -159,15 +166,15 @@ TEST_CASE("build_memory_prompt includes long-term facts", "[memory][strategy]") 
 
 TEST_CASE("build_memory_prompt includes short-term summaries", "[memory][strategy]") {
     ProgressiveMemoryStrategy strategy;
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
 
-    memory.store("Previous conversation about testing", "short_term", 5);
+    memory->store("Previous conversation about testing", "short_term", 5);
 
     std::vector<Message> history = {
         {Role::User, "continue", std::nullopt, std::nullopt, std::nullopt}
     };
 
-    std::string prompt = strategy.build_memory_prompt(history, &memory);
+    std::string prompt = strategy.build_memory_prompt(history, memory.get());
     REQUIRE(!prompt.empty());
     REQUIRE(prompt.find("Recent Summary") != std::string::npos);
     REQUIRE(prompt.find("testing") != std::string::npos);
@@ -175,18 +182,18 @@ TEST_CASE("build_memory_prompt includes short-term summaries", "[memory][strateg
 
 TEST_CASE("build_memory_prompt includes both long-term and short-term", "[memory][strategy]") {
     ProgressiveMemoryStrategy strategy;
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
 
-    memory.store("User prefers dark mode", "long_term", 8);
-    memory.store("Previous discussion about CMake", "short_term", 5);
+    memory->store("User prefers dark mode", "long_term", 8);
+    memory->store("Previous discussion about CMake", "short_term", 5);
 
     // Use a query that is a substring of the long-term entry content
-    // (InMemoryBackend::recall checks if query is a substring of entry.content)
+    // (HolographicMemory::recall uses FTS5 search)
     std::vector<Message> history = {
         {Role::User, "dark mode", std::nullopt, std::nullopt, std::nullopt}
     };
 
-    std::string prompt = strategy.build_memory_prompt(history, &memory);
+    std::string prompt = strategy.build_memory_prompt(history, memory.get());
     REQUIRE(!prompt.empty());
     REQUIRE(prompt.find("Key Facts") != std::string::npos);
     REQUIRE(prompt.find("Recent Summary") != std::string::npos);
@@ -194,17 +201,17 @@ TEST_CASE("build_memory_prompt includes both long-term and short-term", "[memory
 
 TEST_CASE("build_memory_prompt filters by category", "[memory][strategy]") {
     ProgressiveMemoryStrategy strategy;
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
 
     // Store a "core" category entry -- should NOT appear in memory prompt
-    memory.store("Some core memory", "core", 5);
-    memory.store("A long-term fact", "long_term", 8);
+    memory->store("Some core memory", "core", 5);
+    memory->store("A long-term fact", "long_term", 8);
 
     std::vector<Message> history = {
         {Role::User, "fact", std::nullopt, std::nullopt, std::nullopt}
     };
 
-    std::string prompt = strategy.build_memory_prompt(history, &memory);
+    std::string prompt = strategy.build_memory_prompt(history, memory.get());
     REQUIRE(!prompt.empty());
     REQUIRE(prompt.find("long-term fact") != std::string::npos);
     // "core" entries should not be in the structured prompt sections
@@ -214,18 +221,18 @@ TEST_CASE("build_memory_prompt filters by category", "[memory][strategy]") {
 
 TEST_CASE("on_turn_end extracts facts from conversation", "[memory][strategy]") {
     ProgressiveMemoryStrategy strategy;
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
     auto provider = std::make_shared<StrategyTestProvider>();
 
     std::vector<Message> history;
     std::string input = "I prefer dark mode";
     std::string output = "Noted, you prefer dark mode";
 
-    MemoryStrategyContext ctx{history, &memory, provider.get(), input, output};
+    MemoryStrategyContext ctx{history, memory.get(), provider.get(), input, output};
     strategy.on_turn_end(ctx);
 
     // Check that facts were stored in long-term memory
-    auto list_result = memory.list(50, 0);
+    auto list_result = memory->list(50, 0);
     REQUIRE(list_result.ok());
     bool found_long_term = false;
     for (const auto& entry : list_result.value()) {
@@ -242,14 +249,14 @@ TEST_CASE("on_turn_end skips fact extraction when disabled", "[memory][strategy]
     ProgressiveMemoryConfig config;
     config.enable_fact_extraction = false;
     ProgressiveMemoryStrategy strategy(config);
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
     auto provider = std::make_shared<StrategyTestProvider>();
 
     std::vector<Message> history;
     std::string input = "hello";
     std::string output = "world";
 
-    MemoryStrategyContext ctx{history, &memory, provider.get(), input, output};
+    MemoryStrategyContext ctx{history, memory.get(), provider.get(), input, output};
     strategy.on_turn_end(ctx);
 
     REQUIRE(provider->chat_count() == 0);
@@ -257,7 +264,7 @@ TEST_CASE("on_turn_end skips fact extraction when disabled", "[memory][strategy]
 
 TEST_CASE("on_turn_end gracefully handles LLM failure in extraction", "[memory][strategy]") {
     ProgressiveMemoryStrategy strategy;
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
     auto provider = std::make_shared<StrategyTestProvider>();
     provider->set_fail_next(true);
 
@@ -265,11 +272,11 @@ TEST_CASE("on_turn_end gracefully handles LLM failure in extraction", "[memory][
     std::string input = "hello";
     std::string output = "world";
 
-    MemoryStrategyContext ctx{history, &memory, provider.get(), input, output};
+    MemoryStrategyContext ctx{history, memory.get(), provider.get(), input, output};
     strategy.on_turn_end(ctx);
 
     // Should not crash, no long-term entries stored
-    auto list_result = memory.list(50, 0);
+    auto list_result = memory->list(50, 0);
     REQUIRE(list_result.ok());
     bool found_long_term = false;
     for (const auto& entry : list_result.value()) {
@@ -287,7 +294,7 @@ TEST_CASE("on_turn_end summarizes old messages when history exceeds working_turn
     config.working_turns = 2;  // Keep only last 2 turns = 4 messages
     config.enable_fact_extraction = false;  // Focus on summarization
     ProgressiveMemoryStrategy strategy(config);
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
     auto provider = std::make_shared<StrategyTestProvider>();
 
     // Build history with more than 4 messages (2 turns)
@@ -300,14 +307,14 @@ TEST_CASE("on_turn_end summarizes old messages when history exceeds working_turn
     std::string input = "Q4";
     std::string output = "A4";
 
-    MemoryStrategyContext ctx{history, &memory, provider.get(), input, output};
+    MemoryStrategyContext ctx{history, memory.get(), provider.get(), input, output};
     strategy.on_turn_end(ctx);
 
     // History should be shorter than 10 messages
     REQUIRE(history.size() < 10);
 
     // Short-term memory should have a summary
-    auto list_result = memory.list(50, 0);
+    auto list_result = memory->list(50, 0);
     REQUIRE(list_result.ok());
     bool found_short_term = false;
     for (const auto& entry : list_result.value()) {
@@ -324,7 +331,7 @@ TEST_CASE("on_turn_end does not summarize when history is within working_turns",
     config.working_turns = 10;
     config.enable_fact_extraction = false;
     ProgressiveMemoryStrategy strategy(config);
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
     auto provider = std::make_shared<StrategyTestProvider>();
 
     std::vector<Message> history = {
@@ -338,7 +345,7 @@ TEST_CASE("on_turn_end does not summarize when history is within working_turns",
     std::string input = "Q1";
     std::string output = "A1";
 
-    MemoryStrategyContext ctx{history, &memory, provider.get(), input, output};
+    MemoryStrategyContext ctx{history, memory.get(), provider.get(), input, output};
     strategy.on_turn_end(ctx);
 
     REQUIRE(history.size() == original_size);
@@ -351,7 +358,7 @@ TEST_CASE("on_turn_end skips summarization when disabled", "[memory][strategy]")
     config.enable_auto_summarize = false;
     config.enable_fact_extraction = false;
     ProgressiveMemoryStrategy strategy(config);
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
     auto provider = std::make_shared<StrategyTestProvider>();
 
     std::vector<Message> history;
@@ -364,7 +371,7 @@ TEST_CASE("on_turn_end skips summarization when disabled", "[memory][strategy]")
     std::string input = "Q5";
     std::string output = "A5";
 
-    MemoryStrategyContext ctx{history, &memory, provider.get(), input, output};
+    MemoryStrategyContext ctx{history, memory.get(), provider.get(), input, output};
     strategy.on_turn_end(ctx);
 
     // History should be unchanged
@@ -380,11 +387,11 @@ TEST_CASE("on_turn_end evicts excess short-term entries", "[memory][strategy]") 
     config.enable_fact_extraction = false;
     config.enable_auto_summarize = false;
     ProgressiveMemoryStrategy strategy(config);
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
 
     // Pre-fill with more than short_term_max entries
     for (int i = 0; i < 5; ++i) {
-        memory.store("Summary " + std::to_string(i), "short_term", 5);
+        memory->store("Summary " + std::to_string(i), "short_term", 5);
     }
 
     std::vector<Message> history;
@@ -392,11 +399,11 @@ TEST_CASE("on_turn_end evicts excess short-term entries", "[memory][strategy]") 
     std::string output = "world";
     auto provider = std::make_shared<StrategyTestProvider>();
 
-    MemoryStrategyContext ctx{history, &memory, provider.get(), input, output};
+    MemoryStrategyContext ctx{history, memory.get(), provider.get(), input, output};
     strategy.on_turn_end(ctx);
 
     // Count remaining short_term entries
-    auto list_result = memory.list(50, 0);
+    auto list_result = memory->list(50, 0);
     REQUIRE(list_result.ok());
     int short_term_count = 0;
     for (const auto& entry : list_result.value()) {
@@ -413,14 +420,14 @@ TEST_CASE("ProgressiveMemoryStrategy uses custom extraction prompt", "[memory][s
     ProgressiveMemoryConfig config;
     config.fact_extraction_prompt = "CUSTOM_EXTRACT: {user_input} | {assistant_output}";
     ProgressiveMemoryStrategy strategy(config);
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
     auto provider = std::make_shared<StrategyTestProvider>();
 
     std::vector<Message> history;
     std::string input = "test input";
     std::string output = "test output";
 
-    MemoryStrategyContext ctx{history, &memory, provider.get(), input, output};
+    MemoryStrategyContext ctx{history, memory.get(), provider.get(), input, output};
     strategy.on_turn_end(ctx);
 
     // Verify the custom prompt was used
@@ -441,7 +448,7 @@ TEST_CASE("ProgressiveMemoryStrategy uses custom summarization prompt", "[memory
     config.enable_fact_extraction = false;
     config.summarization_prompt = "CUSTOM_SUMMARIZE";
     ProgressiveMemoryStrategy strategy(config);
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
     auto provider = std::make_shared<StrategyTestProvider>();
 
     std::vector<Message> history;
@@ -453,7 +460,7 @@ TEST_CASE("ProgressiveMemoryStrategy uses custom summarization prompt", "[memory
     std::string input = "Q3";
     std::string output = "A3";
 
-    MemoryStrategyContext ctx{history, &memory, provider.get(), input, output};
+    MemoryStrategyContext ctx{history, memory.get(), provider.get(), input, output};
     strategy.on_turn_end(ctx);
 
     // Verify the custom prompt was used
@@ -471,7 +478,7 @@ TEST_CASE("ProgressiveMemoryStrategy uses custom summarization prompt", "[memory
 // --- Integration: AgentLoop + ProgressiveMemoryStrategy ---
 
 TEST_CASE("AgentLoop with strategy processes turns", "[agent][memory][strategy]") {
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
     auto provider = std::make_shared<StrategyTestProvider>();
 
     ProgressiveMemoryConfig strat_config;
@@ -482,7 +489,7 @@ TEST_CASE("AgentLoop with strategy processes turns", "[agent][memory][strategy]"
     ea::tool::ToolRegistry registry;
 
     AgentLoop loop(
-        provider.get(), &registry, &memory,
+        provider.get(), &registry, memory.get(),
         AgentLoop::Config{5, 1024, 100, true, false},
         [](const std::string&) {},
         nullptr,  // no stream
@@ -496,7 +503,7 @@ TEST_CASE("AgentLoop with strategy processes turns", "[agent][memory][strategy]"
     REQUIRE(result.ok());
 
     // After a turn, memory should have been updated
-    auto mem_list = memory.list(50, 0);
+    auto mem_list = memory->list(50, 0);
     REQUIRE(mem_list.ok());
     // At least some long-term facts should have been stored
     bool found = false;
@@ -510,12 +517,12 @@ TEST_CASE("AgentLoop with strategy processes turns", "[agent][memory][strategy]"
 }
 
 TEST_CASE("AgentLoop without strategy works as before", "[agent][memory]") {
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
     auto provider = std::make_shared<StrategyTestProvider>();
     ea::tool::ToolRegistry registry;
 
     AgentLoop loop(
-        provider.get(), &registry, &memory,
+        provider.get(), &registry, memory.get(),
         AgentLoop::Config{5, 1024, 100, true, false},
         [](const std::string&) {},
         nullptr,
@@ -531,13 +538,13 @@ TEST_CASE("AgentLoop without strategy works as before", "[agent][memory]") {
 }
 
 TEST_CASE("AgentLoop with NullMemoryStrategy behaves same as no strategy", "[agent][memory][strategy]") {
-    InMemoryBackend memory;
+    auto memory = make_test_memory();
     auto provider = std::make_shared<StrategyTestProvider>();
     ea::tool::ToolRegistry registry;
     NullMemoryStrategy null_strategy;
 
     AgentLoop loop(
-        provider.get(), &registry, &memory,
+        provider.get(), &registry, memory.get(),
         AgentLoop::Config{5, 1024, 100, true, false},
         [](const std::string&) {},
         nullptr,
@@ -551,7 +558,7 @@ TEST_CASE("AgentLoop with NullMemoryStrategy behaves same as no strategy", "[age
     REQUIRE(result.ok());
 
     // Memory should be unchanged -- NullMemoryStrategy does nothing
-    auto mem_list = memory.list(50, 0);
+    auto mem_list = memory->list(50, 0);
     REQUIRE(mem_list.ok());
     REQUIRE(mem_list.value().empty());
 }
