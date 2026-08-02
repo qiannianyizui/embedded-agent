@@ -5,9 +5,7 @@
 #include <cmath>
 #include <sstream>
 
-#ifdef EA_ENABLE_HRR
 #include "hrr/HrrVector.h"
-#endif
 
 namespace ea::memory {
 
@@ -454,7 +452,6 @@ void FactRetriever::apply_trust_and_sort(std::vector<ScoredFact>& candidates,
 void FactRetriever::compute_hrr_scores(std::vector<ScoredFact>& candidates,
                                          const std::string& query,
                                          int hrr_dim) {
-#ifdef EA_ENABLE_HRR
     if (candidates.empty() || query.empty()) return;
 
     // Encode the query as an HRR vector
@@ -462,20 +459,14 @@ void FactRetriever::compute_hrr_scores(std::vector<ScoredFact>& candidates,
 
     for (auto& sf : candidates) {
         // Load the fact's HRR vector from the database
-        auto fact_phases = load_hrr_vector(sf.fact.fact_id, hrr_dim);
-        if (fact_phases.empty()) {
+        auto fact_vec = load_hrr_vector(sf.fact.fact_id, hrr_dim);
+        if (fact_vec.dim() == 0) {
             sf.hrr_score = 0.0;
             continue;
         }
 
-        hrr::HrrVector fact_vec(hrr_dim, std::move(fact_phases));
         sf.hrr_score = hrr::similarity(query_vec, fact_vec);
     }
-#else
-    (void)candidates;
-    (void)query;
-    (void)hrr_dim;
-#endif
 }
 
 Result<std::vector<FactEntry>> FactRetriever::probe_hrr(
@@ -483,7 +474,6 @@ Result<std::vector<FactEntry>> FactRetriever::probe_hrr(
     const std::string& category,
     int limit,
     int hrr_dim) {
-#ifdef EA_ENABLE_HRR
     if (!db_) return Error::db("database not open");
 
     // HRR probe: unbind the entity from the memory bank to find
@@ -528,8 +518,7 @@ Result<std::vector<FactEntry>> FactRetriever::probe_hrr(
         if (sqlite3_column_type(stmt, 9) != SQLITE_NULL) {
             const auto* blob = static_cast<const uint8_t*>(sqlite3_column_blob(stmt, 9));
             int blob_len = sqlite3_column_bytes(stmt, 9);
-            auto fact_phases = hrr::bytes_to_phases(blob, blob_len, hrr_dim);
-            hrr::HrrVector fact_vec(hrr_dim, std::move(fact_phases));
+            auto fact_vec = hrr::bytes_to_phases(blob, blob_len, hrr_dim);
 
             // Unbind: probe the memory for the entity
             auto unbound = hrr::unbind(fact_vec, entity_vec);
@@ -555,38 +544,29 @@ Result<std::vector<FactEntry>> FactRetriever::probe_hrr(
         results.push_back(std::move(scored[i].fact));
     }
     return results;
-#else
-    (void)entity; (void)category; (void)limit; (void)hrr_dim;
-    return std::vector<FactEntry>{};
-#endif
 }
 
-std::vector<double> FactRetriever::load_hrr_vector(int fact_id, int dim) {
-#ifdef EA_ENABLE_HRR
-    if (!db_) return {};
+hrr::HrrVector FactRetriever::load_hrr_vector(int fact_id, int dim) {
+    if (!db_) return hrr::HrrVector(0);
 
     const char* sql = "SELECT hrr_vector FROM facts WHERE fact_id = ?";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        return {};
+        return hrr::HrrVector(0);
     }
 
     sqlite3_bind_int(stmt, 1, fact_id);
 
-    std::vector<double> phases;
+    hrr::HrrVector result(0);
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         if (sqlite3_column_type(stmt, 0) != SQLITE_NULL) {
             const auto* blob = static_cast<const uint8_t*>(sqlite3_column_blob(stmt, 0));
             int blob_len = sqlite3_column_bytes(stmt, 0);
-            phases = hrr::bytes_to_phases(blob, blob_len, dim);
+            result = hrr::bytes_to_phases(blob, blob_len, dim);
         }
     }
     sqlite3_finalize(stmt);
-    return phases;
-#else
-    (void)fact_id; (void)dim;
-    return {};
-#endif
+    return result;
 }
 
 }  // namespace ea::memory

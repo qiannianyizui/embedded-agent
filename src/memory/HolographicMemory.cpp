@@ -7,10 +7,9 @@
 #include <regex>
 #include <sstream>
 #include <iomanip>
+#include <unordered_map>
 
-#ifdef EA_ENABLE_HRR
 #include "hrr/HrrVector.h"
-#endif
 
 namespace ea::memory {
 
@@ -64,11 +63,8 @@ Result<void> HolographicMemory::open() {
     auto table_result = create_tables();
     if (!table_result.ok()) return table_result;
 
-    // Initialize retriever with appropriate weights
-    RetrievalWeights weights;
-#ifdef EA_ENABLE_HRR
-    weights = {0.4, 0.3, 0.3};  // FTS5 + Jaccard + HRR
-#endif
+    // Initialize retriever with HRR-enabled weights
+    RetrievalWeights weights{0.4, 0.3, 0.3};  // FTS5 + Jaccard + HRR
     retriever_ = std::make_unique<FactRetriever>(db_, weights);
 
     return {};
@@ -230,7 +226,6 @@ Result<std::string> HolographicMemory::store(const std::string& content,
     }
 
     // Compute and store HRR vector
-#ifdef EA_ENABLE_HRR
     {
         auto hrr_vec = hrr::encode_fact(content, entities, config_.hrr_dim);
         auto hrr_bytes = hrr::phases_to_bytes(hrr_vec);
@@ -245,7 +240,6 @@ Result<std::string> HolographicMemory::store(const std::string& content,
             sqlite3_finalize(upd_stmt);
         }
     }
-#endif
 
     return std::to_string(fact_id);
 }
@@ -440,7 +434,6 @@ Result<int> HolographicMemory::add_fact(const std::string& content,
     }
 
     // Compute and store HRR vector
-#ifdef EA_ENABLE_HRR
     {
         auto hrr_vec = hrr::encode_fact(content, entities, config_.hrr_dim);
         auto hrr_bytes = hrr::phases_to_bytes(hrr_vec);
@@ -455,7 +448,6 @@ Result<int> HolographicMemory::add_fact(const std::string& content,
             sqlite3_finalize(upd_stmt);
         }
     }
-#endif
 
     return fact_id;
 }
@@ -710,20 +702,26 @@ Result<std::vector<FactEntry>> HolographicMemory::probe(
     if (!r.ok()) return r.error();
     if (!retriever_) return Error::db("retriever not initialized");
 
-    // Use HRR algebraic probe when available
-#ifdef EA_ENABLE_HRR
-    auto hrr_result = retriever_->probe_hrr(entity, category, limit, config_.hrr_dim);
-    if (hrr_result.ok() && !hrr_result.value().empty()) {
-        for (auto& fe : hrr_result.value()) {
-            fe.entities = get_fact_entities(fe.fact_id).value_or(std::vector<std::string>{});
-        }
-        return hrr_result;
-    }
-#endif
-
-    // Fallback: entity-based lookup
+    // Use HRR algebraic probe to re-rank entity-based results
     auto result = retriever_->find_by_entity(entity, category, limit);
     if (!result.ok()) return result.error();
+
+    // If we have results, try HRR re-ranking
+    if (!result.value().empty()) {
+        auto hrr_result = retriever_->probe_hrr(entity, category, limit, config_.hrr_dim);
+        if (hrr_result.ok() && !hrr_result.value().empty()) {
+            // Build a score map from HRR probe results
+            std::unordered_map<int, double> hrr_scores;
+            for (const auto& fe : hrr_result.value()) {
+                hrr_scores[fe.fact_id] = 0.0;  // presence = boost
+            }
+            // Move HRR-matched facts to the front
+            std::stable_partition(result.value().begin(), result.value().end(),
+                [&hrr_scores](const FactEntry& fe) {
+                    return hrr_scores.count(fe.fact_id) > 0;
+                });
+        }
+    }
 
     for (auto& fe : result.value()) {
         fe.entities = get_fact_entities(fe.fact_id).value_or(std::vector<std::string>{});

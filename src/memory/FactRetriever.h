@@ -6,6 +6,7 @@
 #include "memory/FactEntry.h"
 #include "memory/FtsSanitizer.h"
 #include "memory/EntityExtractor.h"
+#include "hrr/HrrVector.h"
 #include "base/Result.h"
 #include <string>
 #include <vector>
@@ -18,7 +19,7 @@ namespace ea::memory {
 struct RetrievalWeights {
     double fts = 0.6;
     double jaccard = 0.4;
-    double hrr = 0.0;  // EA_ENABLE_HRR: 0.3 (fts→0.4, jaccard→0.3)
+    double hrr = 0.3;
 };
 
 struct ScoredFact {
@@ -86,7 +87,7 @@ private:
                                double min_trust);
 
     // Load HRR vector for a fact from DB
-    std::vector<double> load_hrr_vector(int fact_id, int dim);
+    hrr::HrrVector load_hrr_vector(int fact_id, int dim);
 
     sqlite3* db_;
     RetrievalWeights weights_;

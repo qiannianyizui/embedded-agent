@@ -7,7 +7,7 @@ add_executable(ea-system-tests
 )
 target_link_libraries(ea-system-tests PRIVATE
     ea-test-common
-    ea-base ea-io ea-net ea-log ea-config ea-memory ea-conversation ea-budget
+    ea-base ea-io ea-net ea-log ea-config ea-hrr ea-memory ea-conversation ea-budget
     ea-provider ea-tool ea-agent ea-trace ea-mcp ea-platform ea-security
     ea-server ea-plugin
     nlohmann_json::nlohmann_json
