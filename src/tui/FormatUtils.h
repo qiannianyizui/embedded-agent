@@ -2,6 +2,7 @@
 // Header-only; matches Hermes formatting conventions
 #pragma once
 #include <algorithm>
+#include <ctime>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -69,6 +70,44 @@ inline std::string fmtDuration(int64_t ms) {
         std::snprintf(buf, sizeof(buf), "%llds", (long long)s);
     }
     return buf;
+}
+
+// ---------------------------------------------------------------------------
+// fmtClock — wall-clock time for message timestamps: "12:03", "09:15:42"
+// ---------------------------------------------------------------------------
+inline std::string fmtClock(std::time_t t) {
+    std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &t);
+#else
+    localtime_r(&t, &local);
+#endif
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%02d:%02d", local.tm_hour, local.tm_min);
+    return buf;
+}
+
+inline std::string fmtClockNow() {
+    return fmtClock(std::time(nullptr));
+}
+
+// ---------------------------------------------------------------------------
+// shortId — "conv_ab12cd34" → "ab12cd34"; otherwise truncated to 8 chars
+// ---------------------------------------------------------------------------
+inline std::string shortId(const std::string& id) {
+    if (id.empty()) return "";
+    auto pos = id.rfind('_');
+    std::string tail = (pos != std::string::npos) ? id.substr(pos + 1) : id;
+    if (tail.size() > 10) tail = tail.substr(0, 10);
+    return tail;
+}
+
+// ---------------------------------------------------------------------------
+// truncateFront — keep the tail of a long path (for cwd display)
+// ---------------------------------------------------------------------------
+inline std::string truncateFront(const std::string& s, size_t max_len) {
+    if (s.size() <= max_len || max_len < 6) return s;
+    return "…" + s.substr(s.size() - (max_len - 1));
 }
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,6 @@
-// Theme — Hermes-inspired color scheme and brand identity for the TUI
+// Theme — modern dark-IDE palette and brand identity for the TUI
+// Design language: calm midnight surfaces, indigo primary + cyan accent,
+// semantic colors for status, clear typographic hierarchy.
 #pragma once
 #include <ftxui/dom/deprecated.hpp>  // Color
 #include <string>
@@ -6,49 +8,64 @@
 namespace ea::tui {
 
 // ---------------------------------------------------------------------------
-// Color palette — matches Hermes DARK_THEME hex values
+// Color palette — midnight / indigo
 // ---------------------------------------------------------------------------
 struct ThemeColors {
-    ftxui::Color primary         = ftxui::Color::RGB(255, 215, 0);    // #FFD700 Gold
-    ftxui::Color accent          = ftxui::Color::RGB(255, 191, 0);    // #FFBF00 Amber
-    ftxui::Color border          = ftxui::Color::RGB(205, 127, 50);   // #CD7F32 Copper
-    ftxui::Color text            = ftxui::Color::RGB(255, 248, 220);  // #FFF8DC Cornsilk
-    ftxui::Color muted           = ftxui::Color::RGB(204, 155, 31);   // #CC9B1F Dark Gold
-    ftxui::Color label           = ftxui::Color::RGB(218, 165, 32);   // #DAA520 Goldenrod
-    ftxui::Color ok              = ftxui::Color::RGB(76, 175, 80);    // #4caf50
-    ftxui::Color error           = ftxui::Color::RGB(239, 83, 80);    // #ef5350
-    ftxui::Color warn            = ftxui::Color::RGB(255, 167, 38);   // #ffa726
-    ftxui::Color prompt          = ftxui::Color::RGB(255, 248, 220);  // #FFF8DC (same as text)
-    ftxui::Color shell_dollar    = ftxui::Color::RGB(77, 171, 247);   // #4dabf7
+    // Surfaces
+    ftxui::Color bg          = ftxui::Color::RGB(13, 17, 23);    // #0D1117
+    ftxui::Color surface     = ftxui::Color::RGB(22, 27, 38);    // #161B26
+    ftxui::Color surface_alt = ftxui::Color::RGB(27, 34, 48);    // #1B2230
+    ftxui::Color border      = ftxui::Color::RGB(42, 51, 70);    // #2A3346
+    ftxui::Color border_soft = ftxui::Color::RGB(32, 40, 57);    // #202839
 
-    // Status bar specific
-    ftxui::Color status_good     = ftxui::Color::RGB(143, 188, 143);  // #8FBC8F
-    ftxui::Color status_warn     = ftxui::Color::RGB(255, 215, 0);    // #FFD700
-    ftxui::Color status_bad      = ftxui::Color::RGB(255, 140, 0);    // #FF8C00
-    ftxui::Color status_critical = ftxui::Color::RGB(255, 107, 107);  // #FF6B6B
-    ftxui::Color status_fg       = ftxui::Color::RGB(192, 192, 192);  // #C0C0C0
+    // Text
+    ftxui::Color text        = ftxui::Color::RGB(232, 234, 242); // #E8EAF2
+    ftxui::Color muted       = ftxui::Color::RGB(138, 148, 168); // #8A94A8
+    ftxui::Color dim         = ftxui::Color::RGB(91, 100, 116);  // #5B6474
+    ftxui::Color label       = ftxui::Color::RGB(166, 173, 232); // #A6ADE8 lavender
+
+    // Semantic accents
+    ftxui::Color primary     = ftxui::Color::RGB(139, 140, 248); // #8B8CF8 indigo
+    ftxui::Color accent      = ftxui::Color::RGB(76, 201, 240);  // #4CC9F0 cyan
+    ftxui::Color ok          = ftxui::Color::RGB(74, 222, 128);  // #4ADE80
+    ftxui::Color warn        = ftxui::Color::RGB(251, 191, 36);  // #FBBF24
+    ftxui::Color error       = ftxui::Color::RGB(248, 113, 113); // #F87171
+
+    // Message-specific tints
+    ftxui::Color user_bg     = ftxui::Color::RGB(40, 44, 68);    // indigo bubble
+    ftxui::Color user_fg     = ftxui::Color::RGB(207, 209, 238);
+    ftxui::Color tool_bg     = ftxui::Color::RGB(17, 21, 30);
+    ftxui::Color rail        = ftxui::Color::RGB(92, 96, 186);   // assistant left rail
+
+    // Prompts / input
+    ftxui::Color prompt      = ftxui::Color::RGB(139, 140, 248);
+    ftxui::Color shell       = ftxui::Color::RGB(76, 201, 240);
 };
 
 // ---------------------------------------------------------------------------
-// Brand identity — customizable product name, glyphs, messages
+// Brand identity — name, glyphs, copy
 // ---------------------------------------------------------------------------
 struct ThemeBrand {
     std::string name       = "Embedded Agent";
-    std::string icon       = "⚕";
-    std::string prompt     = "❯";         // Composer prompt glyph
-    std::string welcome    = "Type your message or /help for commands.";
-    std::string goodbye    = "Goodbye! ⚕";
-    std::string tool_prefix = "┊";        // Assistant/tool tree glyph
+    std::string icon       = "◈";
+    std::string prompt     = "❯";
+    std::string welcome    = "What would you like to do?";
+    std::string goodbye    = "Session ended — see you next time.";
+    std::string user_chip  = "you";
+    std::string agent_chip = "agent";
+    std::string tool_chip  = "tool";
+    std::string sys_chip   = "system";
+    std::string error_chip = "error";
 };
 
 // ---------------------------------------------------------------------------
-// Role visual mapping — glyph + prefix color + body color per role
+// Role visual mapping — chip label + accent rail + body color
 // ---------------------------------------------------------------------------
 struct RoleStyle {
-    char32_t glyph = ' ';          // Leading glyph character
-    ftxui::Color prefix_color;     // Glyph color
-    ftxui::Color body_color;       // Text color
-    bool bold = false;             // Bold glyph?
+    std::string label;           // small chip text
+    ftxui::Color chip_color;     // chip text color
+    ftxui::Color accent_color;   // left rail / glyph
+    ftxui::Color body_color;     // message text
 };
 
 // ---------------------------------------------------------------------------
@@ -58,22 +75,24 @@ struct Theme {
     ThemeColors color;
     ThemeBrand  brand;
 
-    // Role styles — matches Hermes ROLE mapping
     RoleStyle role_user() const {
-        return {U'❯', color.label, color.label, true};
+        return {brand.user_chip, color.primary, color.user_fg, color.user_fg};
     }
     RoleStyle role_assistant() const {
-        return {U'┊', color.border, color.text, false};
-    }
-    RoleStyle role_system() const {
-        return {U'·', color.muted, color.muted, false};
+        return {brand.agent_chip, color.accent, color.rail, color.text};
     }
     RoleStyle role_tool() const {
-        return {U'⚡', color.muted, color.muted, false};
+        return {brand.tool_chip, color.muted, color.muted, color.muted};
+    }
+    RoleStyle role_system() const {
+        return {brand.sys_chip, color.muted, color.muted, color.muted};
+    }
+    RoleStyle role_error() const {
+        return {brand.error_chip, color.error, color.error, color.error};
     }
 };
 
-// Returns the singleton default theme (Hermes dark)
+// Returns the singleton default theme (midnight)
 const Theme& default_theme();
 
 }  // namespace ea::tui

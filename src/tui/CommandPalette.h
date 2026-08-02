@@ -1,4 +1,4 @@
-// CommandPalette — slash command menu using FTXUI Menu + Modal
+// CommandPalette — searchable slash-command menu (Modal overlay)
 #pragma once
 #include <ftxui/component/component.hpp>
 #include <functional>
@@ -10,6 +10,7 @@ namespace ea::tui {
 struct CommandEntry {
     std::string name;         // e.g., "/quit"
     std::string description;  // e.g., "Exit the agent"
+    std::string hint;         // optional key hint, e.g. "⌃C"
 };
 
 class CommandPalette {
@@ -25,10 +26,12 @@ public:
 private:
     ftxui::Component component_;
     std::vector<CommandEntry> commands_;
+    std::string filter_;
     int selected_ = 0;
     bool showing_ = false;
     std::function<void(const std::string&)> on_command_;
 
+    std::vector<int> filtered_indices() const;
     ftxui::Element render();
     bool on_event(ftxui::Event event);
 };

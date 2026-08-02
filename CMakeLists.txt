@@ -111,6 +111,7 @@ add_subdirectory(src/app)
 add_subdirectory(src/tui)
 
 option(ENABLE_TESTS "Build tests" OFF)
+option(EA_BUILD_TUI_PREVIEW "Build the TUI offline preview tool (dev)" OFF)
 if(ENABLE_TESTS)
     FetchContent_Declare(catch2
         URL https://github.com/catchorg/Catch2/archive/v3.7.1.tar.gz

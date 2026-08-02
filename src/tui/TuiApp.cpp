@@ -3,6 +3,7 @@
 #include "log/Logger.h"
 #include "trace/Trace.h"
 #include "Theme.h"
+#include "FormatUtils.h"
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
@@ -18,10 +19,7 @@ namespace ea::tui {
 // Construction / destruction
 // ---------------------------------------------------------------------------
 
-TuiApp::TuiApp()
-    : approval_dialog_(approval_handler_)
-    , sidebar_(nullptr) {  // conv_store set later in run()
-}
+TuiApp::TuiApp() = default;
 
 TuiApp::~TuiApp() {
     if (agent_thread_.joinable()) {
@@ -60,29 +58,42 @@ ea::security::IApprovalHandler* TuiApp::approval_handler() {
     return &approval_handler_;
 }
 
+void TuiApp::set_model(const std::string& model) {
+    model_ = model;
+}
+
 // ---------------------------------------------------------------------------
 // Banner
 // ---------------------------------------------------------------------------
 
 void TuiApp::push_banner() {
+    auto& theme = default_theme();
     BannerInfo info;
-    info.model = "agent";  // Model name set separately via status_bar_.set_model()
+    info.model = model_;
     info.session_id = loop_ ? loop_->conversation_id() : "";
 
-    // Get cwd
     char cwd_buf[4096];
     if (getcwd(cwd_buf, sizeof(cwd_buf))) {
         info.cwd = cwd_buf;
     }
 
-    // Tool count
-    // (We don't have direct access to tool count here; leave as 0 for now)
-
-    // Render banner as text and push to ChatArea
-    auto banner_elem = render_banner(info, 95);
-    // For simplicity, push the welcome message as a system message
-    auto& theme = default_theme();
-    chat_area_.append_system(theme.brand.icon + " " + theme.brand.name + " — " + theme.brand.welcome);
+    std::ostringstream oss;
+    oss << theme.brand.icon << " " << theme.brand.name << "\n";
+    if (!info.model.empty()) {
+        oss << "  model      " << info.model << "\n";
+    }
+    if (!info.cwd.empty()) {
+        oss << "  workspace  " << info.cwd << "\n";
+    }
+    oss << "  session    " << (info.session_id.empty()
+                                   ? "(new)"
+                                   : shortId(info.session_id)) << "\n";
+    if (info.tool_count > 0) {
+        oss << "  tools      " << info.tool_count << " available\n";
+    }
+    oss << "\n" << theme.brand.welcome << "\n"
+        << "\n  Ctrl+P commands · Ctrl+S sessions · Ctrl+C interrupt/exit";
+    chat_area_.append_system(oss.str(), /*plain=*/true);
 }
 
 // ---------------------------------------------------------------------------
@@ -92,41 +103,58 @@ void TuiApp::push_banner() {
 void TuiApp::build_component_tree() {
     using namespace ftxui;
 
-    // Create spinner component for animation
-    spinner_component_ = make_spinner(spinner_state_);
+    // Spinner component drives RequestAnimationFrame() for animated frames.
+    spinner_component_ = make_spinner(status_bar_.spinner_state());
 
-    // FTXUI focus routing: Container::Vertical uses a selector (default 0)
-    // to pick the "active child" that receives events.  Only that child
-    // gets keyboard input.  ChatArea and StatusBar are pure Renderers
-    // (non-focusable) — if we put them in the Container, the selector
-    // would start at index 0 (ChatArea) and the InputBar at index 2
-    // would never receive keystrokes until the user presses Tab/Down.
-    //
-    // Solution: only put the InputBar in the Container.  ChatArea and
-    // StatusBar are rendered directly in the Renderer lambda without
-    // participating in the focus chain.
+    // Only the InputBar participates in the focus chain, so keystrokes land
+    // directly in the input field. Chat/status/top are pure renderers.
     auto container = Container::Vertical({
         input_bar_.component(),
     });
 
-    // Wrap the container with a Renderer to compose the full layout.
-    // The Renderer delegates events/focus to its child (the container),
-    // and only customises the visual output.
     auto main_layout = Renderer(container, [this] {
+        auto& theme = default_theme();
         return vbox({
-            chat_area_.component()->Render() | flex | frame,
-            separator(),
-            status_bar_.component()->Render(),
-            separator(),
-            input_bar_.component()->Render(),
-        });
+                   top_bar_.component()->Render()
+                       | size(HEIGHT, EQUAL, 1),
+                   separator() | color(theme.color.border_soft),
+                   chat_area_.component()->Render() | flex | yframe
+                       | vscroll_indicator,
+                   separator() | color(theme.color.border_soft),
+                   status_bar_.component()->Render()
+                       | size(HEIGHT, EQUAL, 1),
+                   separator() | color(theme.color.border_soft),
+                   input_bar_.component()->Render()
+                       | size(HEIGHT, EQUAL, 1),
+               })
+            | bgcolor(theme.color.bg);
     });
 
-    // Optionally wrap with ResizableSplitLeft for sidebar
-    // Always include the sidebar component; width 0 means hidden
-    root_component_ = ResizableSplitLeft(sidebar_.component(), main_layout, &sidebar_width_);
+    main_layout->Add(spinner_component_);
 
-    // Modal: approval dialog (Modal requires const bool*)
+    // Sidebar shown/hidden without stealing focus (see previous design notes).
+    auto with_sidebar_events = CatchEvent(main_layout,
+        [this](Event event) {
+            if (sidebar_.is_showing()) {
+                return sidebar_.component()->OnEvent(event);
+            }
+            return false;
+        });
+
+    root_component_ = Renderer(with_sidebar_events, [this, main_layout] {
+        using namespace ftxui;
+        if (sidebar_.is_showing() && sidebar_width_ > 0) {
+            return hbox({
+                sidebar_.component()->Render()
+                    | size(WIDTH, EQUAL, sidebar_width_),
+                separator() | color(default_theme().color.border_soft),
+                main_layout->Render() | xflex,
+            });
+        }
+        return main_layout->Render();
+    });
+
+    // Modal: approval dialog
     approval_showing_ = approval_handler_.is_showing();
     root_component_ = Modal(root_component_, approval_dialog_.component(),
                             &approval_showing_);
@@ -136,13 +164,12 @@ void TuiApp::build_component_tree() {
     root_component_ = Modal(root_component_, command_palette_.component(),
                             &palette_showing_);
 
-    // Global key bindings — also syncs Modal bool pointers on each event
+    // Global key bindings
     root_component_ = CatchEvent(root_component_, [this](Event event) {
-        // Sync Modal visibility state (read by Modal on each render)
         approval_showing_ = approval_handler_.is_showing();
         palette_showing_ = command_palette_.is_showing();
 
-        // Ctrl+P: toggle command palette
+        // Ctrl+P: command palette
         if (event == Event::CtrlP) {
             if (command_palette_.is_showing()) {
                 command_palette_.hide();
@@ -151,10 +178,15 @@ void TuiApp::build_component_tree() {
             }
             return true;
         }
-        // Ctrl+S: toggle session sidebar
+        // Ctrl+S: session sidebar
         if (event == Event::CtrlS) {
             sidebar_.toggle();
-            sidebar_width_ = sidebar_.is_showing() ? 25 : 0;
+            sidebar_width_ = sidebar_.is_showing() ? 32 : 0;
+            return true;
+        }
+        // Ctrl+L: clear chat
+        if (event == Event::CtrlL) {
+            chat_area_.clear();
             return true;
         }
         // Ctrl+C: interrupt agent or exit
@@ -163,7 +195,6 @@ void TuiApp::build_component_tree() {
                 if (loop_) loop_->interrupt();
                 return true;
             }
-            // Not busy — exit
             screen_.Exit();
             return true;
         }
@@ -188,7 +219,6 @@ void TuiApp::submit_input(const std::string& input) {
 void TuiApp::run_agent(const std::string& input) {
     if (!loop_) return;
 
-    // Join any previous agent thread before starting a new one
     if (agent_thread_.joinable()) {
         agent_thread_.join();
     }
@@ -198,11 +228,11 @@ void TuiApp::run_agent(const std::string& input) {
         screen_.Post([this] {
             input_bar_.set_busy(true);
             status_bar_.set_busy(true);
+            top_bar_.set_busy(true);
         });
 
         auto result = loop_->run(input);
 
-        // Update budget tracker session id after first run
         if (budget_tracker_ && !loop_->conversation_id().empty()) {
             budget_tracker_->set_session_id(loop_->conversation_id());
         }
@@ -211,7 +241,11 @@ void TuiApp::run_agent(const std::string& input) {
         screen_.Post([this] {
             input_bar_.set_busy(false);
             status_bar_.set_busy(false);
-            status_bar_.set_session_id(loop_->conversation_id());
+            top_bar_.set_busy(false);
+            std::string sid = loop_->conversation_id();
+            status_bar_.set_session_id(sid);
+            top_bar_.set_session_id(sid);
+            sidebar_.set_active(sid);
         });
 
         if (!result.ok()) {
@@ -238,9 +272,9 @@ void TuiApp::execute_command(const std::string& cmd) {
             auto su = budget_tracker_->session_usage();
             auto gu = budget_tracker_->global_usage();
             std::ostringstream oss;
-            oss << "Session: " << su.total_tokens() << " tokens ("
+            oss << "Session:  " << su.total_tokens() << " tokens ("
                 << su.input_tokens << " in / " << su.output_tokens << " out)\n"
-                << "Global:  " << gu.total_tokens() << " tokens ("
+                << "Global:   " << gu.total_tokens() << " tokens ("
                 << gu.input_tokens << " in / " << gu.output_tokens << " out)";
             chat_area_.append_assistant(oss.str());
         } else {
@@ -254,8 +288,8 @@ void TuiApp::execute_command(const std::string& cmd) {
             auto gc = budget_tracker_->global_cost();
             std::ostringstream oss;
             oss << std::fixed << std::setprecision(4);
-            oss << "Session: $" << sc.total() << "\n"
-                << "Global:  $" << gc.total();
+            oss << "Session:  $" << sc.total() << "\n"
+                << "Global:   $" << gc.total();
             chat_area_.append_assistant(oss.str());
         } else {
             chat_area_.append_assistant("Budget tracking not enabled");
@@ -285,7 +319,6 @@ void TuiApp::execute_command(const std::string& cmd) {
     if (cmd.substr(0, 8) == "/resume ") {
         if (conv_store_) {
             std::string cid = cmd.substr(8);
-            // Remove trailing whitespace
             while (!cid.empty() && (cid.back() == ' ' || cid.back() == '\n'))
                 cid.pop_back();
             auto msgs = conv_store_->load(cid);
@@ -293,8 +326,10 @@ void TuiApp::execute_command(const std::string& cmd) {
                 loop_->restore_conversation(cid, std::move(msgs.value()));
                 auto meta = conv_store_->get_meta(cid);
                 std::string title = meta.ok() ? meta.value().title : cid;
-                chat_area_.append_assistant("Resumed: " + title);
+                chat_area_.append_system("Resumed conversation: " + title);
                 status_bar_.set_session_id(cid);
+                top_bar_.set_session_id(cid);
+                sidebar_.set_active(cid);
             } else {
                 chat_area_.append_error("Conversation not found: " + cid);
             }
@@ -319,7 +354,6 @@ void TuiApp::execute_command(const std::string& cmd) {
             std::string filepath = cmd.substr(8);
             while (!filepath.empty() && (filepath.back() == ' ' || filepath.back() == '\n'))
                 filepath.pop_back();
-            // Read file content
             std::ifstream file(filepath);
             if (!file.is_open()) {
                 chat_area_.append_error("Cannot open file: " + filepath);
@@ -339,25 +373,24 @@ void TuiApp::execute_command(const std::string& cmd) {
     if (cmd == "/help") {
         chat_area_.append_assistant(
             "Commands:\n"
-            "  /quit, /exit  — Exit the agent\n"
-            "  /clear        — Clear chat history\n"
+            "  /help         — Show this help\n"
             "  /usage        — Show token usage\n"
             "  /cost         — Show cost\n"
             "  /history      — List conversations\n"
             "  /resume <id>  — Resume a conversation\n"
             "  /export       — Export current conversation as JSONL\n"
             "  /import <path>— Import conversation from JSONL file\n"
-            "  /help         — Show this help\n"
+            "  /clear        — Clear chat history\n"
+            "  /quit, /exit  — Exit the agent\n"
             "\n"
             "Keybindings:\n"
-            "  Ctrl+P  — Command palette\n"
+            "  Ctrl+P  — Command palette (type to filter)\n"
             "  Ctrl+S  — Session sidebar\n"
-            "  Ctrl+C  — Interrupt agent / exit"
-        );
+            "  Ctrl+L  — Clear chat\n"
+            "  Ctrl+C  — Interrupt agent / exit");
         return;
     }
 
-    // Unknown command
     chat_area_.append_error("Unknown command: " + cmd + " (type /help for commands)");
 }
 
@@ -372,12 +405,11 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
     budget_tracker_ = bt;
     conv_store_ = cs;
 
-    // Update sidebar with conversation store
     sidebar_ = SessionSidebar(conv_store_);
 
-    // Set up event listener — bridges AgentEvent to UI updates
+    // Event listener — bridges AgentEvent to UI updates
     event_listener_ = std::make_shared<TuiEventListener>(
-        chat_area_, status_bar_,
+        chat_area_, status_bar_, top_bar_,
         [this](std::function<void()> fn) { screen_.Post(std::move(fn)); });
     loop.add_listener(event_listener_);
 
@@ -386,17 +418,13 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
         loop.add_listener(trace_listener);
     }
 
-    // Set up input bar submit callback
+    // Wire callbacks
     input_bar_.set_on_submit([this](const std::string& input) {
         submit_input(input);
     });
-
-    // Set up command palette callback
     command_palette_.set_on_command([this](const std::string& cmd) {
         execute_command(cmd);
     });
-
-    // Set up sidebar resume callback
     sidebar_.set_on_resume([this](std::string cid) {
         if (conv_store_) {
             auto msgs = conv_store_->load(cid);
@@ -404,30 +432,26 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
                 loop_->restore_conversation(cid, std::move(msgs.value()));
                 auto meta = conv_store_->get_meta(cid);
                 std::string title = meta.ok() ? meta.value().title : cid;
-                chat_area_.append_assistant("Resumed: " + title);
+                chat_area_.append_system("Resumed conversation: " + title);
                 status_bar_.set_session_id(cid);
+                top_bar_.set_session_id(cid);
+                sidebar_.set_active(cid);
             } else {
                 chat_area_.append_error("Conversation not found: " + cid);
             }
         }
     });
 
-    // Set model name in status bar (from config, not AgentLoop)
-    status_bar_.set_model("agent");
-
-    // Set cwd in status bar
+    // Identity
+    status_bar_.set_model(model_);
+    top_bar_.set_model(model_);
     char cwd_buf[4096];
     if (getcwd(cwd_buf, sizeof(cwd_buf))) {
         status_bar_.set_cwd(cwd_buf);
     }
 
-    // Push startup banner
     push_banner();
-
-    // Build the component tree
     build_component_tree();
-
-    // Enter the FTXUI blocking event loop
     screen_.Loop(root_component_);
 
     // Cleanup: join agent thread if still running

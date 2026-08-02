@@ -3,6 +3,7 @@
 #include "tui/TuiEventListener.h"
 #include "tui/ChatArea.h"
 #include "tui/StatusBar.h"
+#include "tui/TopBar.h"
 #include <vector>
 #include <mutex>
 
@@ -11,10 +12,11 @@ using namespace ea::tui;
 TEST_CASE("TuiEventListener dispatches TurnStart", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
+    TopBar top_bar(status_bar.spinner_state());
     std::vector<std::function<void()>> posted;
     std::mutex mtx;
 
-    TuiEventListener listener(chat_area, status_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar,
         [&](std::function<void()> fn) {
             std::lock_guard<std::mutex> lock(mtx);
             posted.push_back(std::move(fn));
@@ -34,9 +36,10 @@ TEST_CASE("TuiEventListener dispatches TurnStart", "[tui]") {
 TEST_CASE("TuiEventListener dispatches TurnEnd", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
+    TopBar top_bar(status_bar.spinner_state());
     std::vector<std::function<void()>> posted;
 
-    TuiEventListener listener(chat_area, status_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar,
         [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
 
     ea::agent::AgentEvent event;
@@ -50,9 +53,10 @@ TEST_CASE("TuiEventListener dispatches TurnEnd", "[tui]") {
 TEST_CASE("TuiEventListener dispatches LLMResponse with usage", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
+    TopBar top_bar(status_bar.spinner_state());
     std::vector<std::function<void()>> posted;
 
-    TuiEventListener listener(chat_area, status_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar,
         [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
 
     ea::agent::AgentEvent event;
@@ -67,9 +71,10 @@ TEST_CASE("TuiEventListener dispatches LLMResponse with usage", "[tui]") {
 TEST_CASE("TuiEventListener dispatches ToolCallStart", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
+    TopBar top_bar(status_bar.spinner_state());
     std::vector<std::function<void()>> posted;
 
-    TuiEventListener listener(chat_area, status_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar,
         [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
 
     ea::agent::AgentEvent event;
@@ -89,9 +94,10 @@ TEST_CASE("TuiEventListener dispatches ToolCallStart", "[tui]") {
 TEST_CASE("TuiEventListener dispatches ToolCallEnd", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
+    TopBar top_bar(status_bar.spinner_state());
     std::vector<std::function<void()>> posted;
 
-    TuiEventListener listener(chat_area, status_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar,
         [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
 
     ea::agent::AgentEvent event;
@@ -111,9 +117,10 @@ TEST_CASE("TuiEventListener dispatches ToolCallEnd", "[tui]") {
 TEST_CASE("TuiEventListener dispatches ToolCallEnd with error", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
+    TopBar top_bar(status_bar.spinner_state());
     std::vector<std::function<void()>> posted;
 
-    TuiEventListener listener(chat_area, status_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar,
         [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
 
     ea::agent::AgentEvent event;
@@ -132,9 +139,10 @@ TEST_CASE("TuiEventListener dispatches ToolCallEnd with error", "[tui]") {
 TEST_CASE("TuiEventListener dispatches Error", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
+    TopBar top_bar(status_bar.spinner_state());
     std::vector<std::function<void()>> posted;
 
-    TuiEventListener listener(chat_area, status_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar,
         [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
 
     ea::agent::AgentEvent event;
@@ -152,9 +160,10 @@ TEST_CASE("TuiEventListener dispatches Error", "[tui]") {
 TEST_CASE("TuiEventListener dispatches Interrupt", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
+    TopBar top_bar(status_bar.spinner_state());
     std::vector<std::function<void()>> posted;
 
-    TuiEventListener listener(chat_area, status_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar,
         [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
 
     ea::agent::AgentEvent event;
@@ -171,9 +180,10 @@ TEST_CASE("TuiEventListener dispatches Interrupt", "[tui]") {
 TEST_CASE("TuiEventListener multiple events accumulate posted tasks", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
+    TopBar top_bar(status_bar.spinner_state());
     std::vector<std::function<void()>> posted;
 
-    TuiEventListener listener(chat_area, status_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar,
         [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
 
     ea::agent::AgentEvent event;
@@ -208,7 +218,8 @@ TEST_CASE("TuiEventListener multiple events accumulate posted tasks", "[tui]") {
 TEST_CASE("TuiEventListener is an IEventListener", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
-    TuiEventListener listener(chat_area, status_bar,
+    TopBar top_bar(status_bar.spinner_state());
+    TuiEventListener listener(chat_area, status_bar, top_bar,
         [](std::function<void()>) {});
 
     ea::agent::IEventListener* iface = &listener;

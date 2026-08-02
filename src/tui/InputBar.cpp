@@ -1,4 +1,4 @@
-// InputBar — bottom user input area with Hermes-style prompt and placeholder
+// InputBar — bottom user input area with mode-aware prompt and hints
 #include "InputBar.h"
 #include "Theme.h"
 #include <ftxui/dom/elements.hpp>
@@ -11,7 +11,6 @@ namespace ea::tui {
 
 namespace {
 
-// Placeholder list — matches Hermes PLACEHOLDERS
 const std::vector<std::string> PLACEHOLDERS = {
     "Ask me anything…",
     "Try \"explain this codebase\"",
@@ -23,7 +22,6 @@ const std::vector<std::string> PLACEHOLDERS = {
 };
 
 std::string pick_placeholder() {
-    // Simple random pick; seed once
     static bool seeded = false;
     if (!seeded) {
         std::srand(static_cast<unsigned>(std::time(nullptr)));
@@ -39,16 +37,9 @@ InputBar::InputBar()
     ftxui::InputOption option;
     option.placeholder = placeholder_;
     option.multiline = false;
-    option.on_enter = [this] {
-        // The on_enter fires when the Input component processes Return.
-        // We handle submission in on_event() after the Input has consumed
-        // the key, so we just mark it here.
-    };
 
     input_component_ = ftxui::Input(&input_, option);
 
-    // Wrap with CatchEvent to intercept Enter and arrow keys before the
-    // Input component sees them.
     auto with_events = input_component_
         | ftxui::CatchEvent(std::function<bool(ftxui::Event)>(
               [this](ftxui::Event event) {
@@ -66,9 +57,6 @@ ftxui::Component InputBar::component() {
 
 void InputBar::set_busy(bool busy) {
     busy_ = busy;
-    // Update placeholder based on busy state
-    // Note: FTXUI Input doesn't support dynamic placeholder changes easily,
-    // so we handle this in render() by showing a different prompt.
 }
 
 void InputBar::set_on_submit(std::function<void(const std::string&)> fn) {
@@ -85,40 +73,46 @@ ftxui::Element InputBar::render() {
     auto& theme = default_theme();
 
     if (busy_) {
-        // Busy: muted prompt + dim text
         return hbox({
-            text("❯ ") | color(theme.color.muted) | dim,
-            text("Ctrl+C to interrupt…") | color(theme.color.muted) | dim,
-        });
+            text("⠋ ") | color(theme.color.accent),
+            text("working…") | color(theme.color.muted) | dim,
+            text("   (Ctrl+C to interrupt)") | color(theme.color.dim) | dim,
+            filler(),
+        }) | bgcolor(theme.color.surface);
     }
 
-    // Normal: gold bold ❯ + input
-    // Shell mode: if input starts with '!', show blue prompt
+    // Prompt: '❯' (chat) or '$' (shell mode when input starts with '!')
     bool shell_mode = !input_.empty() && input_[0] == '!';
-
-    auto prompt_glyph = text("❯ ");
+    Element prompt = text("❯ ");
     if (shell_mode) {
-        prompt_glyph = prompt_glyph | color(theme.color.shell_dollar);
+        prompt = prompt | color(theme.color.shell) | bold;
     } else {
-        prompt_glyph = prompt_glyph | color(theme.color.label) | bold;
+        prompt = prompt | color(theme.color.prompt) | bold;
+    }
+
+    // Right-side hint only while empty, so it never fights the cursor
+    Element hint = text("Enter to send · /help");
+    if (!input_.empty()) {
+        hint = text("");
     }
 
     return hbox({
-        prompt_glyph,
-        input_component_->Render(),
-    });
+               prompt,
+               input_component_->Render() | xflex,
+               hint | color(theme.color.dim) | dim,
+               text("  "),
+           })
+        | bgcolor(theme.color.surface);
 }
 
 bool InputBar::on_event(ftxui::Event event) {
-    // When busy, suppress all keyboard input
     if (busy_) {
         return false;
     }
 
-    // Enter key: submit the current input
+    // Enter: submit
     if (event == ftxui::Event::Return) {
         if (!input_.empty() && on_submit_) {
-            // Add to history (avoid consecutive duplicates)
             if (history_.empty() || history_.back() != input_) {
                 history_.push_back(input_);
             }
@@ -126,10 +120,10 @@ bool InputBar::on_event(ftxui::Event event) {
             input_.clear();
             history_index_ = -1;
         }
-        return true;  // Consume the event — don't let Input add a newline
+        return true;
     }
 
-    // Up arrow: navigate backward through history when input is empty
+    // Up/Down: navigate history when the input is empty
     if (event == ftxui::Event::ArrowUp) {
         if (input_.empty() && !history_.empty()) {
             if (history_index_ < static_cast<int>(history_.size()) - 1) {
@@ -140,7 +134,6 @@ bool InputBar::on_event(ftxui::Event event) {
         }
     }
 
-    // Down arrow: navigate forward through history when input is empty
     if (event == ftxui::Event::ArrowDown) {
         if (input_.empty() && !history_.empty()) {
             if (history_index_ > 0) {

@@ -1,34 +1,69 @@
-// ApprovalDialog — implementation with Hermes color scheme
+// ApprovalDialog — modal overlay implementation
 #include "ApprovalDialog.h"
 #include "Theme.h"
+#include "FormatUtils.h"
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/component.hpp>
+#include <ftxui/component/component_options.hpp>
 #include <ftxui/component/event.hpp>
 
 namespace ea::tui {
+
+namespace {
+
+bool is_high_risk_tool(const std::string& name) {
+    static const char* high_risk_tools[] = {
+        "shell", "execute_code", "run_command", "delete_file", "terminal",
+    };
+    for (const auto& t : high_risk_tools) {
+        if (name.find(t) != std::string::npos) return true;
+    }
+    return false;
+}
+
+ftxui::Component make_action_button(const std::string& label,
+                                    ftxui::Color color,
+                                    std::function<void()> on_click) {
+    ftxui::ButtonOption option;
+    option.transform = [color](const ftxui::EntryState& s) {
+        auto elem = ftxui::text(s.label);
+        if (s.focused || s.active) {
+            elem = elem | ftxui::bold | ftxui::bgcolor(color)
+                       | ftxui::color(ftxui::Color::RGB(13, 17, 23));
+        } else {
+            elem = elem | ftxui::color(color);
+        }
+        return elem;
+    };
+    return ftxui::Button(label, std::move(on_click), option);
+}
+
+}  // anonymous namespace
 
 ApprovalDialog::ApprovalDialog(TuiApprovalHandler& handler)
     : handler_(handler) {}
 
 ftxui::Component ApprovalDialog::component() {
     if (!component_) {
-        auto btn_approve = ftxui::Button("[y] Approve", [this] {
-            handler_.set_decision(ea::security::ApprovalDecision::Approved);
-        }, ftxui::ButtonOption::Ascii());
+        auto& theme = default_theme();
 
-        auto btn_reject = ftxui::Button("[n] Reject", [this] {
-            handler_.set_decision(ea::security::ApprovalDecision::Rejected);
-        }, ftxui::ButtonOption::Ascii());
-
-        auto btn_abort = ftxui::Button("[a] Abort", [this] {
-            handler_.set_decision(ea::security::ApprovalDecision::Aborted);
-        }, ftxui::ButtonOption::Ascii());
+        auto btn_approve = make_action_button(
+            " [y] Approve ", theme.color.ok, [this] {
+                handler_.set_decision(ea::security::ApprovalDecision::Approved);
+            });
+        auto btn_reject = make_action_button(
+            " [n] Reject ", theme.color.error, [this] {
+                handler_.set_decision(ea::security::ApprovalDecision::Rejected);
+            });
+        auto btn_abort = make_action_button(
+            " [a] Abort ", theme.color.muted, [this] {
+                handler_.set_decision(ea::security::ApprovalDecision::Aborted);
+            });
 
         auto buttons = ftxui::Container::Horizontal({
             btn_approve, btn_reject, btn_abort
         });
 
-        // Wrap with CatchEvent to handle y/n/a keyboard shortcuts
         auto with_events = buttons
             | ftxui::CatchEvent(std::function<bool(ftxui::Event)>(
                   [this](ftxui::Event event) {
@@ -51,48 +86,61 @@ ftxui::Element ApprovalDialog::render() {
         return text("");
     }
 
+    bool dangerous = is_high_risk_tool(req->tool_name);
     std::string args_str = req->arguments.dump(2);
 
-    // All approval requests are potentially dangerous — use warn styling
-    // Check if the tool name suggests high risk (shell, execute, delete, etc.)
-    static const char* high_risk_tools[] = {
-        "shell", "execute_code", "run_command", "delete_file", "terminal"
-    };
-    bool dangerous = false;
-    for (const auto& t : high_risk_tools) {
-        if (req->tool_name.find(t) != std::string::npos) {
-            dangerous = true;
-            break;
-        }
+    Color risk_color = dangerous ? theme.color.warn : theme.color.accent;
+    std::string risk_label =
+        dangerous ? "  ⚠ High-risk tool call " : "  ⚡ Tool call needs approval ";
+
+    std::vector<Element> body;
+    body.push_back(hbox({
+        text(risk_label) | color(risk_color) | bold,
+        filler(),
+    }));
+    body.push_back(separator());
+
+    // Tool + description
+    body.push_back(hbox({
+        text("  tool  ") | color(theme.color.muted) | dim,
+        text(req->tool_name) | color(theme.color.text) | bold,
+    }));
+    if (!req->description.empty()) {
+        body.push_back(hbox({
+            text("  why   ") | color(theme.color.muted) | dim,
+            text(truncateFront(req->description, 52))
+                | color(theme.color.muted),
+        }));
     }
+    body.push_back(text(""));
 
-    auto content = vbox({
-        text(dangerous ? "  ⚠  Dangerous tool call" : "  ⚡  Tool call requires approval")
-            | bold | color(dangerous ? theme.color.warn : theme.color.accent),
-        text(""),
-        text("  Tool: " + req->tool_name) | bold | color(theme.color.text),
-        text("  Args: " + args_str) | color(theme.color.muted) | dim,
-        text("  Desc: " + req->description) | color(theme.color.muted) | dim,
-        separator(),
-        hbox({
-            component_->Render() | center,
-        }),
-    });
+    // Arguments in a code block
+    body.push_back(vbox({
+                       hbox({
+                           text("  arguments ") | color(theme.color.muted) | dim,
+                           filler(),
+                       }),
+                       text(args_str) | color(theme.color.text) | dim,
+                   })
+                   | borderRounded | color(theme.color.border_soft)
+                   | bgcolor(theme.color.tool_bg));
+    body.push_back(text(""));
 
-    // Dangerous: double border + warn color; normal: rounded border + border color
+    // Actions
+    body.push_back(hbox({
+        filler(),
+        component_->Render(),
+        filler(),
+    }));
+
+    Element card = vbox(body) | bgcolor(theme.color.surface);
     if (dangerous) {
-        return window(text(" Approval Required ") | color(theme.color.warn),
-                      clear_under(content))
-            | borderDouble | color(theme.color.warn) | center;
-    } else {
-        return window(text(" Approval Required ") | color(theme.color.border),
-                      clear_under(content))
-            | borderRounded | color(theme.color.border) | center;
+        return card | borderDouble | color(theme.color.warn) | center;
     }
+    return card | borderRounded | color(theme.color.border) | center;
 }
 
 bool ApprovalDialog::on_event(ftxui::Event event) {
-    // Handle y/n/a keyboard shortcuts
     if (event == ftxui::Event::Character('y') ||
         event == ftxui::Event::Character('Y')) {
         handler_.set_decision(ea::security::ApprovalDecision::Approved);

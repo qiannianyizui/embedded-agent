@@ -1,4 +1,4 @@
-// StatusBar — bottom status bar with Hermes-style horizontal rule format
+// StatusBar — compact activity/usage strip implementation
 #include "StatusBar.h"
 #include "Theme.h"
 #include "FormatUtils.h"
@@ -21,10 +21,10 @@ ftxui::Component StatusBar::component() {
     return component_;
 }
 
-void StatusBar::set_busy(bool busy) {
+void StatusBar::set_busy(bool busy, const std::string& activity) {
     busy_ = busy;
     if (busy) {
-        spinner_state_.start();
+        spinner_state_.start(activity);
     } else {
         spinner_state_.stop();
     }
@@ -58,85 +58,67 @@ void StatusBar::set_context_pct(int pct) {
 ftxui::Color StatusBar::context_color() const {
     auto& theme = default_theme();
     if (context_pct_ < 0) return theme.color.muted;
-    if (context_pct_ >= 95) return theme.color.status_critical;
-    if (context_pct_ > 80) return theme.color.status_bad;
-    if (context_pct_ >= 50) return theme.color.status_warn;
-    return theme.color.status_good;
+    if (context_pct_ >= 95) return theme.color.error;
+    if (context_pct_ > 80) return theme.color.warn;
+    if (context_pct_ >= 50) return theme.color.accent;
+    return theme.color.ok;
 }
 
 ftxui::Element StatusBar::render() {
     using namespace ftxui;
     auto& theme = default_theme();
 
-    // ── Leader ──
     std::vector<Element> segments;
-    segments.push_back(text("─ ") | color(theme.color.border));
 
-    // ── Indicator ──
+    auto sep = [&]() -> Element {
+        return text("  │  ") | color(theme.color.border);
+    };
+
+    // Left: status dot + state
     if (busy_) {
-        // Show spinner frame text
-        std::string frame = spinner_frame_text(spinner_state_);
-        segments.push_back(text(frame) | color(theme.color.accent));
+        segments.push_back(text(spinner_frame_text(spinner_state_))
+                               | color(theme.color.accent));
     } else {
-        // Idle: show session duration in status_good color
         auto now = std::chrono::steady_clock::now();
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             now - session_start_).count();
-        segments.push_back(
-            text("✓ " + fmtDuration(elapsed_ms)) | color(theme.color.status_good)
-        );
+        segments.push_back(text("● ready") | color(theme.color.ok) | bold);
+        segments.push_back(text("  " + fmtDuration(elapsed_ms))
+                               | color(theme.color.muted) | dim);
     }
 
-    // ── Separator helper ──
-    auto sep = [&]() -> Element {
-        return text(" │ ") | color(theme.color.muted);
-    };
-
-    // ── Model ──
-    if (!model_.empty()) {
-        segments.push_back(sep());
-        segments.push_back(text(shortModelLabel(model_)) | color(theme.color.status_fg));
-    }
-
-    // ── Tokens ──
+    // Tokens
     if (input_tokens_ > 0 || output_tokens_ > 0) {
         segments.push_back(sep());
-        std::string tok_str = fmtK(input_tokens_) + "/" + fmtK(output_tokens_);
-        segments.push_back(text(tok_str) | color(theme.color.status_fg));
+        segments.push_back(text("in " + fmtK(input_tokens_)) | color(theme.color.text));
+        segments.push_back(text("/out " + fmtK(output_tokens_))
+                               | color(theme.color.muted) | dim);
     }
 
-    // ── Context bar ──
+    // Context gauge
     if (context_pct_ >= 0) {
         segments.push_back(sep());
-        std::string bar = "[" + ctxBar(context_pct_) + "] "
+        std::string bar = "ctx[" + ctxBar(context_pct_, 6) + "] "
                         + std::to_string(context_pct_) + "%";
         segments.push_back(text(bar) | color(context_color()));
     }
 
-    // ── Cost ──
+    // Cost
     if (cost_usd_ > 0.0) {
         segments.push_back(sep());
         char buf[32];
         std::snprintf(buf, sizeof(buf), "$%.4f", cost_usd_);
-        segments.push_back(text(buf) | color(theme.color.status_fg));
+        segments.push_back(text(buf) | color(theme.color.warn));
     }
 
-    // ── Duration ──
-    segments.push_back(sep());
-    auto now = std::chrono::steady_clock::now();
-    auto session_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - session_start_).count();
-    segments.push_back(text(fmtDuration(session_ms)) | color(theme.color.status_fg));
+    segments.push_back(filler());
 
-    // ── Right side: cwd ──
-    if (!cwd_.empty()) {
-        segments.push_back(filler());
-        // ─ separator before cwd
-        segments.push_back(text(" ─ ") | color(theme.color.border));
-        segments.push_back(text(cwd_) | color(theme.color.label));
+    // Right: session id
+    if (!session_id_.empty()) {
+        segments.push_back(text("#" + shortId(session_id_)) | color(theme.color.muted) | dim);
     }
 
-    return hbox(std::move(segments)) | flex;
+    return hbox(std::move(segments)) | bgcolor(theme.color.surface);
 }
 
 }  // namespace ea::tui

@@ -1,4 +1,4 @@
-// Banner — startup brand display shown as the first system message
+// Banner — startup welcome card shown as the first system message
 #pragma once
 #include <ftxui/component/component.hpp>
 #include <string>
@@ -12,13 +12,10 @@ struct BannerInfo {
     int tool_count = 0;
 };
 
-// Create a Banner component that renders the brand identity.
-// Wide terminal (≥95 cols): multi-line ASCII art with gradient
-// Medium: compact rule ─── Embedded Agent ───
-// Narrow: just the name
-ftxui::Component make_banner(const BannerInfo& info);
-
-// Render the banner as an Element (for embedding in ChatArea)
+// Render the welcome card as an Element (for embedding in ChatArea).
 ftxui::Element render_banner(const BannerInfo& info, int width);
+
+// Create a Banner component that renders the welcome card.
+ftxui::Component make_banner(const BannerInfo& info);
 
 }  // namespace ea::tui

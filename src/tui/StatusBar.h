@@ -1,4 +1,4 @@
-// StatusBar — bottom status bar with Hermes-style horizontal rule format
+// StatusBar — compact activity/usage strip above the input bar
 #pragma once
 #include <ftxui/component/component.hpp>
 #include "Spinner.h"
@@ -12,7 +12,7 @@ public:
     StatusBar();
 
     ftxui::Component component();
-    void set_busy(bool busy);
+    void set_busy(bool busy, const std::string& activity = "");
     void update_usage(int input_tokens, int output_tokens);
     void update_cost(double cost_usd);
     void set_model(const std::string& model);
@@ -20,7 +20,7 @@ public:
     void set_cwd(const std::string& cwd);
     void set_context_pct(int pct);  // 0-100 context usage percentage
 
-    // Access the spinner state (for TuiApp to drive animation)
+    // Shared spinner state (drives animation for status bar and top bar)
     SpinnerState& spinner_state() { return spinner_state_; }
 
 private:
@@ -37,7 +37,7 @@ private:
     std::chrono::steady_clock::time_point session_start_{};
 
     ftxui::Element render();
-    ftxui::Color context_color() const;  // Color based on context percentage
+    ftxui::Color context_color() const;
 };
 
 }  // namespace ea::tui

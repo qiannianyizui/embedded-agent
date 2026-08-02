@@ -1,4 +1,4 @@
-// ApprovalDialog — FTXUI Modal component for dangerous tool call approval
+// ApprovalDialog — modal overlay for tool-call approval
 #pragma once
 #include "TuiApprovalHandler.h"
 #include <ftxui/component/component.hpp>
@@ -19,9 +19,6 @@ public:
 private:
     TuiApprovalHandler& handler_;
     ftxui::Component component_;
-    bool approved_clicked_ = false;
-    bool rejected_clicked_ = false;
-    bool aborted_clicked_ = false;
 
     bool on_event(ftxui::Event event);
 };

@@ -2,19 +2,23 @@
 #include "TuiEventListener.h"
 #include "ChatArea.h"
 #include "StatusBar.h"
+#include "TopBar.h"
 #include "FormatUtils.h"
 
 namespace ea::tui {
 
 TuiEventListener::TuiEventListener(ChatArea& chat_area, StatusBar& status_bar,
+                                   TopBar& top_bar,
                                    std::function<void(std::function<void()>)> post_fn)
-    : chat_area_(chat_area), status_bar_(status_bar), post_fn_(std::move(post_fn)) {}
+    : chat_area_(chat_area), status_bar_(status_bar), top_bar_(top_bar),
+      post_fn_(std::move(post_fn)) {}
 
 void TuiEventListener::on_event(const ea::agent::AgentEvent& event) {
     switch (event.type) {
         case ea::agent::AgentEventType::TurnStart:
             post_fn_([this] {
                 status_bar_.set_busy(true);
+                top_bar_.set_busy(true);
             });
             break;
 
@@ -31,6 +35,8 @@ void TuiEventListener::on_event(const ea::agent::AgentEvent& event) {
         case ea::agent::AgentEventType::ToolCallStart:
             post_fn_([this, name = event.tool_name, args = event.tool_arguments.dump()] {
                 chat_area_.append_tool_start(name, args);
+                status_bar_.set_busy(true, tool_verb(name));
+                top_bar_.set_busy(true, tool_verb(name));
             });
             break;
 
@@ -44,6 +50,7 @@ void TuiEventListener::on_event(const ea::agent::AgentEvent& event) {
         case ea::agent::AgentEventType::TurnEnd:
             post_fn_([this, turn_usage = event.turn_usage, turn_cost = event.turn_cost] {
                 status_bar_.set_busy(false);
+                top_bar_.set_busy(false);
                 // Update usage from turn_usage if available
                 if (turn_usage.input_tokens > 0 || turn_usage.output_tokens > 0) {
                     status_bar_.update_usage(
@@ -59,6 +66,8 @@ void TuiEventListener::on_event(const ea::agent::AgentEvent& event) {
         case ea::agent::AgentEventType::Error:
             post_fn_([this, msg = event.error_message] {
                 chat_area_.append_error(msg);
+                status_bar_.set_busy(false);
+                top_bar_.set_busy(false);
             });
             break;
 
@@ -66,6 +75,7 @@ void TuiEventListener::on_event(const ea::agent::AgentEvent& event) {
             post_fn_([this] {
                 chat_area_.append_error("Interrupted");
                 status_bar_.set_busy(false);
+                top_bar_.set_busy(false);
             });
             break;
     }

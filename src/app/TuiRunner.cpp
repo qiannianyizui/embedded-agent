@@ -11,6 +11,10 @@ namespace ea::app {
 int TuiRunner::run(AppContext& ctx) {
     ea::tui::TuiApp tui;
 
+    tui.set_model(ctx.config.provider.default_model.empty()
+                      ? ctx.config.agent.model
+                      : ctx.config.provider.default_model);
+
     auto tui_output = tui.output_fn();
     auto tui_stream = tui.stream_fn();
 

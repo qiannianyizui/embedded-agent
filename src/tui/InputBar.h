@@ -1,4 +1,4 @@
-// InputBar — bottom user input area with Hermes-style prompt and placeholder
+// InputBar — bottom user input area with mode-aware prompt and hints
 #pragma once
 #include <ftxui/component/component.hpp>
 #include <functional>
@@ -24,7 +24,7 @@ private:
     int history_index_ = -1;
     bool busy_ = false;
     std::function<void(const std::string&)> on_submit_;
-    std::string placeholder_;  // Randomly chosen placeholder
+    std::string placeholder_;
 
     ftxui::Element render();
     bool on_event(ftxui::Event event);

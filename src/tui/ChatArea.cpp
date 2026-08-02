@@ -1,4 +1,4 @@
-// ChatArea — main chat message display with Hermes-style role glyphs and gutter layout
+// ChatArea — chat transcript rendering with modern card layout
 #include "ChatArea.h"
 #include "Theme.h"
 #include "FormatUtils.h"
@@ -13,7 +13,7 @@ void ChatArea::append_user(const std::string& text) {
     ChatMessage msg;
     msg.role = ea::Role::User;
     msg.content = text;
-    msg.timestamp = std::chrono::steady_clock::now();
+    msg.timestamp = fmtClockNow();
     messages_.push_back(std::move(msg));
     has_new_ = true;
 }
@@ -22,7 +22,7 @@ void ChatArea::append_assistant(const std::string& text) {
     ChatMessage msg;
     msg.role = ea::Role::Assistant;
     msg.content = text;
-    msg.timestamp = std::chrono::steady_clock::now();
+    msg.timestamp = fmtClockNow();
     messages_.push_back(std::move(msg));
     has_new_ = true;
 }
@@ -41,18 +41,22 @@ void ChatArea::append_tool_start(const std::string& name, const std::string& arg
     msg.role = ea::Role::Tool;
     msg.tool_name = name;
     msg.content = args;
-    msg.timestamp = std::chrono::steady_clock::now();
+    msg.tool_status = ToolStatus::Running;
+    msg.timestamp = fmtClockNow();
     messages_.push_back(std::move(msg));
     has_new_ = true;
 }
 
-void ChatArea::append_tool_end(const std::string& name, const std::string& result, bool is_error) {
+void ChatArea::append_tool_end(const std::string& name, const std::string& result,
+                               bool is_error, int64_t elapsed_ms) {
     ChatMessage msg;
     msg.role = ea::Role::Tool;
     msg.tool_name = name;
     msg.content = result;
     msg.is_error = is_error;
-    msg.timestamp = std::chrono::steady_clock::now();
+    msg.tool_status = is_error ? ToolStatus::Error : ToolStatus::Ok;
+    msg.tool_elapsed_ms = elapsed_ms;
+    msg.timestamp = fmtClockNow();
     messages_.push_back(std::move(msg));
     has_new_ = true;
 }
@@ -62,25 +66,17 @@ void ChatArea::append_error(const std::string& msg) {
     message.role = ea::Role::System;
     message.content = msg;
     message.is_error = true;
-    message.timestamp = std::chrono::steady_clock::now();
+    message.timestamp = fmtClockNow();
     messages_.push_back(std::move(message));
     has_new_ = true;
 }
 
-void ChatArea::append_system(const std::string& text) {
+void ChatArea::append_system(const std::string& text, bool plain) {
     ChatMessage msg;
     msg.role = ea::Role::System;
     msg.content = text;
-    msg.timestamp = std::chrono::steady_clock::now();
-    messages_.push_back(std::move(msg));
-    has_new_ = true;
-}
-
-void ChatArea::append_banner(const std::string& text) {
-    ChatMessage msg;
-    msg.role = ea::Role::System;
-    msg.content = text;
-    msg.timestamp = std::chrono::steady_clock::now();
+    msg.plain = plain;
+    msg.timestamp = fmtClockNow();
     messages_.push_back(std::move(msg));
     has_new_ = true;
 }
@@ -90,7 +86,7 @@ void ChatArea::finish_message() {
         ChatMessage msg;
         msg.role = ea::Role::Assistant;
         msg.content = std::move(streaming_content_);
-        msg.timestamp = std::chrono::steady_clock::now();
+        msg.timestamp = fmtClockNow();
         messages_.push_back(std::move(msg));
         streaming_content_.clear();
         has_new_ = true;
@@ -101,8 +97,6 @@ void ChatArea::clear() {
     messages_.clear();
     streaming_content_.clear();
     has_new_ = false;
-    scroll_position_ = 0;
-    first_user_message_ = true;
 }
 
 ftxui::Component ChatArea::component() {
@@ -121,134 +115,195 @@ void ChatArea::clear_new_flag() {
 }
 
 // ---------------------------------------------------------------------------
-// Gutter width: user = prompt glyph width + 1 gap, others = 3
+// Render helpers
 // ---------------------------------------------------------------------------
-static int gutter_width(ea::Role role) {
-    if (role == ea::Role::User) {
-        // "❯ " = 2 display columns (❯ is wide char) + 1 gap = 3
-        return 3;
+
+namespace {
+
+// Small role chip: "● agent · 12:03"
+ftxui::Element render_chip(const std::string& label, const std::string& time,
+                           ftxui::Color col) {
+    using namespace ftxui;
+    std::vector<Element> parts;
+    parts.push_back(text("● ") | color(col));
+    parts.push_back(text(label) | color(col) | bold);
+    if (!time.empty()) {
+        parts.push_back(text("  " + time) | color(col) | dim);
     }
-    return 3;  // Fixed 3 for all non-user roles
+    return hbox(std::move(parts));
 }
 
-// ---------------------------------------------------------------------------
-// Render a single message with Hermes-style glyph + gutter + body
-// ---------------------------------------------------------------------------
-ftxui::Element ChatArea::render_message(const ChatMessage& msg, int /*width*/) {
+// First line of a (possibly multiline) string
+std::string first_line(const std::string& s) {
+    auto pos = s.find('\n');
+    if (pos == std::string::npos) return s;
+    return s.substr(0, pos);
+}
+
+// Truncate a preview to max_len characters
+std::string truncate(const std::string& s, size_t max_len) {
+    if (s.size() <= max_len) return s;
+    return s.substr(0, max_len) + "…";
+}
+
+}  // anonymous namespace
+
+// User message — right-aligned indigo bubble with chip above
+ftxui::Element ChatArea::render_user(const ChatMessage& msg) {
+    using namespace ftxui;
+    auto& theme = default_theme();
+    auto role = theme.role_user();
+
+    auto bubble = vbox({
+        text("  " + msg.content + "  ") | color(role.body_color),
+    }) | bgcolor(theme.color.user_bg)
+       | borderRounded | color(theme.color.rail);
+
+    return hbox({
+        filler(),
+        vbox({
+            hbox({ filler(), render_chip(role.label, msg.timestamp, role.chip_color) }),
+            bubble,
+        }),
+    });
+}
+
+// Assistant message — left rail + chip + body
+ftxui::Element ChatArea::render_assistant(const ChatMessage& msg) {
+    using namespace ftxui;
+    auto& theme = default_theme();
+    auto role = theme.role_assistant();
+
+    return hbox({
+        text("┃ ") | color(role.accent_color) | bold,
+        vbox({
+            render_chip(role.label, msg.timestamp, role.chip_color),
+            text(msg.content) | color(role.body_color),
+        }) | xflex,
+    });
+}
+
+// Tool message — bordered card with status icon and elapsed time
+ftxui::Element ChatArea::render_tool(const ChatMessage& msg) {
     using namespace ftxui;
     auto& theme = default_theme();
 
-    // Error messages — full width, error color
-    if (msg.is_error) {
+    Color status_color = theme.color.muted;
+    std::string status_glyph = "▶";
+    std::string status_label = "running";
+    if (msg.tool_status == ToolStatus::Ok) {
+        status_color = theme.color.ok;
+        status_glyph = "✓";
+        status_label = "done";
+    } else if (msg.tool_status == ToolStatus::Error) {
+        status_color = theme.color.error;
+        status_glyph = "✗";
+        status_label = "error";
+    }
+
+    std::string preview = truncate(first_line(msg.content), 96);
+    std::string elapsed =
+        msg.tool_elapsed_ms > 0 ? fmtElapsed(msg.tool_elapsed_ms) + " · " : "";
+
+    auto title_row = hbox({
+        text("  " + status_glyph + " " + msg.tool_name + " ") | color(status_color) | bold,
+        filler(),
+        text(" " + elapsed + status_label + " ") | color(status_color) | dim,
+        text("  "),
+    });
+    auto body_row = hbox({
+        text("  ") | color(theme.color.muted),
+        text(preview) | color(theme.color.muted),
+        filler(),
+        text("  "),
+    });
+
+    return vbox({title_row, body_row}) | bgcolor(theme.color.tool_bg)
+        | borderRounded | color(theme.color.border);
+}
+
+// System message — centered, muted; errors in red
+ftxui::Element ChatArea::render_system(const ChatMessage& msg) {
+    using namespace ftxui;
+    auto& theme = default_theme();
+
+    Color c = msg.is_error ? theme.color.error : theme.color.muted;
+    if (msg.plain) {
         return hbox({
-            text("  · ") | color(theme.color.muted),
-            text(msg.content) | color(theme.color.error),
+            text("  ") ,
+            text(msg.content) | color(c) | dim,
         });
     }
+    std::string glyph = msg.is_error ? "⚠" : "·";
 
+    return hbox({
+        text("  " + glyph + " ") | color(c),
+        text(msg.content) | color(c) | (msg.is_error ? ftxui::bold : ftxui::dim),
+    });
+}
+
+ftxui::Element ChatArea::render_message(const ChatMessage& msg) {
     switch (msg.role) {
-        case ea::Role::User: {
-            // User: ❯ (label, bold) + text (label)
-            // Add separator before 2nd+ user messages
-            std::vector<Element> parts;
-
-            if (!first_user_message_) {
-                // ─── separator (border color)
-                std::string sep;
-                for (int i = 0; i < 3; ++i) sep += "─";
-                parts.push_back(hbox({
-                    text("  ") | color(theme.color.border),
-                    text(sep) | color(theme.color.border),
-                }));
-            }
-            first_user_message_ = false;
-
-            parts.push_back(hbox({
-                text("❯ ") | color(theme.color.label) | bold,
-                text(msg.content) | color(theme.color.label),
-            }));
-
-            return vbox(std::move(parts));
-        }
-
-        case ea::Role::Assistant: {
-            if (msg.streaming) {
-                return hbox({
-                    text("┊ ") | color(theme.color.border),
-                    text(msg.content) | color(theme.color.text),
-                    spinner(0, spinner_index_) | color(theme.color.accent),
-                });
-            }
-            // Assistant: ┊ (border) + text (text color)
-            // Multi-line content: indent continuation lines
-            return hbox({
-                text("┊ ") | color(theme.color.border),
-                text(msg.content) | color(theme.color.text),
-            });
-        }
-
-        case ea::Role::Tool: {
-            // Tool: ⚡ (muted) + name, wrapped in rounded border
-            std::string preview = msg.tool_name;
-            if (!msg.content.empty()) {
-                // Truncate preview to reasonable length
-                const size_t max_preview = 60;
-                std::string content_preview = msg.content;
-                if (content_preview.size() > max_preview) {
-                    content_preview = content_preview.substr(0, max_preview) + "…";
-                }
-                preview = msg.tool_name + ": " + content_preview;
-            }
-
-            auto inner = hbox({
-                text("⚡ ") | color(theme.color.muted),
-                text(preview) | color(msg.is_error ? theme.color.error : theme.color.muted) | dim,
-            });
-
-            return inner | borderRounded | color(theme.color.muted);
-        }
-
+        case ea::Role::User:
+            return render_user(msg);
+        case ea::Role::Assistant:
+            if (msg.is_error) return render_system(msg);
+            return render_assistant(msg);
+        case ea::Role::Tool:
+            return render_tool(msg);
         case ea::Role::System:
-        default: {
-            // System: · (muted) + text (muted)
-            return hbox({
-                text("· ") | color(theme.color.muted),
-                text(msg.content) | color(theme.color.muted) | dim,
-            });
-        }
+        default:
+            return render_system(msg);
     }
+}
+
+// Streaming pseudo-message with animated braille spinner
+ftxui::Element ChatArea::render_streaming() {
+    using namespace ftxui;
+    auto& theme = default_theme();
+    auto role = theme.role_assistant();
+
+    static const std::vector<std::string> frames = {
+        "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏",
+    };
+    std::string frame = frames[spinner_index_ % frames.size()];
+
+    return hbox({
+        text("┃ ") | color(role.accent_color) | bold,
+        vbox({
+            render_chip(role.label, "", role.chip_color),
+            hbox({
+                text(frame + " ") | color(theme.color.accent),
+                text(streaming_content_) | color(role.body_color),
+            }),
+        }) | xflex,
+    });
 }
 
 ftxui::Element ChatArea::render() {
     using namespace ftxui;
-    auto& theme = default_theme();
 
     std::vector<Element> elements;
-
-    // Reset first_user_message_ tracking for this render pass
-    first_user_message_ = true;
-
     for (const auto& msg : messages_) {
-        elements.push_back(render_message(msg, 0));
+        elements.push_back(render_message(msg));
     }
-
-    // If there is active streaming content, render it with a spinner
     if (!streaming_content_.empty()) {
-        elements.push_back(hbox({
-            text("┊ ") | color(theme.color.border),
-            text(streaming_content_) | color(theme.color.text),
-            spinner(0, spinner_index_) | color(theme.color.accent),
-        }));
+        elements.push_back(render_streaming());
     }
 
-    // Advance spinner index for animation
     spinner_index_++;
 
     if (elements.empty()) {
         elements.push_back(text("") | flex);
     }
 
-    return vbox(std::move(elements)) | flex | frame;
+    // Left/right page margins for a calmer reading column
+    return hbox({
+               text("  "),
+               vbox(std::move(elements)) | xflex,
+               text("  "),
+           })
+        | focusPositionRelative(0.f, 1.f);
 }
 
 }  // namespace ea::tui

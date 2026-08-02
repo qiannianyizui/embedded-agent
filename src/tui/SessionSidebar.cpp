@@ -1,8 +1,10 @@
-// SessionSidebar — collapsible sidebar with Hermes color scheme
+// SessionSidebar — collapsible session list with active highlight
 #include "SessionSidebar.h"
 #include "Theme.h"
+#include "FormatUtils.h"
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/event.hpp>
+#include <algorithm>
 
 namespace ea::tui {
 
@@ -41,6 +43,10 @@ void SessionSidebar::refresh() {
     }
 }
 
+void SessionSidebar::set_active(const std::string& id) {
+    active_id_ = id;
+}
+
 void SessionSidebar::set_on_resume(std::function<void(std::string)> fn) {
     on_resume_ = std::move(fn);
 }
@@ -53,53 +59,90 @@ ftxui::Element SessionSidebar::render() {
         return text("") | size(WIDTH, EQUAL, 0);
     }
 
-    std::vector<Element> entries;
+    std::vector<Element> rows;
+
+    // Header with session count
+    rows.push_back(hbox({
+        text("  SESSIONS") | color(theme.color.muted) | bold,
+        filler(),
+        text(" " + std::to_string(sessions_.size()) + " ") | color(theme.color.dim) | dim,
+        text("  "),
+    }));
+    rows.push_back(separator());
+
     if (sessions_.empty()) {
-        entries.push_back(text("  (no sessions)") | color(theme.color.muted) | dim);
+        rows.push_back(text("  No saved sessions") | color(theme.color.muted) | dim);
     } else {
         for (int i = 0; i < static_cast<int>(sessions_.size()); ++i) {
             const auto& session = sessions_[i];
-            std::string label = session.title;
-            if (label.empty()) {
-                label = session.id;
+            bool selected = (i == selected_);
+            bool active = (session.id == active_id_);
+
+            std::string title = session.title.empty() ? session.id : session.title;
+            if (title.size() > 26) title = title.substr(0, 24) + "…";
+
+            std::string meta = std::to_string(session.message_count) + " msgs";
+            if (!session.updated_at.empty()) {
+                // ISO timestamp "2026-08-03T00:12:34Z" → "08-03 00:12"
+                std::string t = session.updated_at;
+                std::string compact = t;
+                if (t.size() >= 16) {
+                    compact = t.substr(5, 2) + "-" + t.substr(8, 2)
+                            + " " + t.substr(11, 5);
+                }
+                meta += " · " + compact;
             }
-            // Truncate long titles
-            if (label.size() > 30) {
-                label = label.substr(0, 27) + "…";
+
+            Element left_rail = text("  ");
+            Element title_elem = text(title) | color(theme.color.text);
+            Element active_mark = text("   ");
+
+            if (selected) {
+                left_rail = text("▍") | color(theme.color.primary);
+                title_elem = text(title) | color(theme.color.primary) | bold;
+                active_mark = active
+                    ? text(" ●") | color(theme.color.ok)
+                    : text("   ");
+            } else if (active) {
+                left_rail = text("▍") | color(theme.color.ok);
+                active_mark = text(" ●") | color(theme.color.ok);
             }
-            if (i == selected_) {
-                // Selected: ▸ prefix + inverted + bold + accent
-                entries.push_back(hbox({
-                    text("▸ ") | color(theme.color.accent) | bold,
-                    text(label) | inverted | bold | color(theme.color.accent),
-                }));
-            } else {
-                entries.push_back(hbox({
-                    text("  "),
-                    text(label) | color(theme.color.text),
-                }));
+
+            Element row_inner = vbox({
+                hbox({ title_elem, filler(), active_mark }),
+                hbox({
+                    text(meta) | color(theme.color.dim) | dim,
+                    filler(),
+                }),
+            }) | xflex;
+            if (selected) {
+                row_inner = row_inner | bgcolor(theme.color.surface_alt);
             }
+            rows.push_back(hbox({
+                left_rail,
+                row_inner,
+            }));
         }
     }
 
-    return vbox({
-        text("  Sessions") | bold | color(theme.color.primary),
-        separator(),
-        vbox(std::move(entries)) | flex,
-    }) | borderRounded | color(theme.color.border) | size(WIDTH, LESS_THAN, 35);
+    rows.push_back(separator());
+    rows.push_back(text("  ↑/↓ select  ↵ resume  esc close")
+                       | color(theme.color.dim) | dim);
+
+    return vbox(rows)
+        | borderRounded | color(theme.color.border)
+        | bgcolor(theme.color.surface);
 }
 
 bool SessionSidebar::on_event(ftxui::Event event) {
     if (!showing_) {
-        // Ctrl+S toggles sidebar even when hidden
-        if (event.input() == std::string(1, 19)) {  // ASCII 19 = Ctrl+S
+        if (event.input() == std::string(1, 19)) {  // Ctrl+S
             toggle();
             return true;
         }
         return false;
     }
 
-    // Ctrl+S toggles sidebar when visible too
     if (event.input() == std::string(1, 19)) {
         toggle();
         return true;
@@ -111,16 +154,12 @@ bool SessionSidebar::on_event(ftxui::Event event) {
     }
 
     if (event == ftxui::Event::ArrowUp) {
-        if (selected_ > 0) {
-            --selected_;
-        }
+        if (selected_ > 0) --selected_;
         return true;
     }
 
     if (event == ftxui::Event::ArrowDown) {
-        if (selected_ < static_cast<int>(sessions_.size()) - 1) {
-            ++selected_;
-        }
+        if (selected_ < static_cast<int>(sessions_.size()) - 1) ++selected_;
         return true;
     }
 
