@@ -138,11 +138,6 @@ TEST_CASE("Property: Error::security produces SecurityBlocked", "[property][grey
     REQUIRE(e.code == ErrorCode::SecurityBlocked);
 }
 
-TEST_CASE("Property: Error::plugin produces PluginError", "[property][greybox]") {
-    auto e = Error::plugin("test");
-    REQUIRE(e.code == ErrorCode::PluginError);
-}
-
 // ── 6. JSON parse never crashes on arbitrary input ─────────────────────────────
 
 TEST_CASE("Property: JSON parse never crashes on arbitrary input", "[property][greybox]") {

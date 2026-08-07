@@ -45,7 +45,6 @@ TEST_CASE("Compat: feature flags are consistent", "[compat][system]") {
     REQUIRE_FALSE(EA_TEST_STREAMING_ENABLED);
     REQUIRE_FALSE(EA_TEST_TOOLS_WEB_ENABLED);
     REQUIRE_FALSE(EA_TEST_MCP_ENABLED);
-    REQUIRE_FALSE(EA_TEST_PLUGINS_ENABLED);
 #endif
 
     // If Server mode, router and fallback must be on

@@ -1,6 +1,5 @@
 // AppContext — holds all runtime objects for the application
 #pragma once
-#include "app/IRunner.h"
 #include "config/Config.h"
 #include "provider/IProvider.h"
 #include "memory/HolographicMemory.h"
@@ -14,6 +13,7 @@
 #include "budget/SqliteUsageStore.h"
 #include "conversation/SqliteConversationStore.h"
 #include "mcp/McpClient.h"
+#include "skill/Skill.h"
 #include "net/HttpClient.h"
 #include <memory>
 #include <vector>
@@ -22,7 +22,6 @@
 namespace ea::app {
 
 struct AppContext {
-    RunMode run_mode = RunMode::Cli;  // Runtime mode selection
     config::AppConfig config;
 
     // Provider layer
@@ -47,6 +46,10 @@ struct AppContext {
     // Tools
     std::unique_ptr<ea::tool::ToolRegistry> registry;
     ea::net::HttpClient http_client;
+
+    // Skills
+    std::unique_ptr<ea::skill::SkillManager> skills;
+    std::string skills_index;   // Rendered <available_skills> block for system prompt
 
     // MCP
     std::vector<std::shared_ptr<ea::mcp::McpClient>> mcp_clients;

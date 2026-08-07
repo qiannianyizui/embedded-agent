@@ -55,3 +55,11 @@ allowed_commands = [
 [security.approval]
 mode = "auto"
 auto_approve_dangerous = false
+
+[skills]
+enable = true
+dirs = []
+disabled = []
+template_vars = true
+inline_shell = false
+inline_shell_timeout = 10

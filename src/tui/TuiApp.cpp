@@ -370,6 +370,66 @@ void TuiApp::execute_command(const std::string& cmd) {
         }
         return;
     }
+    if (cmd == "/skills" || cmd.substr(0, 8) == "/skills ") {
+        if (!skills_) {
+            chat_area_.append_error("Skills system not available");
+            return;
+        }
+        std::string query = cmd.size() > 8 ? cmd.substr(8) : "";
+        while (!query.empty() && (query.front() == ' ' || query.front() == '\n')) {
+            query.erase(query.begin());
+        }
+        auto list = skills_->list();
+        if (!list.ok()) {
+            chat_area_.append_error(list.error().message);
+            return;
+        }
+        std::ostringstream oss;
+        std::string last_category;
+        int count = 0;
+        for (const auto& info : list.value()) {
+            if (!query.empty() && info.name.find(query) == std::string::npos &&
+                info.description.find(query) == std::string::npos) {
+                continue;
+            }
+            if (info.category != last_category) {
+                last_category = info.category;
+                oss << "  " << info.category << ":\n";
+            }
+            oss << "    - " << info.name;
+            if (!info.description.empty()) oss << ": " << info.description;
+            oss << "\n";
+            ++count;
+        }
+        if (count == 0) {
+            chat_area_.append_assistant("No skills found" +
+                                        (query.empty() ? "" : " for: " + query));
+        } else {
+            chat_area_.append_assistant(
+                "Available skills:\n" + oss.str() +
+                "\nLoad one with /skill <name> or let the agent use skill_view.");
+        }
+        return;
+    }
+    if (cmd.substr(0, 7) == "/skill ") {
+        if (!skills_) {
+            chat_area_.append_error("Skills system not available");
+            return;
+        }
+        std::string name = cmd.substr(7);
+        while (!name.empty() && (name.back() == ' ' || name.back() == '\n')) {
+            name.pop_back();
+        }
+        auto content = skills_->view(name);
+        if (!content.ok()) {
+            chat_area_.append_error(content.error().message);
+            return;
+        }
+        chat_area_.append_user(cmd);
+        run_agent("[Skill loaded: " + name + "]\n\n" + content.value() +
+                  "\n\nFollow the skill instructions above.");
+        return;
+    }
     if (cmd == "/help") {
         chat_area_.append_assistant(
             "Commands:\n"
@@ -380,6 +440,8 @@ void TuiApp::execute_command(const std::string& cmd) {
             "  /resume <id>  — Resume a conversation\n"
             "  /export       — Export current conversation as JSONL\n"
             "  /import <path>— Import conversation from JSONL file\n"
+            "  /skills       — List available skills\n"
+            "  /skill <name> — Load a skill and follow its instructions\n"
             "  /clear        — Clear chat history\n"
             "  /quit, /exit  — Exit the agent\n"
             "\n"

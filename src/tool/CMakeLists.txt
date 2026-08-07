@@ -9,7 +9,8 @@ add_library(ea-tool OBJECT
     FactStoreTool.cpp
     FactFeedbackTool.cpp
     ToolOutputConfig.cpp
+    SkillTools.cpp
 )
 ea_target_compile_options(ea-tool)
 target_include_directories(ea-tool PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(ea-tool PUBLIC ea-base ea-io ea-net ea-log)
+target_link_libraries(ea-tool PUBLIC ea-base ea-io ea-net ea-log ea-skill)

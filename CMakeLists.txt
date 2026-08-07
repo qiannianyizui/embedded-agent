@@ -104,8 +104,7 @@ add_subdirectory(src/tool)
 add_subdirectory(src/agent)
 add_subdirectory(src/trace)
 add_subdirectory(src/mcp)
-add_subdirectory(src/plugin)
-add_subdirectory(src/server)
+add_subdirectory(src/skill)
 add_subdirectory(src/app)
 
 add_subdirectory(src/tui)
@@ -166,8 +165,7 @@ add_library(embedded-agent-core STATIC
     $<TARGET_OBJECTS:ea-platform>
     $<TARGET_OBJECTS:ea-config>
     $<TARGET_OBJECTS:ea-security>
-    $<TARGET_OBJECTS:ea-server>
-    $<TARGET_OBJECTS:ea-plugin>
+    $<TARGET_OBJECTS:ea-skill>
     $<TARGET_OBJECTS:ea-app>
     $<TARGET_OBJECTS:ea-hrr>
 )
@@ -197,5 +195,3 @@ add_executable(embedded-agent src/main.cpp)
 ea_target_compile_options(embedded-agent)
 target_link_libraries(embedded-agent PRIVATE
     embedded-agent-core CLI11::CLI11 ea-tui ftxui::component)
-# Export symbols for dlopen-based plugin loading
-set_target_properties(embedded-agent PROPERTIES ENABLE_EXPORTS ON)

@@ -1,7 +1,5 @@
 # tests/blackbox/CMakeLists.txt
 add_executable(ea-blackbox-tests
-    test_cli_e2e.cpp
-    test_http_api_e2e.cpp
     test_protocol_compliance.cpp
     test_provider_contract.cpp
     test_tool_contract.cpp
@@ -13,13 +11,11 @@ add_executable(ea-blackbox-tests
 target_link_libraries(ea-blackbox-tests PRIVATE
     ea-test-common
     ea-base ea-io ea-net ea-log ea-config ea-hrr ea-memory ea-conversation ea-budget
-    ea-provider ea-tool ea-agent ea-trace ea-mcp ea-platform ea-security
-    ea-server ea-plugin
+    ea-provider ea-tool ea-skill ea-agent ea-trace ea-mcp ea-platform ea-security
     nlohmann_json::nlohmann_json
     httplib::httplib
     PkgConfig::UUID PkgConfig::ZSTD
     Catch2::Catch2WithMain
-    ${CMAKE_DL_LIBS}
 )
 target_include_directories(ea-blackbox-tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src

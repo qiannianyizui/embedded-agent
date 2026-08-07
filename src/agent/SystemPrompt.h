@@ -10,6 +10,7 @@ struct PromptContext {
     std::string soul;
     std::string tool_guidance;
     std::string platform_info;
+    std::string skills_index;
 
     // Context layer: project context files (changes between projects)
     std::string context_files;

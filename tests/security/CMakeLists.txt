@@ -4,7 +4,6 @@
 add_executable(ea-security-tests
     test_policy_boundary.cpp
     test_tool_isolation.cpp
-    test_plugin_sandbox.cpp
     test_injection.cpp
     test_fuzz_json.cpp
     test_fuzz_config.cpp
@@ -13,20 +12,17 @@ add_executable(ea-security-tests
 target_link_libraries(ea-security-tests PRIVATE
     ea-test-common
     ea-base ea-io ea-net ea-log ea-config ea-hrr ea-memory ea-conversation ea-budget
-    ea-provider ea-tool ea-agent ea-trace ea-mcp ea-platform ea-security
-    ea-server ea-plugin
+    ea-provider ea-tool ea-skill ea-agent ea-trace ea-mcp ea-platform ea-security
     nlohmann_json::nlohmann_json
     httplib::httplib
     PkgConfig::UUID PkgConfig::ZSTD
     Catch2::Catch2WithMain
-    ${CMAKE_DL_LIBS}
 )
 target_include_directories(ea-security-tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_BINARY_DIR}/include
 )
 target_compile_definitions(ea-security-tests PRIVATE
-    EA_MOCK_PLUGIN_PATH="${CMAKE_BINARY_DIR}/tests/plugins/mock_plugin/ea_mock_plugin.so"
     CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     CMAKE_BINARY_DIR="${CMAKE_BINARY_DIR}"
 )

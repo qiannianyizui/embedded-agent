@@ -1,9 +1,0 @@
-add_library(ea-plugin OBJECT
-    PluginModule.cpp
-    PluginManifest.cpp
-    PluginLoader.cpp
-    PluginHost.cpp
-)
-ea_target_compile_options(ea-plugin)
-target_include_directories(ea-plugin PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(ea-plugin PUBLIC ea-base ea-io ea-log toml11::toml11 ${CMAKE_DL_LIBS})

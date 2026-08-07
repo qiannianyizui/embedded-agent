@@ -14,6 +14,7 @@ int TuiRunner::run(AppContext& ctx) {
     tui.set_model(ctx.config.provider.default_model.empty()
                       ? ctx.config.agent.model
                       : ctx.config.provider.default_model);
+    tui.set_skills(ctx.skills.get());
 
     auto tui_output = tui.output_fn();
     auto tui_stream = tui.stream_fn();
@@ -26,7 +27,8 @@ int TuiRunner::run(AppContext& ctx) {
             ctx.config.provider.default_model.empty()
                 ? ctx.config.agent.model : ctx.config.provider.default_model,
             ctx.soul,
-            ctx.context_files
+            ctx.context_files,
+            ctx.skills_index
         },
         tui_output,
         tui_stream,

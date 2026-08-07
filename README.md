@@ -1,10 +1,10 @@
 # embedded-agent
 
-**C++17 轻量级 AI Agent 框架** — 面向 Linux 与嵌入式场景，支持 CLI / Embedded / Server 三种运行模式。
+**C++17 轻量级 AI Agent 框架** — 面向 Linux 与嵌入式场景，当前以 TUI 交互为主，核心以静态库形式供嵌入式集成。
 
 ## 特性
 
-- **分层微内核架构** — 核心接口 + 可插拔策略/装饰器，编译时模式切换
+- **分层微内核架构** — 核心接口 + 可插拔策略/装饰器，运行时 TUI 模式
 - **多 Provider 支持** — OpenAI、Anthropic、Ollama，内置重试/降级/路由
 - **可扩展工具系统** — Toolset 分组 + 条件可用性 + 安全元数据
 - **持久化记忆** — SQLite FTS5 全文检索 + InMemory/Null 后端 + Agent 隔离
@@ -48,13 +48,11 @@ git clone https://gitee.com/QianNianYiZui_admin_admin/embedded-agent.git
 cd embedded-agent
 mkdir build && cd build
 
-# 默认 CLI 模式
+# 默认 TUI 模式
 cmake ..
 cmake --build . -j$(nproc)
 
-# 嵌入式模式（无 CLI 交互）
-cmake .. -DEA_MODE=embedded
-cmake --build . -j$(nproc)
+# 核心逻辑同时编译为静态库 embedded-agent-core，可直接链接进其他应用
 ```
 
 ### 运行
@@ -108,6 +106,7 @@ Provider 类型：`openai` / `anthropic` / `ollama`
 | **agent** | `src/agent/` | AgentLoop, TurnStep 链, LoopDetector, SystemPrompt |
 | **provider** | `src/provider/` | OpenAI/Anthropic/Ollama 实现, ReliableProvider, RouterProvider |
 | **tool** | `src/tool/` | ToolRegistry, Toolset, Shell/File/Search/Web/Memory 工具 |
+| **skill** | `src/skill/` | SKILL.md 发现/解析，skills_list / skill_view 工具 |
 | **memory** | `src/memory/` | SqliteMemory, InMemoryBackend, ScopedMemory, MemoryManager |
 | **security** | `src/security/` | SecurityPolicy（工作区限制、命令白名单） |
 | **config** | `src/config/` | JSON 配置加载 |
@@ -133,10 +132,26 @@ Provider 类型：`openai` / `anthropic` / `ollama`
 | SearchTool | 搜索文件内容 | ❌ | ❌ |
 | WebTool | HTTP 请求 | ❌ | ❌ |
 | MemoryTool | 记忆存取 | ✅ | ❌ |
+| SkillsListTool | 按分类/关键词列出技能 | ❌ | ❌ |
+| SkillViewTool | 加载技能完整内容 | ❌ | ❌ |
+| SkillManageTool | 创建/更新/删除/启用/禁用技能 | ✅ | ✅ |
 
 - **Toolset** 分组 + `CheckFn` 条件可用性
 - **ToolOutputConfig** 全局 + 单工具输出截断
 - **ToolRegistry** 激活/停用 Toolset，向后兼容 `register_tool()`
+
+## Skills 系统
+
+技能采用 Hermes 风格的组织方式：每个技能是 `skills/<分类>/<技能名>/SKILL.md`，文件头用 YAML frontmatter 声明 `name`、`description`、`version`、`platforms`、`tags`。
+
+- 发现目录：`~/.embedded-agent/skills`、当前目录 `./skills`、`[skills].dirs` 额外目录
+- 系统提示词只注入 `<available_skills>` 索引，模型需要时通过 `skill_view` 按需加载完整内容
+- `skill_manage` 支持 `create` / `update` / `delete` / `disable` / `enable`
+- TUI 支持 `/skills`（列出技能）和 `/skill <name>`（加载技能）
+- 技能索引按文件 mtime/size 缓存，外部修改自动失效
+- 模板预处理：`${EA_SKILL_DIR}` / `${EA_SKILL_NAME}` 默认替换；`!`cmd`` 内联 shell 需开启 `[skills] inline_shell = true`
+- 配置：`[skills] enable = true`，`disabled = ["技能名"]`
+- 环境变量：`EA_SKILLS_DIR` 可追加技能根目录
 
 ## 记忆系统
 
@@ -191,36 +206,23 @@ cmake --build . -j$(nproc)
 | nlohmann/json | JSON 处理 | 源码内附 |
 | spdlog | 日志 | 源码内附 |
 | CLI11 | 命令行解析 | 源码内附 |
-| cpp-httplib | HTTP 服务 | 源码内附 |
+| cpp-httplib | HTTP 客户端（网络层） | 源码内附 |
 | mbedtls | TLS | 源码内附 |
 | SQLite3 | 嵌入式数据库 | 系统依赖 |
 | Catch2 | 测试框架 | CMake FetchContent |
 
-## 编译时模式
+## 运行模式
 
-通过 CMake 选项切换运行模式：
-
-```bash
-# CLI 模式（默认）— 交互式命令行
-cmake .. -DEA_MODE=cli
-
-# 嵌入式模式 — 作为库嵌入其他应用
-cmake .. -DEA_MODE=embedded
-
-# 服务器模式 — HTTP API 服务
-cmake .. -DEA_MODE=server
-```
-
-可选功能开关：
+当前只保留 TUI 模式（FTXUI 界面）：
 
 ```bash
--DEA_ENABLE_MEMORY=ON       # 记忆系统（默认 ON）
--DEA_ENABLE_STREAMING=ON    # 流式响应（默认 ON）
--DEA_ENABLE_TOOLS_WEB=ON    # WebTool（默认 ON）
--DEA_ENABLE_TOOLS_SHELL=ON  # ShellTool（默认 ON）
--DEA_ENABLE_ROUTER=OFF      # RouterProvider（默认 OFF）
--DEA_ENABLE_FALLBACK=OFF    # ReliableProvider 降级（默认 OFF）
+./embedded-agent          # 默认启动 TUI
+./embedded-agent tui      # 显式指定 TUI
+./embedded-agent -c path/to/config.toml
 ```
+
+CLI（REPL）与 Server（HTTP API）模式已移除；如需嵌入式集成，链接
+`embedded-agent-core` 静态库即可。
 
 ## 许可证
 

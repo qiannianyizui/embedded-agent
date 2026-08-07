@@ -35,6 +35,21 @@ TEST_CASE("SystemPrompt with platform info", "[agent][systemprompt]") {
     REQUIRE(prompt.find("Linux x86_64") != std::string::npos);
 }
 
+TEST_CASE("SystemPrompt includes skills index", "[agent][systemprompt]") {
+    PromptContext ctx;
+    ctx.skills_index =
+        "# Skills (mandatory)\n"
+        "<available_skills>\n"
+        "  development:\n"
+        "    - cpp-conventions: C++ conventions\n"
+        "</available_skills>";
+
+    auto prompt = build_system_prompt(ctx);
+
+    REQUIRE(prompt.find("<available_skills>") != std::string::npos);
+    REQUIRE(prompt.find("cpp-conventions") != std::string::npos);
+}
+
 TEST_CASE("SystemPrompt with relevant memories", "[agent][systemprompt]") {
     PromptContext ctx;
     MemoryEntry mem;

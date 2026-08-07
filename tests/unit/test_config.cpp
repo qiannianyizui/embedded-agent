@@ -32,3 +32,29 @@ base_url = "http://localhost:11434"
 
     ea::fs::remove(tmp);
 }
+
+TEST_CASE("Config reads skills section", "[config]") {
+    std::string tmp = "/tmp/ea_test_skills_config.toml";
+    ea::fs::write_file(tmp, R"(
+[skills]
+enable = true
+dirs = ["/opt/skills", "~/skills"]
+disabled = ["legacy-skill"]
+template_vars = false
+inline_shell = true
+inline_shell_timeout = 5
+)");
+
+    auto cfg = load(tmp);
+    REQUIRE(cfg.ok());
+    REQUIRE(cfg.value().skills.enable == true);
+    REQUIRE(cfg.value().skills.dirs.size() == 2);
+    REQUIRE(cfg.value().skills.dirs[0] == "/opt/skills");
+    REQUIRE(cfg.value().skills.disabled.size() == 1);
+    REQUIRE(cfg.value().skills.disabled[0] == "legacy-skill");
+    REQUIRE(cfg.value().skills.template_vars == false);
+    REQUIRE(cfg.value().skills.inline_shell == true);
+    REQUIRE(cfg.value().skills.inline_shell_timeout == 5);
+
+    ea::fs::remove(tmp);
+}

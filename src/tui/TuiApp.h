@@ -3,6 +3,7 @@
 #include "agent/AgentLoop.h"
 #include "budget/BudgetTracker.h"
 #include "conversation/IConversationStore.h"
+#include "skill/Skill.h"
 #include "ChatArea.h"
 #include "InputBar.h"
 #include "StatusBar.h"
@@ -33,6 +34,7 @@ public:
     ea::security::IApprovalHandler* approval_handler();
 
     void set_model(const std::string& model);
+    void set_skills(ea::skill::SkillManager* skills) { skills_ = skills; }
 
     // Launch the TUI event loop (blocks until exit)
     void run(ea::agent::AgentLoop& loop,
@@ -55,6 +57,7 @@ private:
     ea::agent::AgentLoop* loop_ = nullptr;
     ea::budget::BudgetTracker* budget_tracker_ = nullptr;
     ea::conversation::IConversationStore* conv_store_ = nullptr;
+    ea::skill::SkillManager* skills_ = nullptr;
     std::thread agent_thread_;
     std::atomic<bool> agent_busy_{false};
     std::string model_;

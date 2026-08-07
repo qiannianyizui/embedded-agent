@@ -2,6 +2,7 @@
 
 TEST_CASE("Build config has all subsystems enabled", "[build]") {
     // All subsystems are always compiled in — no compile-time toggles remain.
-    // Runtime mode selection is handled by the RunMode enum and CLI subcommands.
+    // The application currently runs in TUI mode; the core remains a static
+    // library (embedded-agent-core) for embedded integration.
     SUCCEED();
 }

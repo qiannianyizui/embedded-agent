@@ -1,10 +1,10 @@
 # embedded-agent
 
-**A lightweight C++17 AI Agent framework** — designed for Linux and embedded scenarios, supporting CLI / Embedded / Server runtime modes.
+**A lightweight C++17 AI Agent framework** — designed for Linux and embedded scenarios. The current runtime surface is the TUI; the core is also built as a static library for embedded integration.
 
 ## Features
 
-- **Layered Microkernel Architecture** — Core interfaces + pluggable strategies/decorators, compile-time mode switching
+- **Layered Microkernel Architecture** — Core interfaces + pluggable strategies/decorators, TUI runtime
 - **Multi-Provider Support** — OpenAI, Anthropic, Ollama with built-in retry/fallback/routing
 - **Extensible Tool System** — Toolset grouping + conditional availability + security metadata
 - **Persistent Memory** — SQLite FTS5 full-text search + InMemory/Null backends + Agent isolation
@@ -48,13 +48,12 @@ git clone https://gitee.com/QianNianYiZui_admin_admin/embedded-agent.git
 cd embedded-agent
 mkdir build && cd build
 
-# Default CLI mode
+# Default TUI mode
 cmake ..
 cmake --build . -j$(nproc)
 
-# Embedded mode (no CLI interaction)
-cmake .. -DEA_MODE=embedded
-cmake --build . -j$(nproc)
+# The core is also built as the static library embedded-agent-core,
+# which can be linked into other applications.
 ```
 
 ### Run
@@ -108,6 +107,7 @@ Provider types: `openai` / `anthropic` / `ollama`
 | **agent** | `src/agent/` | AgentLoop, TurnStep chain, LoopDetector, SystemPrompt |
 | **provider** | `src/provider/` | OpenAI/Anthropic/Ollama, ReliableProvider, RouterProvider |
 | **tool** | `src/tool/` | ToolRegistry, Toolset, Shell/File/Search/Web/Memory tools |
+| **skill** | `src/skill/` | SKILL.md discovery/parsing, skills_list / skill_view tools |
 | **memory** | `src/memory/` | SqliteMemory, InMemoryBackend, ScopedMemory, MemoryManager |
 | **security** | `src/security/` | SecurityPolicy (workspace restriction, command allowlist) |
 | **config** | `src/config/` | JSON config loading |
@@ -133,10 +133,30 @@ Provider types: `openai` / `anthropic` / `ollama`
 | SearchTool | Search file contents | ❌ | ❌ |
 | WebTool | HTTP requests | ❌ | ❌ |
 | MemoryTool | Memory store/recall | ✅ | ❌ |
+| SkillsListTool | List skills by category/keyword | ❌ | ❌ |
+| SkillViewTool | Load a skill's full content | ❌ | ❌ |
+| SkillManageTool | Create/update/delete/enable/disable skills | ✅ | ✅ |
 
 - **Toolset** grouping + `CheckFn` conditional availability
 - **ToolOutputConfig** global + per-tool output truncation
 - **ToolRegistry** activate/deactivate Toolsets, backward-compatible `register_tool()`
+
+## Skills System
+
+Skills follow the Hermes layout: each skill is `skills/<category>/<name>/SKILL.md`
+with YAML frontmatter declaring `name`, `description`, `version`, `platforms`,
+and `tags`.
+
+- Discovery roots: `~/.embedded-agent/skills`, `./skills`, plus `[skills].dirs`
+- The system prompt only contains the `<available_skills>` index; the model
+  loads full content on demand through `skill_view`
+- `skill_manage` supports `create` / `update` / `delete` / `disable` / `enable`
+- TUI commands: `/skills` lists skills, `/skill <name>` loads one
+- The skill index is cached by file mtime/size and invalidates on external edits
+- Template preprocessing: `${EA_SKILL_DIR}` / `${EA_SKILL_NAME}` by default;
+  inline `!`cmd`` snippets require `[skills] inline_shell = true`
+- Config: `[skills] enable = true`, `disabled = ["skill-name"]`
+- Env var: `EA_SKILLS_DIR` adds an extra skills root
 
 ## Memory System
 
@@ -191,25 +211,23 @@ Current: **228 test cases / 551 assertions**
 | nlohmann/json | JSON handling | Bundled |
 | spdlog | Logging | Bundled |
 | CLI11 | CLI parsing | Bundled |
-| cpp-httplib | HTTP server | Bundled |
+| cpp-httplib | HTTP client (net layer) | Bundled |
 | mbedtls | TLS | Bundled |
 | SQLite3 | Embedded database | System dependency |
 | Catch2 | Test framework | CMake FetchContent |
 
-## Compile-Time Modes
+## Runtime Mode
 
-Switch runtime mode via CMake options:
+Only the TUI mode (FTXUI) is currently shipped:
 
 ```bash
-# CLI mode (default) — interactive command line
-cmake .. -DEA_MODE=cli
-
-# Embedded mode — embed as a library in other applications
-cmake .. -DEA_MODE=embedded
-
-# Server mode — HTTP API service
-cmake .. -DEA_MODE=server
+./embedded-agent          # starts the TUI by default
+./embedded-agent tui      # explicit TUI mode
+./embedded-agent -c path/to/config.toml
 ```
+
+The CLI (REPL) and Server (HTTP API) modes have been removed. For embedded
+integration, link against the `embedded-agent-core` static library.
 
 Optional feature toggles:
 

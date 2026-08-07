@@ -12,7 +12,7 @@ public:
     // debug flag controls debug logging and listener attachment.
     // Returns the AppContext on success, or an Error on failure
     // (e.g., unknown provider type).
-    static Result<AppContext> build(const config::AppConfig& cfg, bool debug = false, RunMode mode = RunMode::Cli);
+    static Result<AppContext> build(const config::AppConfig& cfg, bool debug = false);
 };
 
 }  // namespace ea::app

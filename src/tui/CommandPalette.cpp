@@ -15,6 +15,8 @@ CommandPalette::CommandPalette() {
         {"/cost",   "Show session cost"},
         {"/history","List conversations"},
         {"/resume", "Resume a conversation"},
+        {"/skills", "List available skills"},
+        {"/skill <name>", "Load a skill"},
         {"/export", "Export current conversation"},
         {"/import", "Import a conversation"},
         {"/clear",  "Clear current conversation"},

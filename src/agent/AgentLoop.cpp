@@ -188,6 +188,7 @@ void AgentLoop::build_system_prompt_once() {
 
     // Context layer: project context files
     ctx.context_files = config_.context_files;
+    ctx.skills_index = config_.skills_index;
 
     // Volatile layer: memories
     if (memory_ && config_.auto_memory) {

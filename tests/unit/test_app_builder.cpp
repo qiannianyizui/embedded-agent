@@ -146,3 +146,27 @@ TEST_CASE("AppBuilder preserves debug flag", "[app]") {
 
     cleanup_temp(temp_dir);
 }
+
+TEST_CASE("AppBuilder registers skills tools and builds index", "[app]") {
+    auto temp_dir = make_temp_dir();
+    auto cfg = make_test_config(temp_dir);
+
+    auto skills_root = temp_dir + "/skills";
+    std::filesystem::create_directories(skills_root + "/development/sample");
+    ea::fs::write_file(
+        skills_root + "/development/sample/SKILL.md",
+        "---\nname: sample-skill\ndescription: \"A test skill.\"\n---\n\n# Sample\n");
+    cfg.skills.dirs.push_back(skills_root);
+
+    auto result = AppBuilder::build(cfg, false);
+    REQUIRE(result.ok());
+
+    auto& ctx = result.value();
+    REQUIRE(ctx.skills != nullptr);
+    REQUIRE(ctx.skills_index.find("sample-skill") != std::string::npos);
+    REQUIRE(ctx.registry->find("skills_list") != nullptr);
+    REQUIRE(ctx.registry->find("skill_view") != nullptr);
+    REQUIRE(ctx.registry->find("skill_manage") != nullptr);
+
+    cleanup_temp(temp_dir);
+}

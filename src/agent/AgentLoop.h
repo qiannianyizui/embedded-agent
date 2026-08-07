@@ -36,6 +36,7 @@ public:
         std::string model;  // Model name for trace attribution
         std::string soul;   // Identity text (from SOUL.md or config)
         std::string context_files;  // Project context file content
+        std::string skills_index;   // Rendered <available_skills> block
     };
 
     using OutputFn = std::function<void(const std::string&)>;

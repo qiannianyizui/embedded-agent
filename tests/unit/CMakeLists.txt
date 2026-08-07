@@ -42,39 +42,32 @@ add_executable(ea-unit-tests
     test_approval_handler.cpp
     test_stdin_approval_handler.cpp
     test_pending_approval_handler.cpp
-    test_session_manager.cpp
     test_conversation_store.cpp
     test_budget_tracker.cpp
     test_usage_store.cpp
     test_mcp_client.cpp
-    test_plugin_manifest.cpp
-    test_plugin_loader.cpp
-    test_plugin_tool_adapter.cpp
-    test_plugin_host.cpp
+    test_skills.cpp
     test_retry_policy.cpp
     test_regression.cpp
     test_config_save.cpp
     test_app_builder.cpp
-    test_cli_command_registry.cpp
     test_auto_resume.cpp
 )
 target_link_libraries(ea-unit-tests PRIVATE
     ea-test-common
     ea-base ea-io ea-net ea-log ea-config ea-hrr ea-memory ea-conversation ea-budget
     ea-provider ea-tool ea-agent ea-trace ea-mcp ea-platform ea-security
-    ea-server ea-plugin ea-app ea-tui
+    ea-app ea-skill ea-tui
     nlohmann_json::nlohmann_json
     httplib::httplib
     PkgConfig::UUID PkgConfig::ZSTD
     Catch2::Catch2WithMain
-    ${CMAKE_DL_LIBS}
 )
 target_include_directories(ea-unit-tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_BINARY_DIR}/include
 )
 target_compile_definitions(ea-unit-tests PRIVATE
-    EA_MOCK_PLUGIN_PATH="${CMAKE_BINARY_DIR}/tests/plugins/mock_plugin/ea_mock_plugin.so"
     CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     CMAKE_BINARY_DIR="${CMAKE_BINARY_DIR}"
 )
@@ -94,14 +87,13 @@ add_executable(ea-tui-tests
         ea-test-common
         ea-base ea-io ea-net ea-log ea-config ea-security
         ea-agent ea-trace ea-conversation ea-budget
-        ea-provider ea-tool ea-mcp ea-platform
+        ea-provider ea-tool ea-skill ea-mcp ea-platform
         ea-tui
         ftxui::component
         nlohmann_json::nlohmann_json
         httplib::httplib
         PkgConfig::UUID PkgConfig::ZSTD
         Catch2::Catch2WithMain
-        ${CMAKE_DL_LIBS}
     )
     target_include_directories(ea-tui-tests PRIVATE
         ${CMAKE_SOURCE_DIR}/src

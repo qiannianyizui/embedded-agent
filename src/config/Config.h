@@ -60,7 +60,7 @@ struct SecurityConfig {
     std::string autonomy = "supervised";
     std::vector<std::string> allowed_commands;
     std::string workspace;
-    int approval_timeout = 300;              // Approval timeout in seconds (Server mode)
+    int approval_timeout = 300;              // Approval timeout in seconds (pending approval mode)
     struct Approval {                        // corresponds to [security.approval]
         std::string mode = "auto";           // stdin / pending / auto
         bool auto_approve_dangerous = false; // Only effective in Full autonomy
@@ -85,20 +85,21 @@ struct AgentConfig {
     bool stream = true;
 };
 
+struct SkillConfig {
+    bool enable = true;                  // [skills] enable = true
+    std::vector<std::string> dirs;       // Extra skill directories
+    std::vector<std::string> disabled;   // Skill names to hide from index/tools
+    bool template_vars = true;           // Replace ${EA_SKILL_DIR}/${EA_SKILL_NAME}
+    bool inline_shell = false;           // Execute !`cmd` snippets in SKILL.md
+    int inline_shell_timeout = 10;       // Seconds per inline shell snippet
+};
+
 struct McpServerConfig {
     std::string name;
     std::string command;
     std::vector<std::string> args;
     std::map<std::string, std::string> env;
     bool dangerous = false;
-};
-
-struct ServerConfig {
-    std::string host = "0.0.0.0";
-    int port = 8080;
-    int max_sessions = 100;
-    std::string cors_origin = "*";
-    int session_idle_timeout = 3600;  // seconds
 };
 
 struct ConversationConfig {
@@ -117,8 +118,8 @@ struct AppConfig {
     budget::BudgetConfig budget;
     SecurityConfig security;
     AgentConfig agent;
+    SkillConfig skills;
     std::vector<McpServerConfig> mcp_servers;
-    ServerConfig server;
     std::string config_path;
 };
 

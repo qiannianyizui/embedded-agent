@@ -1,11 +1,7 @@
 add_library(ea-app OBJECT
     AppBuilder.cpp
-    CliCommandRegistry.cpp
     auto_resume.cpp
     IRunner.cpp
-    CliRunner.cpp
-    ServerRunner.cpp
-    SetupWizardRunner.cpp
     TuiRunner.cpp
 )
 

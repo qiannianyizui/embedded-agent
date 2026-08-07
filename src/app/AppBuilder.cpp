@@ -19,8 +19,9 @@
 #include "mcp/McpClient.h"
 #include "mcp/StdioTransport.h"
 #include "mcp/McpToolAdapter.h"
+#include "skill/Skill.h"
+#include "tool/SkillTools.h"
 #include "security/SecurityPolicy.h"
-#include "security/IApprovalHandler.h"
 #include "security/StdinApprovalHandler.h"
 #include "security/PendingApprovalHandler.h"
 #include "budget/BudgetTracker.h"
@@ -32,9 +33,8 @@
 
 namespace ea::app {
 
-Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug, RunMode mode) {
+Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug) {
     AppContext ctx;
-    ctx.run_mode = mode;
     ctx.config = cfg;
     ctx.debug = debug;
 
@@ -118,15 +118,8 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug, R
     if (ctx.security->level() == security::AutonomyLevel::Full && cfg.security.approval.auto_approve_dangerous) {
         ctx.approval = nullptr;  // Full mode + auto-approve = no approval needed
     } else if (cfg.security.approval.mode == "auto") {
-        switch (ctx.run_mode) {
-            case RunMode::Server:
-                ctx.approval = std::make_unique<security::PendingApprovalHandler>(cfg.security.approval_timeout);
-                break;
-            case RunMode::Cli:
-            case RunMode::Tui:
-                ctx.approval = std::make_unique<security::StdinApprovalHandler>();
-                break;
-        }
+        // TUI mode: interactive approval through the terminal.
+        ctx.approval = std::make_unique<security::StdinApprovalHandler>();
     } else if (cfg.security.approval.mode == "stdin") {
         ctx.approval = std::make_unique<security::StdinApprovalHandler>();
     } else if (cfg.security.approval.mode == "pending") {
@@ -180,6 +173,43 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug, R
     ctx.registry->register_tool(std::make_unique<tool::MemoryTool>(ctx.memory.get()));
     ctx.registry->register_tool(std::make_unique<tool::FactStoreTool>(ctx.memory.get()));
     ctx.registry->register_tool(std::make_unique<tool::FactFeedbackTool>(ctx.memory.get()));
+
+    // 7.3. Skills: discover SKILL.md files and expose skills_list/skill_view
+    if (cfg.skills.enable) {
+        std::vector<std::string> roots;
+        if (const char* env = getenv("EA_SKILLS_DIR"); env && env[0] != '\0') {
+            roots.push_back(env);
+        }
+        auto cfg_dir = fs::config_dir();
+        if (cfg_dir.ok()) {
+            roots.push_back(cfg_dir.value() + "/skills");
+        }
+        roots.push_back("./skills");
+        for (const auto& dir : cfg.skills.dirs) {
+            roots.push_back(fs::expand_tilde(dir));
+        }
+
+        skill::SkillOptions skill_opts;
+        skill_opts.template_vars = cfg.skills.template_vars;
+        skill_opts.inline_shell = cfg.skills.inline_shell;
+        skill_opts.inline_shell_timeout = cfg.skills.inline_shell_timeout;
+        if (cfg_dir.ok()) {
+            skill_opts.user_dir = cfg_dir.value() + "/skills";
+        }
+        ctx.skills = std::make_unique<skill::SkillManager>(
+            std::move(roots), cfg.skills.disabled, skill_opts,
+            skill_opts.user_dir);
+        ctx.skills_index = ctx.skills->build_index();
+        if (!ctx.skills_index.empty()) {
+            EA_INFO("Skills index ready ({} bytes)", ctx.skills_index.size());
+        }
+        ctx.registry->register_tool(
+            std::make_unique<tool::SkillsListTool>(ctx.skills.get()));
+        ctx.registry->register_tool(
+            std::make_unique<tool::SkillViewTool>(ctx.skills.get()));
+        ctx.registry->register_tool(
+            std::make_unique<tool::SkillManageTool>(ctx.skills.get()));
+    }
 
     // 7.5. Connect MCP servers and register their tools
     for (auto& server_cfg : cfg.mcp_servers) {

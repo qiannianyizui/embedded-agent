@@ -26,6 +26,10 @@ SystemPromptParts build_system_prompt_parts(const PromptContext& ctx) {
     if (!ctx.platform_info.empty()) {
         stable << "# Environment\n" << ctx.platform_info << "\n\n";
     }
+
+    if (!ctx.skills_index.empty()) {
+        stable << ctx.skills_index << "\n\n";
+    }
     parts.stable = stable.str();
 
     // ── Context tier ──

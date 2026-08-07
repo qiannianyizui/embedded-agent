@@ -10,13 +10,11 @@ add_executable(ea-bench-tests
 target_link_libraries(ea-bench-tests PRIVATE
     ea-test-common
     ea-base ea-io ea-net ea-log ea-config ea-hrr ea-memory ea-conversation ea-budget
-    ea-provider ea-tool ea-agent ea-trace ea-mcp ea-platform ea-security
-    ea-server ea-plugin
+    ea-provider ea-tool ea-skill ea-agent ea-trace ea-mcp ea-platform ea-security
     nlohmann_json::nlohmann_json
     httplib::httplib
     PkgConfig::UUID PkgConfig::ZSTD
     Catch2::Catch2WithMain
-    ${CMAKE_DL_LIBS}
 )
 target_include_directories(ea-bench-tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src
