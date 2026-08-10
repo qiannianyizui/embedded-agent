@@ -159,11 +159,10 @@ struct SpinnerImpl : ftxui::ComponentBase {
         return ftxui::text(spinner_frame_text(state)) | ftxui::color(theme.color.accent);
     }
 
-    void OnAnimation(ftxui::animation::Params& /*params*/) override {
-        if (state.active) {
-            ftxui::animation::RequestAnimationFrame();
-        }
-    }
+    // Animation frames are driven by TuiApp: state-changing events request
+    // immediate (coalesced) redraws and a 1Hz heartbeat keeps the busy
+    // indicator alive during long waits. Deliberately no 66fps request loop.
+    void OnAnimation(ftxui::animation::Params& /*params*/) override {}
 };
 
 }  // anonymous namespace

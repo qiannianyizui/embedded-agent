@@ -22,6 +22,10 @@ namespace ea::tui {
 TuiApp::TuiApp() = default;
 
 TuiApp::~TuiApp() {
+    heartbeat_stop_.store(true);
+    if (heartbeat_thread_.joinable()) {
+        heartbeat_thread_.join();
+    }
     if (agent_thread_.joinable()) {
         if (loop_) loop_->interrupt();
         agent_thread_.join();
@@ -36,6 +40,7 @@ ea::agent::AgentLoop::OutputFn TuiApp::output_fn() {
     return [this](const std::string& text) {
         screen_.Post([this, text] {
             chat_area_.append_assistant(text);
+            request_redraw();
         });
     };
 }
@@ -50,6 +55,7 @@ ea::agent::AgentLoop::StreamFn TuiApp::stream_fn() {
             } else if (chunk.type == ea::StreamChunk::Type::Error) {
                 chat_area_.append_error(chunk.data);
             }
+            request_redraw();
         });
     };
 }
@@ -94,6 +100,19 @@ void TuiApp::push_banner() {
     oss << "\n" << theme.brand.welcome << "\n"
         << "\n  Ctrl+P commands · Ctrl+S sessions · Ctrl+C interrupt/exit";
     chat_area_.append_system(oss.str(), /*plain=*/true);
+}
+
+void TuiApp::request_redraw() {
+    // FTXUI only redraws when an animation frame is pending. Closures posted
+    // from the agent thread do not invalidate the screen by themselves, so we
+    // request one here, coalesced to keep the redraw rate bounded.
+    constexpr auto kMinInterval = std::chrono::milliseconds(100);
+    const auto now = std::chrono::steady_clock::now();
+    if (last_redraw_request_ == std::chrono::steady_clock::time_point{} ||
+        now - last_redraw_request_ >= kMinInterval) {
+        last_redraw_request_ = now;
+        ftxui::animation::RequestAnimationFrame();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -229,6 +248,7 @@ void TuiApp::run_agent(const std::string& input) {
             input_bar_.set_busy(true);
             status_bar_.set_busy(true);
             top_bar_.set_busy(true);
+            request_redraw();
         });
 
         auto result = loop_->run(input);
@@ -246,12 +266,14 @@ void TuiApp::run_agent(const std::string& input) {
             status_bar_.set_session_id(sid);
             top_bar_.set_session_id(sid);
             sidebar_.set_active(sid);
+            request_redraw();
         });
 
         if (!result.ok()) {
             std::string err_msg = result.error().message;
             screen_.Post([this, err_msg] {
                 chat_area_.append_error(err_msg);
+                request_redraw();
             });
             EA_ERROR("Agent error: {}", err_msg);
         }
@@ -472,7 +494,12 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
     // Event listener — bridges AgentEvent to UI updates
     event_listener_ = std::make_shared<TuiEventListener>(
         chat_area_, status_bar_, top_bar_,
-        [this](std::function<void()> fn) { screen_.Post(std::move(fn)); });
+        [this](std::function<void()> fn) {
+            screen_.Post([this, fn = std::move(fn)] {
+                fn();
+                request_redraw();
+            });
+        });
     loop.add_listener(event_listener_);
 
     // Trace listener — captures structured events to runtime-trace.jsonl
@@ -514,7 +541,25 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
 
     push_banner();
     build_component_tree();
+
+    // 1Hz heartbeat: keeps the busy indicator and elapsed timer live during
+    // long waits. The redraw is posted so it executes on the UI thread.
+    heartbeat_stop_.store(false);
+    heartbeat_thread_ = std::thread([this] {
+        while (!heartbeat_stop_.load()) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            if (agent_busy_.load()) {
+                screen_.Post([this] { request_redraw(); });
+            }
+        }
+    });
+
     screen_.Loop(root_component_);
+
+    heartbeat_stop_.store(true);
+    if (heartbeat_thread_.joinable()) {
+        heartbeat_thread_.join();
+    }
 
     // Cleanup: join agent thread if still running
     if (agent_thread_.joinable()) {

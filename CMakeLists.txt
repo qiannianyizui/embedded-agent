@@ -79,6 +79,7 @@ endif()
 # --- FTXUI (TUI library) ---
 FetchContent_Declare(ftxui
     URL https://github.com/ArthurSonzogni/FTXUI/archive/v7.0.1.tar.gz
+    PATCH_COMMAND patch -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/ftxui-nonblocking-flush.patch
 )
 FetchContent_MakeAvailable(ftxui)
 

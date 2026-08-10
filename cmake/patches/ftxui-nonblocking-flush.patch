@@ -1,0 +1,59 @@
+--- a/src/ftxui/component/app.cpp
++++ b/src/ftxui/component/app.cpp
+@@ -6,6 +6,7 @@
+ #include <atomic>
+ #include <chrono>  // for operator-, milliseconds, operator>=, duration, common_type<>::type, time_point
+ #include <csignal>  // for signal, SIGTSTP, SIGABRT, SIGWINCH, raise, SIGFPE, SIGILL, SIGINT, SIGSEGV, SIGTERM, __sighandler_t, size_t
++#include <cerrno>   // for errno, EAGAIN, EINTR
+ #include <cstdint>
+ #include <cstdio>  // for fileno, stdin
+ #include <ftxui/component/app.hpp>
+@@ -1127,7 +1128,48 @@
+ void App::Internal::TerminalFlush() {
+   // Emscripten doesn't implement flush. We interpret zero as flush.
+   output_buffer += '\0';
++#if defined(_WIN32)
+   std::cout << output_buffer << std::flush;
++#else
++  // Never let terminal backpressure block the UI thread: make stdout
++  // non-blocking and drop the frame when the terminal cannot drain it.
++  // The next event/animation tick redraws the full screen, so dropping a
++  // frame only delays a refresh while the terminal is busy.
++  static const bool nonblocking = [] {
++    const int flags = fcntl(STDOUT_FILENO, F_GETFL, 0);
++    if (flags != -1) {
++      fcntl(STDOUT_FILENO, F_SETFL, flags | O_NONBLOCK);
++    }
++    return true;
++  }();
++  (void)nonblocking;
++
++  bool dropped = false;
++  const char* data = output_buffer.data();
++  size_t remaining = output_buffer.size();
++  while (remaining > 0) {
++    const ssize_t n = ::write(STDOUT_FILENO, data, remaining);
++    if (n > 0) {
++      data += n;
++      remaining -= static_cast<size_t>(n);
++      continue;
++    }
++    if (n < 0 && errno == EINTR) {
++      continue;
++    }
++    // EAGAIN (or an unrecoverable error): drop the rest of this frame.
++    dropped = true;
++    break;
++  }
++  if (dropped) {
++    // The terminal is not draining output right now. Retry a fresh frame
++    // shortly; if it is still full the frame is dropped again, so the UI
++    // thread never blocks on the terminal and the screen catches up as soon
++    // as the terminal starts consuming output again.
++    task_runner.PostDelayedTask([this] { public_->RequestAnimationFrame(); },
++                                std::chrono::milliseconds(100));
++  }
++#endif
+   output_buffer.clear();
+ }
+ 

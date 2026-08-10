@@ -17,6 +17,7 @@
 #include "TuiApprovalHandler.h"
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
+#include <chrono>
 #include <thread>
 #include <atomic>
 #include <memory>
@@ -52,6 +53,8 @@ private:
     CommandPalette command_palette_;
     SessionSidebar sidebar_{nullptr};
     std::shared_ptr<TuiEventListener> event_listener_;
+    std::thread heartbeat_thread_;
+    std::atomic<bool> heartbeat_stop_{false};
 
     // AgentLoop thread management
     ea::agent::AgentLoop* loop_ = nullptr;
@@ -68,12 +71,15 @@ private:
     int sidebar_width_ = 0;  // 0 = hidden
     bool approval_showing_ = false;
     bool palette_showing_ = false;
+    std::chrono::steady_clock::time_point last_redraw_request_{};
 
     void build_component_tree();
     void submit_input(const std::string& input);
     void execute_command(const std::string& command);
     void run_agent(const std::string& input);
     void push_banner();
+    // Coalesced redraw request; must only be called from the UI thread.
+    void request_redraw();
 };
 
 }  // namespace ea::tui
