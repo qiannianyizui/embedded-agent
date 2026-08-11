@@ -4,6 +4,7 @@
 #include "FormatUtils.h"
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/component.hpp>
+#include <algorithm>
 
 namespace ea::tui {
 
@@ -16,6 +17,7 @@ void ChatArea::append_user(const std::string& text) {
     msg.timestamp = fmtClockNow();
     messages_.push_back(std::move(msg));
     has_new_ = true;
+    if (follow_bottom_) scroll_y_ = 1.0f;
 }
 
 void ChatArea::append_assistant(const std::string& text) {
@@ -25,12 +27,14 @@ void ChatArea::append_assistant(const std::string& text) {
     msg.timestamp = fmtClockNow();
     messages_.push_back(std::move(msg));
     has_new_ = true;
+    if (follow_bottom_) scroll_y_ = 1.0f;
 }
 
 void ChatArea::append_stream_chunk(const ea::StreamChunk& chunk) {
     if (chunk.type == ea::StreamChunk::Type::Content) {
         streaming_content_ += chunk.data;
         has_new_ = true;
+        if (follow_bottom_) scroll_y_ = 1.0f;
     } else if (chunk.type == ea::StreamChunk::Type::Error) {
         append_error(chunk.data);
     }
@@ -45,6 +49,7 @@ void ChatArea::append_tool_start(const std::string& name, const std::string& arg
     msg.timestamp = fmtClockNow();
     messages_.push_back(std::move(msg));
     has_new_ = true;
+    if (follow_bottom_) scroll_y_ = 1.0f;
 }
 
 void ChatArea::append_tool_end(const std::string& name, const std::string& result,
@@ -59,6 +64,7 @@ void ChatArea::append_tool_end(const std::string& name, const std::string& resul
     msg.timestamp = fmtClockNow();
     messages_.push_back(std::move(msg));
     has_new_ = true;
+    if (follow_bottom_) scroll_y_ = 1.0f;
 }
 
 void ChatArea::append_error(const std::string& msg) {
@@ -69,6 +75,7 @@ void ChatArea::append_error(const std::string& msg) {
     message.timestamp = fmtClockNow();
     messages_.push_back(std::move(message));
     has_new_ = true;
+    if (follow_bottom_) scroll_y_ = 1.0f;
 }
 
 void ChatArea::append_system(const std::string& text, bool plain) {
@@ -79,6 +86,7 @@ void ChatArea::append_system(const std::string& text, bool plain) {
     msg.timestamp = fmtClockNow();
     messages_.push_back(std::move(msg));
     has_new_ = true;
+    if (follow_bottom_) scroll_y_ = 1.0f;
 }
 
 void ChatArea::finish_message() {
@@ -90,6 +98,7 @@ void ChatArea::finish_message() {
         messages_.push_back(std::move(msg));
         streaming_content_.clear();
         has_new_ = true;
+        if (follow_bottom_) scroll_y_ = 1.0f;
     }
 }
 
@@ -97,6 +106,23 @@ void ChatArea::clear() {
     messages_.clear();
     streaming_content_.clear();
     has_new_ = false;
+    scroll_y_ = 1.0f;
+    follow_bottom_ = true;
+}
+
+bool ChatArea::on_event(ftxui::Event event) {
+    if (!event.is_mouse()) return false;
+    if (event.mouse().button == ftxui::Mouse::WheelUp) {
+        follow_bottom_ = false;
+        scroll_y_ = std::max(0.0f, scroll_y_ - kScrollStep);
+        return true;
+    }
+    if (event.mouse().button == ftxui::Mouse::WheelDown) {
+        scroll_y_ = std::min(1.0f, scroll_y_ + kScrollStep);
+        if (scroll_y_ >= 1.0f) follow_bottom_ = true;
+        return true;
+    }
+    return false;
 }
 
 ftxui::Component ChatArea::component() {
@@ -303,7 +329,7 @@ ftxui::Element ChatArea::render() {
                vbox(std::move(elements)) | xflex,
                text("  "),
            })
-        | focusPositionRelative(0.f, 1.f);
+        | focusPositionRelative(0.f, scroll_y_);
 }
 
 }  // namespace ea::tui

@@ -1,6 +1,7 @@
 // ChatArea — chat transcript with role cards, timestamps and tool blocks
 #pragma once
 #include <ftxui/component/component.hpp>
+#include <ftxui/component/event.hpp>
 #include "base/Types.h"
 #include <string>
 #include <vector>
@@ -44,6 +45,10 @@ public:
     // FTXUI component
     ftxui::Component component();
 
+    // Handle mouse wheel scrolling over the transcript. Returns true when the
+    // event was consumed.
+    bool on_event(ftxui::Event event);
+
     // State queries
     bool has_new_messages() const;
     void clear_new_flag();
@@ -51,13 +56,19 @@ public:
     // Test accessors
     const std::vector<ChatMessage>& messages() const { return messages_; }
     const std::string& streaming_content() const { return streaming_content_; }
+    float scroll_y() const { return scroll_y_; }
+    bool follow_bottom() const { return follow_bottom_; }
 
 private:
+    static constexpr float kScrollStep = 0.1f;
+
     ftxui::Component component_;
     std::vector<ChatMessage> messages_;
     std::string streaming_content_;  // Current streaming content buffer
     bool has_new_ = false;
     size_t spinner_index_ = 0;
+    float scroll_y_ = 1.0f;      // 0 = top, 1 = bottom
+    bool follow_bottom_ = true;  // Auto-scroll to the newest messages
 
     ftxui::Element render_user(const ChatMessage& msg);
     ftxui::Element render_assistant(const ChatMessage& msg);

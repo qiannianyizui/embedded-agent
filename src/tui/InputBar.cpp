@@ -72,27 +72,25 @@ ftxui::Element InputBar::render() {
     using namespace ftxui;
     auto& theme = default_theme();
 
-    if (busy_) {
-        return hbox({
-            text("⠋ ") | color(theme.color.accent),
-            text("working…") | color(theme.color.muted) | dim,
-            text("   (Ctrl+C to interrupt)") | color(theme.color.dim) | dim,
-            filler(),
-        }) | bgcolor(theme.color.surface);
-    }
-
     // Prompt: '❯' (chat) or '$' (shell mode when input starts with '!')
     bool shell_mode = !input_.empty() && input_[0] == '!';
     Element prompt = text("❯ ");
     if (shell_mode) {
         prompt = prompt | color(theme.color.shell) | bold;
+    } else if (busy_) {
+        // Keep the input visible while the agent works; only dim the prompt.
+        prompt = prompt | color(theme.color.muted) | dim;
     } else {
         prompt = prompt | color(theme.color.prompt) | bold;
     }
 
     // Right-side hint only while empty, so it never fights the cursor
     Element hint = text("Enter to send · /help");
-    if (!input_.empty()) {
+    if (busy_) {
+        // Keep the input usable while the agent works; Enter queues the
+        // message and it is sent when the current turn finishes.
+        hint = text("");
+    } else if (!input_.empty()) {
         hint = text("");
     }
 
@@ -106,11 +104,9 @@ ftxui::Element InputBar::render() {
 }
 
 bool InputBar::on_event(ftxui::Event event) {
-    if (busy_) {
-        return false;
-    }
-
-    // Enter: submit
+    // Enter: always submit through the callback. While the agent is busy the
+    // TUI queues the message and sends it when the current turn finishes, so
+    // pressing Enter during output never silently does nothing.
     if (event == ftxui::Event::Return) {
         if (!input_.empty() && on_submit_) {
             if (history_.empty() || history_.back() != input_) {

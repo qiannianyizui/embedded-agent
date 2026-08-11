@@ -185,8 +185,25 @@ void TuiApp::build_component_tree() {
 
     // Global key bindings
     root_component_ = CatchEvent(root_component_, [this](Event event) {
+        return handle_global_event(event);
+    });
+}
+
+bool TuiApp::handle_global_event(ftxui::Event event) {
+        using namespace ftxui;
         approval_showing_ = approval_handler_.is_showing();
         palette_showing_ = command_palette_.is_showing();
+
+        // Mouse wheel scrolls the transcript. Leave events over the sidebar
+        // to the sidebar when it is open.
+        if (event.is_mouse() &&
+            (event.mouse().button == ftxui::Mouse::WheelUp ||
+             event.mouse().button == ftxui::Mouse::WheelDown)) {
+            if (!(sidebar_.is_showing() && event.mouse().x < sidebar_width_) &&
+                chat_area_.on_event(event)) {
+                return true;
+            }
+        }
 
         // Ctrl+P: command palette
         if (event == Event::CtrlP) {
@@ -211,6 +228,10 @@ void TuiApp::build_component_tree() {
         // Ctrl+C: interrupt agent or exit
         if (event == Event::CtrlC) {
             if (agent_busy_.load()) {
+                {
+                    std::lock_guard<std::mutex> lock(pending_mutex_);
+                    pending_inputs_.clear();
+                }
                 if (loop_) loop_->interrupt();
                 return true;
             }
@@ -218,7 +239,6 @@ void TuiApp::build_component_tree() {
             return true;
         }
         return false;
-    });
 }
 
 // ---------------------------------------------------------------------------
@@ -229,6 +249,15 @@ void TuiApp::submit_input(const std::string& input) {
     if (input.empty()) return;
     if (input[0] == '/') {
         execute_command(input);
+        return;
+    }
+    if (agent_busy_.load()) {
+        {
+            std::lock_guard<std::mutex> lock(pending_mutex_);
+            pending_inputs_.push_back(input);
+        }
+        chat_area_.append_system("⏎ 已排队，将在当前回复结束后自动发送");
+        request_redraw();
         return;
     }
     chat_area_.append_user(input);
@@ -251,10 +280,40 @@ void TuiApp::run_agent(const std::string& input) {
             request_redraw();
         });
 
-        auto result = loop_->run(input);
+        // Run the submitted turn, then any turns queued while it was busy
+        // (Enter during output queues the message instead of dropping it).
+        std::string current = input;
+        for (;;) {
+            auto result = loop_->run(current);
 
-        if (budget_tracker_ && !loop_->conversation_id().empty()) {
-            budget_tracker_->set_session_id(loop_->conversation_id());
+            if (budget_tracker_ && !loop_->conversation_id().empty()) {
+                budget_tracker_->set_session_id(loop_->conversation_id());
+            }
+
+            if (!result.ok()) {
+                std::string err_msg = result.error().message;
+                screen_.Post([this, err_msg] {
+                    chat_area_.append_error(err_msg);
+                    request_redraw();
+                });
+                EA_ERROR("Agent error: {}", err_msg);
+            }
+
+            std::string next;
+            {
+                std::lock_guard<std::mutex> lock(pending_mutex_);
+                if (!pending_inputs_.empty()) {
+                    next = std::move(pending_inputs_.front());
+                    pending_inputs_.pop_front();
+                }
+            }
+            if (next.empty()) break;
+
+            current = std::move(next);
+            screen_.Post([this, current] {
+                chat_area_.append_user(current);
+                request_redraw();
+            });
         }
 
         agent_busy_.store(false);
@@ -268,15 +327,6 @@ void TuiApp::run_agent(const std::string& input) {
             sidebar_.set_active(sid);
             request_redraw();
         });
-
-        if (!result.ok()) {
-            std::string err_msg = result.error().message;
-            screen_.Post([this, err_msg] {
-                chat_area_.append_error(err_msg);
-                request_redraw();
-            });
-            EA_ERROR("Agent error: {}", err_msg);
-        }
     });
 }
 

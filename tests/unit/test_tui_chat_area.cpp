@@ -1,8 +1,23 @@
 // Unit tests for ChatArea TUI component
 #include <catch2/catch_test_macros.hpp>
 #include "tui/ChatArea.h"
+#include <ftxui/component/mouse.hpp>
+#include <ftxui/dom/elements.hpp>
+#include <ftxui/screen/screen.hpp>
 
 using namespace ea::tui;
+
+namespace {
+
+ftxui::Event wheel_event(ftxui::Mouse::Button button) {
+    ftxui::Mouse mouse;
+    mouse.button = button;
+    mouse.x = 40;
+    mouse.y = 10;
+    return ftxui::Event::Mouse("", mouse);
+}
+
+}  // namespace
 
 TEST_CASE("ChatArea appends user message", "[tui]") {
     ChatArea area;
@@ -146,4 +161,103 @@ TEST_CASE("ChatArea clear_new_flag idempotent", "[tui]") {
     REQUIRE_FALSE(area.has_new_messages());
     area.clear_new_flag();  // Should not crash
     REQUIRE_FALSE(area.has_new_messages());
+}
+
+TEST_CASE("ChatArea wheel scrolls transcript", "[tui]") {
+    ChatArea area;
+    for (int i = 0; i < 10; ++i) {
+        area.append_user("msg " + std::to_string(i));
+    }
+
+    REQUIRE(area.scroll_y() == 1.0f);
+    REQUIRE(area.follow_bottom());
+
+    REQUIRE(area.on_event(wheel_event(ftxui::Mouse::WheelUp)));
+    REQUIRE(area.scroll_y() < 1.0f);
+    REQUIRE_FALSE(area.follow_bottom());
+
+    REQUIRE(area.on_event(wheel_event(ftxui::Mouse::WheelUp)));
+    REQUIRE(area.scroll_y() < 0.9f);
+
+    // Scrolling back to the bottom re-enables follow.
+    while (area.scroll_y() < 1.0f) {
+        REQUIRE(area.on_event(wheel_event(ftxui::Mouse::WheelDown)));
+    }
+    REQUIRE(area.scroll_y() == 1.0f);
+    REQUIRE(area.follow_bottom());
+}
+
+TEST_CASE("ChatArea follows bottom on new messages unless scrolled up", "[tui]") {
+    ChatArea area;
+    area.append_user("first");
+
+    area.on_event(wheel_event(ftxui::Mouse::WheelUp));
+    area.append_assistant("second");
+    REQUIRE(area.scroll_y() < 1.0f);  // Stay where the user scrolled.
+
+    while (area.scroll_y() < 1.0f) {
+        area.on_event(wheel_event(ftxui::Mouse::WheelDown));
+    }
+    area.append_user("third");
+    REQUIRE(area.scroll_y() == 1.0f);  // Follow the newest message again.
+}
+
+TEST_CASE("ChatArea viewport follows bottom and scrolls up", "[tui]") {
+    ChatArea area;
+    for (int i = 0; i < 20; ++i) {
+        area.append_user("message number " + std::to_string(i));
+    }
+
+    auto render = [&] {
+        auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(60),
+                                            ftxui::Dimension::Fixed(8));
+        ftxui::Render(screen,
+                      area.component()->Render() | ftxui::flex
+                          | ftxui::yframe | ftxui::vscroll_indicator);
+        return screen.ToString();
+    };
+
+    auto bottom = render();
+    REQUIRE(bottom.find("message number 19") != std::string::npos);
+    REQUIRE(bottom.find("message number 0") == std::string::npos);
+
+    for (int i = 0; i < 15; ++i) {
+        area.on_event(wheel_event(ftxui::Mouse::WheelUp));
+    }
+
+    auto top = render();
+    REQUIRE(top.find("message number 0") != std::string::npos);
+    REQUIRE(top.find("message number 19") == std::string::npos);
+}
+
+TEST_CASE("ChatArea bottom-follows inside full TUI layout", "[tui]") {
+    ChatArea area;
+    for (int i = 0; i < 15; ++i) {
+        area.append_user("history message " + std::to_string(i + 1));
+    }
+
+    auto render = [&] {
+        auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                            ftxui::Dimension::Fixed(24));
+        ftxui::Element layout = ftxui::vbox({
+            ftxui::text("top bar") | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, 1),
+            ftxui::separator(),
+            area.component()->Render() | ftxui::flex | ftxui::yframe
+                | ftxui::vscroll_indicator,
+            ftxui::separator(),
+            ftxui::text("status bar")
+                | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, 1),
+            ftxui::separator(),
+            ftxui::text("input bar")
+                | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, 1),
+        });
+        ftxui::Render(screen, layout);
+        return screen.ToString();
+    };
+
+    auto bottom = render();
+    REQUIRE(bottom.find("history message 15") != std::string::npos);
+    // "history message 1" is a prefix of "history message 11": match with a
+    // trailing space so only the actual first message is targeted.
+    REQUIRE(bottom.find("history message 1 ") == std::string::npos);
 }

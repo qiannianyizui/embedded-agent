@@ -5,6 +5,8 @@
 #include "tui/StatusBar.h"
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component.hpp>
+#include <ftxui/dom/elements.hpp>
+#include <ftxui/screen/screen.hpp>
 
 using namespace ea::tui;
 
@@ -28,6 +30,55 @@ TEST_CASE("InputBar set_busy changes state", "[tui]") {
     // Should not crash
     bar.set_busy(true);
     bar.set_busy(false);
+}
+
+TEST_CASE("InputBar keeps input visible while busy", "[tui]") {
+    InputBar bar;
+    bar.set_busy(true);
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                        ftxui::Dimension::Fixed(3));
+    ftxui::Render(screen, bar.component()->Render());
+    std::string out = screen.ToString();
+
+    // The prompt and busy hint must both be visible; the input must not be
+    // replaced by a "working…" row that drops the text field.
+    REQUIRE(out.find("❯") != std::string::npos);
+    REQUIRE(out.find("working… · Ctrl+C to interrupt") == std::string::npos);
+}
+
+TEST_CASE("InputBar accepts typing while busy", "[tui]") {
+    InputBar bar;
+    bar.set_busy(true);
+
+    bar.component()->OnEvent(ftxui::Event::Character('x'));
+    bar.component()->OnEvent(ftxui::Event::Character('z'));
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                        ftxui::Dimension::Fixed(3));
+    ftxui::Render(screen, bar.component()->Render());
+    std::string out = screen.ToString();
+
+    REQUIRE(out.find('x') != std::string::npos);
+    REQUIRE(out.find('z') != std::string::npos);
+}
+
+TEST_CASE("InputBar submits via callback while busy (TUI queues it)", "[tui]") {
+    InputBar bar;
+    int calls = 0;
+    bar.set_on_submit([&](const std::string&) { calls++; });
+
+    // While busy, Enter still fires the submit callback so the TUI can queue
+    // the message instead of silently dropping it.
+    bar.set_busy(true);
+    bar.component()->OnEvent(ftxui::Event::Character('x'));
+    bar.component()->OnEvent(ftxui::Event::Return);
+    REQUIRE(calls == 1);
+
+    // The input was cleared by the submission; a later Enter is a no-op.
+    bar.set_busy(false);
+    bar.component()->OnEvent(ftxui::Event::Return);
+    REQUIRE(calls == 1);
 }
 
 TEST_CASE("InputBar set_on_submit stores callback", "[tui]") {

@@ -18,6 +18,8 @@
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <chrono>
+#include <deque>
+#include <mutex>
 #include <thread>
 #include <atomic>
 #include <memory>
@@ -37,10 +39,16 @@ public:
     void set_model(const std::string& model);
     void set_skills(ea::skill::SkillManager* skills) { skills_ = skills; }
 
+    // Global event routing used by the root CatchEvent (also testable).
+    bool handle_global_event(ftxui::Event event);
+
     // Launch the TUI event loop (blocks until exit)
     void run(ea::agent::AgentLoop& loop,
              ea::budget::BudgetTracker* budget_tracker = nullptr,
              ea::conversation::IConversationStore* conv_store = nullptr);
+
+    // Test accessors
+    ChatArea& chat_area_for_test() { return chat_area_; }
 
 private:
     ftxui::ScreenInteractive screen_{ftxui::ScreenInteractive::Fullscreen()};
@@ -55,6 +63,8 @@ private:
     std::shared_ptr<TuiEventListener> event_listener_;
     std::thread heartbeat_thread_;
     std::atomic<bool> heartbeat_stop_{false};
+    std::mutex pending_mutex_;
+    std::deque<std::string> pending_inputs_;
 
     // AgentLoop thread management
     ea::agent::AgentLoop* loop_ = nullptr;
