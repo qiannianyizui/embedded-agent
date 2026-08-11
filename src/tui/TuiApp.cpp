@@ -98,7 +98,7 @@ void TuiApp::push_banner() {
         oss << "  tools      " << info.tool_count << " available\n";
     }
     oss << "\n" << theme.brand.welcome << "\n"
-        << "\n  Ctrl+P commands · Ctrl+S sessions · Ctrl+C interrupt/exit";
+        << "\n  Ctrl+P commands · Ctrl+S sessions · Ctrl+N new · Ctrl+C interrupt/exit";
     chat_area_.append_system(oss.str(), /*plain=*/true);
 }
 
@@ -220,6 +220,11 @@ bool TuiApp::handle_global_event(ftxui::Event event) {
             sidebar_width_ = sidebar_.is_showing() ? 32 : 0;
             return true;
         }
+        // Ctrl+N: start a new session
+        if (event == Event::CtrlN) {
+            start_new_session();
+            return true;
+        }
         // Ctrl+L: clear chat
         if (event == Event::CtrlL) {
             chat_area_.clear();
@@ -333,6 +338,39 @@ void TuiApp::run_agent(const std::string& input) {
 void TuiApp::execute_command(const std::string& cmd) {
     if (cmd == "/quit" || cmd == "/exit") {
         screen_.Exit();
+        return;
+    }
+    if (cmd == "/new") {
+        start_new_session();
+        return;
+    }
+    if (cmd == "/compress" || cmd.substr(0, 10) == "/compress ") {
+        if (!loop_) {
+            chat_area_.append_error("Agent not ready");
+            request_redraw();
+            return;
+        }
+        if (agent_busy_.load()) {
+            chat_area_.append_error("Cannot compress while the agent is busy");
+            request_redraw();
+            return;
+        }
+        std::string focus = cmd.size() > 10 ? cmd.substr(10) : "";
+        while (!focus.empty() && (focus.front() == ' ' || focus.front() == '\n')) {
+            focus.erase(focus.begin());
+        }
+        auto result = loop_->compress_context(focus);
+        if (!result.ok()) {
+            chat_area_.append_error("Compression failed: " + result.error().message);
+        } else if (result.value().compressed) {
+            chat_area_.append_system(
+                "Context compressed: " + std::to_string(result.value().before)
+                + " -> " + std::to_string(result.value().after) + " messages");
+            sidebar_.refresh();
+        } else {
+            chat_area_.append_system("Nothing to compress — context is within budget");
+        }
+        request_redraw();
         return;
     }
     if (cmd == "/clear") {
@@ -506,6 +544,8 @@ void TuiApp::execute_command(const std::string& cmd) {
         chat_area_.append_assistant(
             "Commands:\n"
             "  /help         — Show this help\n"
+            "  /new          — Start a new session\n"
+            "  /compress     — Compress older context (optionally: /compress <focus>)\n"
             "  /usage        — Show token usage\n"
             "  /cost         — Show cost\n"
             "  /history      — List conversations\n"
@@ -514,12 +554,13 @@ void TuiApp::execute_command(const std::string& cmd) {
             "  /import <path>— Import conversation from JSONL file\n"
             "  /skills       — List available skills\n"
             "  /skill <name> — Load a skill and follow its instructions\n"
-            "  /clear        — Clear chat history\n"
+            "  /clear        — Clear the chat view\n"
             "  /quit, /exit  — Exit the agent\n"
             "\n"
             "Keybindings:\n"
             "  Ctrl+P  — Command palette (type to filter)\n"
             "  Ctrl+S  — Session sidebar\n"
+            "  Ctrl+N  — New session\n"
             "  Ctrl+L  — Clear chat\n"
             "  Ctrl+C  — Interrupt agent / exit");
         return;
@@ -540,6 +581,7 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
     conv_store_ = cs;
 
     sidebar_ = SessionSidebar(conv_store_);
+    sidebar_.refresh();
 
     // Event listener — bridges AgentEvent to UI updates
     event_listener_ = std::make_shared<TuiEventListener>(
@@ -589,7 +631,26 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
         status_bar_.set_cwd(cwd_buf);
     }
 
+    if (loop_) {
+        std::string sid = loop_->conversation_id();
+        status_bar_.set_session_id(sid);
+        top_bar_.set_session_id(sid);
+        sidebar_.set_active(sid);
+    }
+
     push_banner();
+
+    if (loop_ && !loop_->conversation_id().empty() && conv_store_) {
+        auto meta = conv_store_->get_meta(loop_->conversation_id());
+        std::string title = meta.ok() && !meta.value().title.empty()
+            ? meta.value().title : loop_->conversation_id();
+        chat_area_.append_system(
+            "Resumed conversation: " + title + " ("
+            + std::to_string(meta.ok() ? meta.value().message_count : 0)
+            + " messages)");
+        chat_area_.restore_history(loop_->history());
+    }
+
     build_component_tree();
 
     // 1Hz heartbeat: keeps the busy indicator and elapsed timer live during
@@ -616,6 +677,34 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
         if (loop_) loop_->interrupt();
         agent_thread_.join();
     }
+}
+
+void TuiApp::start_new_session() {
+    if (!loop_) {
+        chat_area_.append_error("Agent not ready");
+        request_redraw();
+        return;
+    }
+    if (agent_busy_.load()) {
+        chat_area_.append_error("Cannot start a new session while the agent is busy");
+        request_redraw();
+        return;
+    }
+
+    loop_->clear_history();
+    chat_area_.clear();
+    chat_area_.append_system(
+        "New session started — your next message will create a new conversation");
+    status_bar_.set_session_id("");
+    top_bar_.set_session_id("");
+    status_bar_.reset_stats();
+    sidebar_.set_active("");
+    sidebar_.refresh();
+    if (budget_tracker_) {
+        budget_tracker_->reset_session();
+        budget_tracker_->set_session_id("");
+    }
+    request_redraw();
 }
 
 }  // namespace ea::tui

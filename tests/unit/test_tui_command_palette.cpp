@@ -1,6 +1,8 @@
 // Unit tests for CommandPalette — slash command menu
 #include <catch2/catch_test_macros.hpp>
 #include "tui/CommandPalette.h"
+#include <ftxui/dom/elements.hpp>
+#include <ftxui/screen/screen.hpp>
 
 using namespace ea::tui;
 
@@ -69,4 +71,15 @@ TEST_CASE("CommandPalette set_on_command can be called multiple times", "[tui]")
     palette.set_on_command([&](const std::string&) { call_count = 1; });
     palette.set_on_command([&](const std::string&) { call_count = 2; });
     // Latest callback should be the active one
+}
+
+TEST_CASE("CommandPalette lists new session command", "[tui]") {
+    CommandPalette palette;
+    palette.show();
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(60),
+                                        ftxui::Dimension::Fixed(16));
+    ftxui::Render(screen, palette.component()->Render());
+
+    REQUIRE(screen.ToString().find("/new") != std::string::npos);
 }

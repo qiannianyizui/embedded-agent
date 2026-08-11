@@ -39,6 +39,8 @@ public:
                          bool is_error, int64_t elapsed_ms = 0);
     void append_error(const std::string& msg);
     void append_system(const std::string& text, bool plain = false);
+    // Render persisted history (user/assistant/tool messages) on startup/resume.
+    void restore_history(const std::vector<ea::Message>& history);
     void finish_message();
     void clear();
 

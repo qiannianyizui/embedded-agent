@@ -19,7 +19,11 @@ public:
             }
 
             Message tool_msg{Role::Tool, result.output, tool_name, std::nullopt, call_id};
-            ctx.messages.push_back(std::move(tool_msg));
+            if (ctx.append_message_fn) {
+                ctx.append_message_fn(std::move(tool_msg));
+            } else {
+                ctx.messages.push_back(std::move(tool_msg));
+            }
         }
 
         // Clear per-iteration state

@@ -46,14 +46,28 @@ struct MemoryStrategyConfig {
     bool enable_auto_summarize = true;
 };
 
+struct MemoryFilesConfig {
+    bool enable = true;             // Enable USER.md / MEMORY.md curated memory
+    std::string dir;                // Empty = ~/.embedded-agent/memories
+    int memory_char_limit = 2200;   // MEMORY.md total char budget
+    int user_char_limit = 1375;     // USER.md total char budget
+};
+
 struct MemoryConfig {
     std::string path;               // SQLite database path (empty = auto)
     bool enable_wal = true;         // WAL mode for file-based DBs
     double trust_positive = 0.05;   // Trust delta for helpful feedback
     double trust_negative = -0.10;  // Trust delta for unhelpful feedback
     int hrr_dim = 1024;            // HRR vector dimension
+    // File-backed curated memory — corresponds to [memory.files]
+    MemoryFilesConfig files;
     // Nested strategy config — corresponds to [memory.strategy]
     MemoryStrategyConfig strategy;
+};
+
+struct OnboardingConfig {
+    bool profile_build = true;         // Allow first-run profile-build offer
+    bool profile_build_offered = false; // One-time latch (never re-offer)
 };
 
 struct SecurityConfig {
@@ -75,9 +89,15 @@ struct AgentConfig {
     int context_file_max_chars = 20000;  // Context file char limit
     // Context compression — corresponds to [agent.compression]
     struct Compression {
-        bool enable = true;
-        int max_tokens = 8000;
-        int keep_recent_turns = 4;
+        bool enable = true;              // Enable automatic compression
+        int context_length = 0;          // Model context window in tokens (0 = default 128000)
+        double threshold_percent = 0.50; // Compress at this % of context window
+        double target_ratio = 0.20;      // Fraction of threshold kept as recent tail
+        int protect_first_n = 3;         // Non-system head messages preserved verbatim
+        int protect_last_n = 20;         // Minimum recent messages preserved in tail
+        int max_summary_tokens = 0;      // 0 = auto (5% of context, capped)
+        bool abort_on_summary_failure = false;
+        bool in_place = true;            // Archive in the same conversation id
     } compression;
     // Subagent delegation
     std::vector<agent::SubagentConfig> subagents;
@@ -121,6 +141,7 @@ struct AppConfig {
     TraceConfig trace;
     ProviderConfig provider;
     MemoryConfig memory;
+    OnboardingConfig onboarding;
     ConversationConfig conversation;
     budget::BudgetConfig budget;
     SecurityConfig security;

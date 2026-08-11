@@ -68,6 +68,8 @@ ftxui::Element TopBar::render() {
     parts.push_back(text("  ") | color(theme.color.dim) | dim);
     parts.push_back(text("⌃S sess") | color(theme.color.dim) | dim);
     parts.push_back(text("  ") | color(theme.color.dim) | dim);
+    parts.push_back(text("⌃N new") | color(theme.color.dim) | dim);
+    parts.push_back(text("  ") | color(theme.color.dim) | dim);
     parts.push_back(text("⌃C stop") | color(theme.color.dim) | dim);
     parts.push_back(text("  "));
 

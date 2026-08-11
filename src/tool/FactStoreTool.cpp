@@ -11,7 +11,11 @@ json FactStoreTool::parameters_schema() const {
                 "enum": ["add", "search", "probe", "related", "reason", "contradict", "update", "remove", "list"]
             },
             "content": {"type": "string", "description": "Fact content (for add/update)"},
-            "category": {"type": "string", "default": "general"},
+            "category": {
+                "type": "string",
+                "enum": ["user_pref", "project", "tool", "general"],
+                "default": "general"
+            },
             "tags": {"type": "string", "default": ""},
             "query": {"type": "string", "description": "Search query (for search)"},
             "entity": {"type": "string", "description": "Entity name (for probe/related)"},
@@ -54,6 +58,12 @@ Result<ToolResult> FactStoreTool::execute(const json& args) {
         auto result = memory_->add_fact(content, category, tags);
         if (!result.ok()) {
             return ToolResult{"", result.error().message, true};
+        }
+        // Mirror user-preference facts into USER.md so they survive a DB wipe.
+        if (curated_ &&
+            (category == "user_pref" || category == "user_profile" ||
+             category == "user_info")) {
+            curated_->add(memory::MemoryTarget::User, content);
         }
         return ToolResult{"", "Fact added with id: " + std::to_string(result.value()), false};
 

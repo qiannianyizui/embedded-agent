@@ -12,7 +12,11 @@ public:
         if (!ctx.response.tool_calls.empty()) {
             assistant_msg.tool_calls = ctx.response.tool_calls;
         }
-        ctx.messages.push_back(std::move(assistant_msg));
+        if (ctx.append_message_fn) {
+            ctx.append_message_fn(std::move(assistant_msg));
+        } else {
+            ctx.messages.push_back(std::move(assistant_msg));
+        }
 
         // If no tool calls, we're done
         if (!ctx.response.is_tool_use() || ctx.response.tool_calls.empty()) {

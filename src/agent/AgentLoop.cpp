@@ -3,7 +3,6 @@
 #include "SystemPrompt.h"
 #include "platform/Platform.h"
 #include "log/Logger.h"
-#include "steps/HistoryPruneStep.h"
 #include "steps/BuildToolSpecsStep.h"
 #include "steps/CallProviderStep.h"
 #include "steps/ParseResponseStep.h"
@@ -14,6 +13,28 @@
 #include <algorithm>
 
 namespace ea::agent {
+
+namespace {
+
+// Older versions persisted the first-run onboarding directive as a suffix of
+// the first user message. Strip it on restore so it is never shown as user
+// input or fed back to the model after a restart.
+void strip_legacy_onboarding_directive(std::vector<Message>& messages) {
+    const std::string marker =
+        "[System note: This is the user's very first message ever.";
+    for (auto& msg : messages) {
+        if (msg.role != Role::User) continue;
+        auto pos = msg.content.find(marker);
+        if (pos == std::string::npos) continue;
+        size_t start = pos;
+        if (start >= 2 && msg.content.compare(start - 2, 2, "\n\n") == 0) {
+            start -= 2;
+        }
+        msg.content.erase(start);
+    }
+}
+
+}  // namespace
 
 AgentLoop::AgentLoop(IProvider* provider,
                      ToolRegistry* registry,
@@ -26,7 +47,8 @@ AgentLoop::AgentLoop(IProvider* provider,
                      ContextCompressor* compressor,
                      IMemoryStrategy* strategy,
                      conversation::IConversationStore* conv_store,
-                     budget::BudgetTracker* budget_tracker)
+                     budget::BudgetTracker* budget_tracker,
+                     memory::CuratedMemoryStore* curated_memory)
     : provider_(provider)
     , registry_(registry)
     , memory_(memory)
@@ -39,9 +61,9 @@ AgentLoop::AgentLoop(IProvider* provider,
     , strategy_(strategy)
     , conv_store_(conv_store)
     , budget_tracker_(budget_tracker)
+    , curated_memory_(curated_memory)
 {
     // Build default step chain
-    steps_.push_back(std::make_unique<HistoryPruneStep>(config_.max_messages));
     steps_.push_back(std::make_unique<BuildToolSpecsStep>());
     steps_.push_back(std::make_unique<CallProviderStep>(compressor_));
     steps_.push_back(std::make_unique<ParseResponseStep>());
@@ -54,9 +76,20 @@ Result<void> AgentLoop::run(const std::string& user_input) {
     interrupted_ = false;
     loop_detector_.reset();
     current_trace_id_ = trace::generate_uuid();
+    bool compression_applied = false;
 
-    // Add user message to history
-    history_.push_back({Role::User, user_input, std::nullopt, std::nullopt, std::nullopt});
+    // Inject the first-run onboarding directive into the system prompt only.
+    // It must never be persisted into history, otherwise restarting the app
+    // would render an injected system note as if it were the user's message.
+    bool inject_onboarding =
+        !config_.onboarding_directive.empty() && !onboarding_injected_ &&
+        history_.empty();
+    if (inject_onboarding) {
+        onboarding_injected_ = true;
+    }
+
+    append_to_history({Role::User, user_input,
+                       std::nullopt, std::nullopt, std::nullopt});
 
     // Build system prompt once (base part)
     build_system_prompt_once();
@@ -75,7 +108,6 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         auto r = conv_store_->create();
         if (r.ok()) {
             conversation_id_ = r.value();
-            saved_count_ = 0;
         } else {
             EA_WARN("Failed to create conversation: {}", r.error().message);
         }
@@ -96,9 +128,15 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         ctx.provider = provider_;
         ctx.registry = registry_;
         ctx.system_prompt = system_prompt_;
+        if (inject_onboarding) {
+            ctx.system_prompt += "\n" + config_.onboarding_directive;
+        }
         ctx.model = config_.model;
         ctx.stream_callback = stream_fn_;
         ctx.emit_fn = [this](const AgentEvent& e) { emit_event(e); };
+        ctx.append_message_fn = [this](Message msg) {
+            append_to_history(std::move(msg));
+        };
         ctx.budget_tracker = budget_tracker_;
 
         // Emit TurnStart
@@ -107,6 +145,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         // Run step chain
         auto result = run_step_chain(ctx, steps_);
         if (!result.ok()) {
+            compression_applied = compression_applied || ctx.compression_applied;
             AgentEvent err_event;
             err_event.type = AgentEventType::Error;
             err_event.iteration = ctx.iteration;
@@ -116,6 +155,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
             emit_event(err_event);
             return result;
         }
+        compression_applied = compression_applied || ctx.compression_applied;
 
         // Output final response if stopping
         // In streaming mode, content is already delivered via StreamFn — skip OutputFn
@@ -141,7 +181,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
                 strategy_->on_turn_end(mctx);
             }
 
-            persist_new_messages();
+            persist_or_archive(compression_applied);
 
             return {};
         }
@@ -160,7 +200,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         MemoryStrategyContext mctx{history_, memory_, provider_, user_input, last_output};
         strategy_->on_turn_end(mctx);
     }
-    persist_new_messages();
+    persist_or_archive(compression_applied);
     if (output_) {
         output_("[Warning: Reached maximum iteration limit]");
     }
@@ -189,6 +229,12 @@ void AgentLoop::build_system_prompt_once() {
     // Context layer: project context files
     ctx.context_files = config_.context_files;
     ctx.skills_index = config_.skills_index;
+    if (curated_memory_) {
+        ctx.curated_memory = curated_memory_->format_for_system_prompt(
+            memory::MemoryTarget::Memory);
+        ctx.user_profile = curated_memory_->format_for_system_prompt(
+            memory::MemoryTarget::User);
+    }
 
     // Volatile layer: memories
     if (memory_ && config_.auto_memory) {
@@ -226,7 +272,7 @@ void AgentLoop::clear_history() {
     base_system_prompt_.clear();
     system_prompt_.clear();
     conversation_id_.clear();
-    saved_count_ = 0;
+    pending_persist_.clear();
 }
 
 void AgentLoop::add_step(std::unique_ptr<ITurnStep> step) {
@@ -295,22 +341,95 @@ void AgentLoop::emit_event(const AgentEvent& event) {
 void AgentLoop::persist_new_messages() {
     if (!conv_store_ || !config_.auto_persist || conversation_id_.empty()) return;
 
-    for (size_t i = saved_count_; i < history_.size(); ++i) {
-        auto r = conv_store_->append(conversation_id_, history_[i]);
+    for (const auto& msg : pending_persist_) {
+        auto r = conv_store_->append(conversation_id_, msg);
         if (!r.ok()) {
             EA_WARN("Failed to persist message: {}", r.error().message);
             // Don't block — just log and continue
         }
     }
-    saved_count_ = history_.size();
+    pending_persist_.clear();
+}
+
+void AgentLoop::persist_or_archive(bool compression_applied) {
+    if (compression_applied && conv_store_ && config_.auto_persist &&
+        !conversation_id_.empty() && compressor_ && compressor_->config().in_place) {
+        // Persist the turn's original messages first so the full transcript
+        // survives the compaction as archived rows.
+        persist_new_messages();
+        auto r = conv_store_->archive_and_compact(conversation_id_, history_);
+        if (r.ok()) {
+            pending_persist_.clear();
+        } else {
+            EA_WARN("Archive-and-compact failed: {}", r.error().message);
+        }
+        return;
+    }
+    persist_new_messages();
 }
 
 void AgentLoop::restore_conversation(const std::string& conversation_id,
                                       std::vector<Message> messages) {
     conversation_id_ = conversation_id;
+    strip_legacy_onboarding_directive(messages);
     history_ = std::move(messages);
-    saved_count_ = history_.size();
+    pending_persist_.clear();
     base_system_prompt_.clear();  // Force rebuild on next run()
+}
+
+void AgentLoop::append_to_history(Message msg) {
+    // Keep durable conversation messages separate from context-only system
+    // markers (breadcrumbs, loop warnings) so pruning can never lose them.
+    if (msg.role != Role::System) {
+        pending_persist_.push_back(msg);
+    }
+    history_.push_back(std::move(msg));
+}
+
+Result<AgentLoop::CompressionResult> AgentLoop::compress_context(
+        const std::string& focus_topic) {
+    if (!compressor_) {
+        return Error::invalid_arg("Context compression is not enabled");
+    }
+
+    std::vector<Message> messages = history_;
+    if (!base_system_prompt_.empty()) {
+        messages.insert(messages.begin(),
+                        {Role::System, base_system_prompt_,
+                         std::nullopt, std::nullopt, std::nullopt});
+    }
+
+    auto result = compressor_->compress(messages, focus_topic);
+    if (!result.ok()) return result.error();
+
+    CompressionResult cr;
+    cr.before = static_cast<int>(history_.size());
+    cr.after = cr.before;
+    if (!compressor_->compressed_last_call()) return cr;
+
+    std::vector<Message> live;
+    const auto& compressed = result.value();
+    if (!compressed.empty() && compressed[0].role == Role::System) {
+        live.assign(compressed.begin() + 1, compressed.end());
+    } else {
+        live = compressed;
+    }
+    cr.after = static_cast<int>(live.size());
+    cr.compressed = true;
+
+    if (conv_store_ && config_.auto_persist && !conversation_id_.empty() &&
+        compressor_->config().in_place) {
+        persist_new_messages();
+        auto ar = conv_store_->archive_and_compact(conversation_id_, live);
+        if (!ar.ok()) {
+            EA_WARN("Archive-and-compact failed: {}", ar.error().message);
+            return ar.error();
+        }
+    }
+
+    history_ = std::move(live);
+    pending_persist_.clear();
+    return cr;
 }
 
 }  // namespace ea::agent

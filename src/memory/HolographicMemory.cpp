@@ -8,6 +8,7 @@
 #include <sstream>
 #include <iomanip>
 #include <unordered_map>
+#include <cstring>
 
 #include "hrr/HrrVector.h"
 
@@ -19,6 +20,24 @@ static std::string current_iso8601() {
     std::ostringstream ss;
     ss << std::put_time(std::gmtime(&time), "%Y-%m-%dT%H:%M:%SZ");
     return ss.str();
+}
+
+static bool table_has_column(sqlite3* db, const char* table, const char* column) {
+    std::string sql = std::string("PRAGMA table_info(") + table + ")";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    bool found = false;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const unsigned char* name = sqlite3_column_text(stmt, 1);
+        if (name && std::strcmp(reinterpret_cast<const char*>(name), column) == 0) {
+            found = true;
+            break;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return found;
 }
 
 // ── Construction / Destruction ───────────────────────────────────────────
@@ -92,6 +111,7 @@ Result<void> HolographicMemory::create_tables() {
             category        TEXT NOT NULL DEFAULT 'general',
             tags            TEXT NOT NULL DEFAULT '',
             trust_score     REAL NOT NULL DEFAULT 0.5,
+            importance      INTEGER NOT NULL DEFAULT 5,
             retrieval_count INTEGER NOT NULL DEFAULT 0,
             helpful_count   INTEGER NOT NULL DEFAULT 0,
             created_at      TEXT NOT NULL,
@@ -160,6 +180,19 @@ Result<void> HolographicMemory::create_tables() {
         return Error::db("create tables failed: " + msg);
     }
 
+    // Migration for databases created before the importance column existed.
+    if (!table_has_column(db_, "facts", "importance")) {
+        char* mig_err = nullptr;
+        rc = sqlite3_exec(db_,
+            "ALTER TABLE facts ADD COLUMN importance INTEGER NOT NULL DEFAULT 5;",
+            nullptr, nullptr, &mig_err);
+        if (rc != SQLITE_OK) {
+            std::string msg = mig_err ? mig_err : "unknown";
+            sqlite3_free(mig_err);
+            return Error::db("migrate facts.importance failed: " + msg);
+        }
+    }
+
     return {};
 }
 
@@ -195,7 +228,8 @@ Result<std::string> HolographicMemory::store(const std::string& content,
 
     // Insert fact
     std::string now = current_iso8601();
-    const char* sql = "INSERT INTO facts (content, category, trust_score, created_at, updated_at) VALUES (?, ?, ?, ?, ?)";
+    const char* sql = "INSERT INTO facts (content, category, trust_score, importance, created_at, updated_at) "
+                      "VALUES (?, ?, ?, ?, ?, ?)";
     sqlite3_stmt* stmt = nullptr;
     int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
@@ -205,8 +239,9 @@ Result<std::string> HolographicMemory::store(const std::string& content,
     sqlite3_bind_text(stmt, 1, content.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, category.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_double(stmt, 3, initial_trust);
-    sqlite3_bind_text(stmt, 4, now.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 4, importance);
     sqlite3_bind_text(stmt, 5, now.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 6, now.c_str(), -1, SQLITE_TRANSIENT);
 
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
@@ -256,7 +291,18 @@ Result<std::vector<MemoryEntry>> HolographicMemory::recall(const std::string& qu
         me.id = std::to_string(fe.fact_id);
         me.content = fe.content;
         me.category = fe.category;
-        me.importance = static_cast<int>(fe.trust_score * 10);
+        me.importance = 5;
+        {
+            const char* imp_sql = "SELECT importance FROM facts WHERE fact_id = ?";
+            sqlite3_stmt* stmt = nullptr;
+            if (sqlite3_prepare_v2(db_, imp_sql, -1, &stmt, nullptr) == SQLITE_OK) {
+                sqlite3_bind_int(stmt, 1, fe.fact_id);
+                if (sqlite3_step(stmt) == SQLITE_ROW) {
+                    me.importance = sqlite3_column_int(stmt, 0);
+                }
+                sqlite3_finalize(stmt);
+            }
+        }
         me.created_at = fe.created_at;
         entries.push_back(std::move(me));
     }
@@ -278,7 +324,7 @@ Result<std::vector<MemoryEntry>> HolographicMemory::list(int limit, int offset) 
     if (!r.ok()) return r.error();
 
     std::vector<MemoryEntry> entries;
-    const char* sql = "SELECT fact_id, content, category, trust_score, created_at "
+    const char* sql = "SELECT fact_id, content, category, trust_score, importance, created_at "
                       "FROM facts ORDER BY created_at DESC LIMIT ? OFFSET ?";
     sqlite3_stmt* stmt = nullptr;
     sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
@@ -290,8 +336,8 @@ Result<std::vector<MemoryEntry>> HolographicMemory::list(int limit, int offset) 
         me.id = std::to_string(sqlite3_column_int(stmt, 0));
         me.content = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
         me.category = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
-        me.importance = static_cast<int>(sqlite3_column_double(stmt, 3) * 10);
-        me.created_at = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+        me.importance = sqlite3_column_int(stmt, 4);
+        me.created_at = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
         entries.push_back(std::move(me));
     }
     sqlite3_finalize(stmt);

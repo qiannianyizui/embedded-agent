@@ -17,6 +17,7 @@ struct PromptContext {
 
     // Volatile layer: memories + profile + timestamp (may change each turn)
     std::vector<MemoryEntry> relevant_memories;
+    std::string curated_memory;   // MEMORY.md block (persistent notes)
     std::string user_profile;
 };
 

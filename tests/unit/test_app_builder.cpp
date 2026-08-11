@@ -118,16 +118,32 @@ TEST_CASE("AppBuilder creates compressor when compression is enabled", "[app]") 
     auto temp_dir = make_temp_dir();
     auto cfg = make_test_config(temp_dir);
     cfg.agent.compression.enable = true;
-    cfg.agent.compression.max_tokens = 4000;
-    cfg.agent.compression.keep_recent_turns = 2;
+    cfg.agent.compression.context_length = 4000;
+    cfg.agent.compression.protect_last_n = 2;
 
     auto result = AppBuilder::build(cfg, false);
     REQUIRE(result.ok());
 
     auto& ctx = result.value();
     REQUIRE(ctx.compressor != nullptr);
-    REQUIRE(ctx.compressor->config().max_tokens == 4000);
-    REQUIRE(ctx.compressor->config().keep_recent_turns == 2);
+    REQUIRE(ctx.compressor->config().context_length == 4000);
+    REQUIRE(ctx.compressor->config().protect_last_n == 2);
+
+    cleanup_temp(temp_dir);
+}
+
+TEST_CASE("AppBuilder creates curated memory store when enabled", "[app]") {
+    auto temp_dir = make_temp_dir();
+    auto cfg = make_test_config(temp_dir);
+    cfg.memory.files.enable = true;
+    cfg.memory.files.dir = temp_dir + "/memories";
+
+    auto result = AppBuilder::build(cfg, false);
+    REQUIRE(result.ok());
+
+    auto& ctx = result.value();
+    REQUIRE(ctx.curated_memory != nullptr);
+    REQUIRE(ctx.curated_memory->empty(ea::memory::MemoryTarget::User));
 
     cleanup_temp(temp_dir);
 }

@@ -14,6 +14,12 @@ TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::config::MemoryStrategyConfig,
     type, working_turns, short_term_max, long_term_importance,
     enable_fact_extraction, enable_auto_summarize)
 
+TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::config::MemoryFilesConfig,
+    enable, dir, memory_char_limit, user_char_limit)
+
+TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::config::OnboardingConfig,
+    profile_build, profile_build_offered)
+
 TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::config::LogConfig,
     level, persist, verbose, max_file_bytes, max_total_bytes)
 
@@ -34,9 +40,6 @@ TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::budget::ModelPricing,
 TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::net::TlsConfig,
     ca_cert_path, client_cert_path, client_key_path, verify_server)
 
-TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::config::AgentConfig::Compression,
-    enable, max_tokens, keep_recent_turns)
-
 TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::config::SecurityConfig::Approval,
     mode, auto_approve_dangerous)
 
@@ -51,6 +54,44 @@ TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::config::WebConfig,
 // ============================================================================
 
 namespace toml {
+
+// --- AgentConfig::Compression (manual: legacy max_tokens/keep_recent_turns tolerated) ---
+template<>
+struct from<ea::config::AgentConfig::Compression> {
+    template<typename TC>
+    static ea::config::AgentConfig::Compression from_toml(const basic_value<TC>& v) {
+        ea::config::AgentConfig::Compression cfg;
+        cfg.enable                 = toml::find_or<bool>(v, "enable", cfg.enable);
+        cfg.context_length         = toml::find_or<int>(v, "context_length", cfg.context_length);
+        cfg.threshold_percent      = toml::find_or<double>(v, "threshold_percent", cfg.threshold_percent);
+        cfg.target_ratio           = toml::find_or<double>(v, "target_ratio", cfg.target_ratio);
+        cfg.protect_first_n        = toml::find_or<int>(v, "protect_first_n", cfg.protect_first_n);
+        cfg.protect_last_n         = toml::find_or<int>(v, "protect_last_n", cfg.protect_last_n);
+        cfg.max_summary_tokens     = toml::find_or<int>(v, "max_summary_tokens", cfg.max_summary_tokens);
+        cfg.abort_on_summary_failure = toml::find_or<bool>(
+            v, "abort_on_summary_failure", cfg.abort_on_summary_failure);
+        cfg.in_place               = toml::find_or<bool>(v, "in_place", cfg.in_place);
+        return cfg;
+    }
+};
+
+template<>
+struct into<ea::config::AgentConfig::Compression> {
+    template<typename TC>
+    static basic_value<TC> into_toml(const ea::config::AgentConfig::Compression& cfg) {
+        basic_value<TC> v;
+        v["enable"]                    = cfg.enable;
+        v["context_length"]            = cfg.context_length;
+        v["threshold_percent"]         = cfg.threshold_percent;
+        v["target_ratio"]              = cfg.target_ratio;
+        v["protect_first_n"]           = cfg.protect_first_n;
+        v["protect_last_n"]            = cfg.protect_last_n;
+        v["max_summary_tokens"]        = cfg.max_summary_tokens;
+        v["abort_on_summary_failure"]  = cfg.abort_on_summary_failure;
+        v["in_place"]                  = cfg.in_place;
+        return v;
+    }
+};
 
 // --- RetryPolicy (chrono::milliseconds fields stored as _ms integers in TOML) ---
 // Defined before ProviderConfig (which nests it).
@@ -134,6 +175,9 @@ struct from<ea::config::MemoryConfig> {
         if (v.contains("strategy")) {
             cfg.strategy = toml::find<ea::config::MemoryStrategyConfig>(v, "strategy");
         }
+        if (v.contains("files")) {
+            cfg.files = toml::find<ea::config::MemoryFilesConfig>(v, "files");
+        }
         return cfg;
     }
 };
@@ -148,6 +192,7 @@ struct into<ea::config::MemoryConfig> {
         v["trust_positive"]  = cfg.trust_positive;
         v["trust_negative"]  = cfg.trust_negative;
         v["hrr_dim"]         = cfg.hrr_dim;
+        v["files"]           = into<ea::config::MemoryFilesConfig>::into_toml<TC>(cfg.files);
         v["strategy"]        = into<ea::config::MemoryStrategyConfig>::into_toml<TC>(cfg.strategy);
         return v;
     }
@@ -327,6 +372,7 @@ struct from<ea::config::AppConfig> {
         if (v.contains("agent"))        cfg.agent        = toml::find<ea::config::AgentConfig>(v, "agent");
         if (v.contains("provider"))     cfg.provider     = toml::find<ea::config::ProviderConfig>(v, "provider");
         if (v.contains("memory"))       cfg.memory       = toml::find<ea::config::MemoryConfig>(v, "memory");
+        if (v.contains("onboarding"))   cfg.onboarding   = toml::find<ea::config::OnboardingConfig>(v, "onboarding");
         if (v.contains("security"))     cfg.security     = toml::find<ea::config::SecurityConfig>(v, "security");
         if (v.contains("skills"))       cfg.skills       = toml::find<ea::config::SkillConfig>(v, "skills");
         if (v.contains("web"))          cfg.web          = toml::find<ea::config::WebConfig>(v, "web");
@@ -352,6 +398,7 @@ struct into<ea::config::AppConfig> {
         v["agent"]        = into<ea::config::AgentConfig>::into_toml<TC>(cfg.agent);
         v["provider"]     = into<ea::config::ProviderConfig>::into_toml<TC>(cfg.provider);
         v["memory"]       = into<ea::config::MemoryConfig>::into_toml<TC>(cfg.memory);
+        v["onboarding"]   = into<ea::config::OnboardingConfig>::into_toml<TC>(cfg.onboarding);
         v["security"]     = into<ea::config::SecurityConfig>::into_toml<TC>(cfg.security);
         v["skills"]       = into<ea::config::SkillConfig>::into_toml<TC>(cfg.skills);
         v["web"]          = into<ea::config::WebConfig>::into_toml<TC>(cfg.web);

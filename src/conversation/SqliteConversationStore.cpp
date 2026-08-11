@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <random>
 #include <mutex>
+#include <cstring>
 
 namespace ea::conversation {
 
@@ -37,6 +38,24 @@ static std::string current_iso8601() {
     ss << std::put_time(&tm_buf, "%Y-%m-%dT%H:%M:%S")
        << '.' << std::setfill('0') << std::setw(3) << ms.count() << 'Z';
     return ss.str();
+}
+
+static bool table_has_column(sqlite3* db, const char* table, const char* column) {
+    std::string sql = std::string("PRAGMA table_info(") + table + ")";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    bool found = false;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const unsigned char* name = sqlite3_column_text(stmt, 1);
+        if (name && std::strcmp(reinterpret_cast<const char*>(name), column) == 0) {
+            found = true;
+            break;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return found;
 }
 
 // --- Construction / Lifecycle ---
@@ -105,7 +124,8 @@ Result<void> SqliteConversationStore::create_tables() {
             seq             INTEGER NOT NULL,
             role            TEXT NOT NULL,
             content         TEXT NOT NULL DEFAULT '',
-            extra_json      TEXT DEFAULT '{}'
+            extra_json      TEXT DEFAULT '{}',
+            active          INTEGER NOT NULL DEFAULT 1
         );
         CREATE INDEX IF NOT EXISTS idx_messages_conv_seq ON messages(conversation_id, seq);
         CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);
@@ -117,6 +137,19 @@ Result<void> SqliteConversationStore::create_tables() {
         std::string msg = err ? err : "unknown";
         sqlite3_free(err);
         return Error::db("create tables failed: " + msg);
+    }
+
+    // Migration for databases created before the archive feature.
+    if (!table_has_column(db_, "messages", "active")) {
+        char* mig_err = nullptr;
+        rc = sqlite3_exec(db_,
+            "ALTER TABLE messages ADD COLUMN active INTEGER NOT NULL DEFAULT 1;",
+            nullptr, nullptr, &mig_err);
+        if (rc != SQLITE_OK) {
+            std::string msg = mig_err ? mig_err : "unknown";
+            sqlite3_free(mig_err);
+            return Error::db("migrate messages.active failed: " + msg);
+        }
     }
     return {};
 }
@@ -324,6 +357,16 @@ Result<void> SqliteConversationStore::update_meta_on_append(
 }
 
 Result<std::vector<Message>> SqliteConversationStore::load(const std::string& conversation_id) {
+    return load_impl(conversation_id, /*active_only=*/true);
+}
+
+Result<std::vector<Message>> SqliteConversationStore::load_all(
+        const std::string& conversation_id) {
+    return load_impl(conversation_id, /*active_only=*/false);
+}
+
+Result<std::vector<Message>> SqliteConversationStore::load_impl(
+        const std::string& conversation_id, bool active_only) {
     auto r = open();
     if (!r.ok()) return r.error();
 
@@ -343,10 +386,12 @@ Result<std::vector<Message>> SqliteConversationStore::load(const std::string& co
     }
 
     // Load messages
-    const char* sql = "SELECT role, content, extra_json FROM messages "
-                      "WHERE conversation_id = ? ORDER BY seq ASC";
+    std::string sql = "SELECT role, content, extra_json FROM messages "
+                      "WHERE conversation_id = ?";
+    if (active_only) sql += " AND active = 1";
+    sql += " ORDER BY seq ASC";
     sqlite3_stmt* stmt = nullptr;
-    rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    rc = sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         return Error::db(std::string("prepare failed: ") + sqlite3_errmsg(db_));
     }
@@ -369,7 +414,7 @@ Result<std::vector<ConversationMeta>> SqliteConversationStore::list(int limit, i
 
     const char* sql = R"(
         SELECT c.id, c.title, c.model, c.created_at, c.updated_at,
-               COUNT(m.id) as msg_count
+               SUM(CASE WHEN m.active = 1 THEN 1 ELSE 0 END) as msg_count
         FROM conversations c
         LEFT JOIN messages m ON c.id = m.conversation_id
         GROUP BY c.id
@@ -406,7 +451,7 @@ Result<ConversationMeta> SqliteConversationStore::get_meta(const std::string& co
 
     const char* sql = R"(
         SELECT c.id, c.title, c.model, c.created_at, c.updated_at,
-               COUNT(m.id) as msg_count
+               SUM(CASE WHEN m.active = 1 THEN 1 ELSE 0 END) as msg_count
         FROM conversations c
         LEFT JOIN messages m ON c.id = m.conversation_id
         WHERE c.id = ?
@@ -435,6 +480,113 @@ Result<ConversationMeta> SqliteConversationStore::get_meta(const std::string& co
     meta.message_count = sqlite3_column_int(stmt, 5);
     sqlite3_finalize(stmt);
     return meta;
+}
+
+Result<void> SqliteConversationStore::archive_and_compact(
+        const std::string& conversation_id,
+        const std::vector<Message>& compressed_messages) {
+    auto r = open();
+    if (!r.ok()) return r.error();
+
+    auto exec = [this](const char* sql) {
+        char* err = nullptr;
+        int rc = sqlite3_exec(db_, sql, nullptr, nullptr, &err);
+        if (rc != SQLITE_OK) {
+            std::string msg = err ? err : "unknown";
+            sqlite3_free(err);
+            return Result<void>(Error::db(msg));
+        }
+        return Result<void>();
+    };
+
+    auto begin = exec("BEGIN");
+    if (!begin.ok()) return begin.error();
+
+    auto rollback = [this] {
+        char* err = nullptr;
+        sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, &err);
+        if (err) sqlite3_free(err);
+    };
+
+    const char* archive_sql =
+        "UPDATE messages SET active = 0 WHERE conversation_id = ? AND active = 1";
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(db_, archive_sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        rollback();
+        return Error::db(std::string("prepare archive failed: ") + sqlite3_errmsg(db_));
+    }
+    sqlite3_bind_text(stmt, 1, conversation_id.c_str(), -1, SQLITE_TRANSIENT);
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        rollback();
+        return Error::db(std::string("archive update failed: ") + sqlite3_errmsg(db_));
+    }
+
+    for (const auto& msg : compressed_messages) {
+        const char* seq_sql =
+            "SELECT COALESCE(MAX(seq), -1) + 1 FROM messages WHERE conversation_id = ?";
+        sqlite3_stmt* seq_stmt = nullptr;
+        rc = sqlite3_prepare_v2(db_, seq_sql, -1, &seq_stmt, nullptr);
+        if (rc != SQLITE_OK) {
+            rollback();
+            return Error::db(std::string("prepare seq failed: ") + sqlite3_errmsg(db_));
+        }
+        sqlite3_bind_text(seq_stmt, 1, conversation_id.c_str(), -1, SQLITE_TRANSIENT);
+        int next_seq = 0;
+        if (sqlite3_step(seq_stmt) == SQLITE_ROW) {
+            next_seq = sqlite3_column_int(seq_stmt, 0);
+        }
+        sqlite3_finalize(seq_stmt);
+
+        const char* insert_sql =
+            "INSERT INTO messages (conversation_id, seq, role, content, extra_json, active) "
+            "VALUES (?, ?, ?, ?, ?, 1)";
+        sqlite3_stmt* ins = nullptr;
+        rc = sqlite3_prepare_v2(db_, insert_sql, -1, &ins, nullptr);
+        if (rc != SQLITE_OK) {
+            rollback();
+            return Error::db(std::string("prepare insert failed: ") + sqlite3_errmsg(db_));
+        }
+        sqlite3_bind_text(ins, 1, conversation_id.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(ins, 2, next_seq);
+        std::string role_str = role_to_string(msg.role);
+        std::string extra = message_to_extra_json(msg).dump();
+        sqlite3_bind_text(ins, 3, role_str.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(ins, 4, msg.content.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(ins, 5, extra.c_str(), -1, SQLITE_TRANSIENT);
+        rc = sqlite3_step(ins);
+        sqlite3_finalize(ins);
+        if (rc != SQLITE_DONE) {
+            rollback();
+            return Error::db(std::string("insert compressed failed: ") + sqlite3_errmsg(db_));
+        }
+    }
+
+    const char* touch_sql = "UPDATE conversations SET updated_at = ? WHERE id = ?";
+    sqlite3_stmt* touch = nullptr;
+    rc = sqlite3_prepare_v2(db_, touch_sql, -1, &touch, nullptr);
+    if (rc != SQLITE_OK) {
+        rollback();
+        return Error::db(std::string("prepare touch failed: ") + sqlite3_errmsg(db_));
+    }
+    std::string now = current_iso8601();
+    sqlite3_bind_text(touch, 1, now.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(touch, 2, conversation_id.c_str(), -1, SQLITE_TRANSIENT);
+    rc = sqlite3_step(touch);
+    sqlite3_finalize(touch);
+    if (rc != SQLITE_DONE) {
+        rollback();
+        return Error::db(std::string("touch conversation failed: ") + sqlite3_errmsg(db_));
+    }
+
+    auto commit = exec("COMMIT");
+    if (!commit.ok()) {
+        rollback();
+        return commit.error();
+    }
+    return {};
 }
 
 Result<bool> SqliteConversationStore::remove(const std::string& conversation_id) {

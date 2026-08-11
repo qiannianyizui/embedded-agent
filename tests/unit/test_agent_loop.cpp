@@ -22,9 +22,11 @@ public:
         responses_.push(std::move(resp));
     }
 
-    Result<LLMResponse> chat(const std::vector<Message>&, const std::vector<ToolSpec>&,
+    Result<LLMResponse> chat(const std::vector<Message>& messages,
+                             const std::vector<ToolSpec>&,
                               const std::string&, const ChatOptions&) override {
         if (responses_.empty()) return Error::net("no mock responses");
+        last_messages_ = messages;
         auto r = std::move(responses_.front());
         responses_.pop();
         return r;
@@ -38,6 +40,8 @@ public:
 
 private:
     std::queue<LLMResponse> responses_;
+public:
+    std::vector<Message> last_messages_;
 };
 
 // Mock Tool
@@ -130,4 +134,57 @@ TEST_CASE("AgentLoop max iterations", "[agent]") {
     auto result = loop.run("loop test");
     // Should still return ok (graceful handling)
     REQUIRE(result.ok());
+}
+
+TEST_CASE("AgentLoop injects onboarding directive only on first message", "[agent]") {
+    auto provider = std::make_unique<MockProvider>();
+
+    LLMResponse resp1;
+    resp1.content = "Hello!";
+    resp1.stop_reason = "stop";
+    provider->enqueue_response(std::move(resp1));
+
+    LLMResponse resp2;
+    resp2.content = "Hi again!";
+    resp2.stop_reason = "stop";
+    provider->enqueue_response(std::move(resp2));
+
+    ToolRegistry registry;
+    AgentLoop::Config cfg;
+    cfg.onboarding_directive = "\n\n[System note: offer to build a profile]";
+    AgentLoop loop(provider.get(), &registry, nullptr, cfg, [](const std::string&) {});
+
+    auto first = loop.run("Hi");
+    REQUIRE(first.ok());
+    REQUIRE(loop.history()[0].content == "Hi");
+    bool saw_directive = false;
+    for (const auto& m : provider->last_messages_) {
+        if (m.content.find("offer to build a profile") != std::string::npos) {
+            saw_directive = true;
+        }
+    }
+    REQUIRE(saw_directive);
+
+    auto second = loop.run("Again");
+    REQUIRE(second.ok());
+    REQUIRE(loop.history()[2].content == "Again");
+    for (const auto& m : provider->last_messages_) {
+        REQUIRE(m.content.find("offer to build a profile") == std::string::npos);
+    }
+}
+
+TEST_CASE("AgentLoop strips legacy onboarding directive on restore", "[agent]") {
+    ToolRegistry registry;
+    AgentLoop loop(nullptr, &registry, nullptr, AgentLoop::Config{},
+                   [](const std::string&) {});
+
+    std::vector<Message> msgs;
+    msgs.push_back({Role::User,
+                    "你好\n\n[System note: This is the user's very first message ever. "
+                    "Offer to build a profile]",
+                    std::nullopt, std::nullopt, std::nullopt});
+
+    loop.restore_conversation("conv_test", std::move(msgs));
+    REQUIRE(loop.history().size() == 1);
+    REQUIRE(loop.history()[0].content == "你好");
 }

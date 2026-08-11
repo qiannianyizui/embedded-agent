@@ -15,6 +15,7 @@ public:
     void set_busy(bool busy, const std::string& activity = "");
     void update_usage(int input_tokens, int output_tokens);
     void update_cost(double cost_usd);
+    void reset_stats();
     void set_model(const std::string& model);
     void set_session_id(const std::string& id);
     void set_cwd(const std::string& cwd);

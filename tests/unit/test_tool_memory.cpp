@@ -1,10 +1,29 @@
 #include <catch2/catch_test_macros.hpp>
 #include "tool/MemoryTool.h"
+#include "tool/FactStoreTool.h"
 #include "memory/IMemory.h"
+#include "memory/CuratedMemoryStore.h"
 #include "base/Types.h"
+#include <cstdio>
+#include <filesystem>
+#include <random>
+#include <atomic>
 
 using namespace ea;
 using namespace ea::tool;
+
+namespace {
+
+std::string make_temp_dir() {
+    static std::atomic<unsigned> counter{0};
+    auto base = std::filesystem::temp_directory_path();
+    std::random_device rd;
+    auto p = base / ("ea_tool_mem_" + std::to_string(rd() + counter.fetch_add(1)));
+    std::filesystem::create_directories(p);
+    return p.string();
+}
+
+}  // namespace
 
 // Mock IMemory for testing MemoryTool
 class MockMemory : public IMemory {
@@ -42,9 +61,18 @@ public:
 
     Result<int> count() override { return 0; }
 
+    Result<int> add_fact(const std::string& content,
+                         const std::string& category = "general",
+                         const std::string& = "") override {
+        facts_.push_back({content, category});
+        return static_cast<int>(facts_.size());
+    }
+    bool is_holographic() const override { return true; }
+
     // Test inspection
     std::vector<std::tuple<std::string, std::string, int>> stored_;
     std::vector<std::string> forgotten_;
+    std::vector<std::pair<std::string, std::string>> facts_;
 };
 
 TEST_CASE("MemoryTool name is memory", "[tool][memory]") {
@@ -123,6 +151,85 @@ TEST_CASE("MemoryTool unknown action", "[tool][memory]") {
 
     auto result = tool.execute(json{{"action", "invalid"}});
     REQUIRE_FALSE(result.ok());
+}
+
+TEST_CASE("MemoryTool writes USER.md via target=user", "[tool][memory]") {
+    auto dir = make_temp_dir();
+    ea::memory::CuratedMemoryConfig cfg;
+    cfg.dir = dir;
+    ea::memory::CuratedMemoryStore store(cfg);
+    REQUIRE(store.open().ok());
+
+    MockMemory mem;
+    MemoryTool tool(&mem, &store);
+
+    auto add = tool.execute(json{{"action", "add"}, {"target", "user"},
+                                 {"content", "Name is lsy"}});
+    REQUIRE(add.ok());
+    REQUIRE_FALSE(add.value().is_error);
+
+    auto list = tool.execute(json{{"action", "list"}, {"target", "user"}});
+    REQUIRE(list.ok());
+    auto parsed = json::parse(list.value().output);
+    REQUIRE(parsed.size() == 1);
+    REQUIRE(parsed[0] == "Name is lsy");
+
+    auto remove = tool.execute(json{{"action", "remove"}, {"target", "user"},
+                                    {"substring", "lsy"}});
+    REQUIRE(remove.ok());
+    REQUIRE(store.empty(ea::memory::MemoryTarget::User));
+
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("MemoryTool target=user mirrors user_pref into fact store", "[tool][memory]") {
+    auto dir = make_temp_dir();
+    ea::memory::CuratedMemoryConfig cfg;
+    cfg.dir = dir;
+    ea::memory::CuratedMemoryStore store(cfg);
+    REQUIRE(store.open().ok());
+
+    MockMemory mem;
+    MemoryTool tool(&mem, &store);
+
+    auto add = tool.execute(json{{"action", "add"}, {"target", "user"},
+                                 {"content", "Name is lsy"}});
+    REQUIRE(add.ok());
+    REQUIRE_FALSE(add.value().is_error);
+
+    auto entries = store.entries(ea::memory::MemoryTarget::User);
+    REQUIRE(entries.ok());
+    REQUIRE(entries.value().size() == 1);
+    REQUIRE(entries.value()[0] == "Name is lsy");
+
+    REQUIRE(mem.facts_.size() == 1);
+    REQUIRE(mem.facts_[0].first == "Name is lsy");
+    REQUIRE(mem.facts_[0].second == "user_pref");
+
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("FactStoreTool user_pref mirrors into USER.md", "[tool][memory]") {
+    auto dir = make_temp_dir();
+    ea::memory::CuratedMemoryConfig cfg;
+    cfg.dir = dir;
+    ea::memory::CuratedMemoryStore store(cfg);
+    REQUIRE(store.open().ok());
+
+    MockMemory mem;
+    FactStoreTool tool(&mem, &store);
+
+    auto add = tool.execute(json{{"action", "add"}, {"category", "user_pref"},
+                                 {"content", "Name is lsy"}});
+    REQUIRE(add.ok());
+    REQUIRE_FALSE(add.value().is_error);
+
+    auto entries = store.entries(ea::memory::MemoryTarget::User);
+    REQUIRE(entries.ok());
+    REQUIRE(entries.value().size() == 1);
+    REQUIRE(entries.value()[0] == "Name is lsy");
+
+    std::filesystem::remove_all(dir);
 }
 
 TEST_CASE("MemoryTool store missing content", "[tool][memory]") {

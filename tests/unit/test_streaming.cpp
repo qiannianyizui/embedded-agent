@@ -229,7 +229,7 @@ TEST_CASE("Non-streaming path unchanged when no StreamFn", "[streaming]") {
     std::string output;
     // No stream_fn — should use OutputFn
     AgentLoop loop(non_stream.get(), &registry, nullptr,
-                   AgentLoop::Config{90, 65536, 100, true, false},
+                   AgentLoop::Config{90, 65536, true, false},
                    [&](const std::string& t) { output = t; });
 
     auto result = loop.run("test");
@@ -306,7 +306,7 @@ TEST_CASE("AgentLoop non-streaming uses OutputFn", "[streaming]") {
 
     // Config with stream=false, no StreamFn
     AgentLoop loop(provider.get(), &registry, nullptr,
-                   AgentLoop::Config{90, 65536, 100, true, false},
+                   AgentLoop::Config{90, 65536, true, false},
                    [&](const std::string& t) { output = t; });
 
     auto result = loop.run("test");

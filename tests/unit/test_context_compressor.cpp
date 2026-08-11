@@ -80,8 +80,7 @@ private:
 TEST_CASE("compress returns messages unchanged when under threshold", "[compression]") {
     auto provider = std::make_shared<MockSummaryProvider>();
     CompressionConfig config;
-    config.max_tokens = 10000;
-    config.keep_recent_turns = 4;
+    config.context_length = 10000;
 
     ContextCompressor compressor(provider.get(), config);
 
@@ -101,7 +100,7 @@ TEST_CASE("compress returns messages unchanged when disabled", "[compression]") 
     auto provider = std::make_shared<MockSummaryProvider>();
     CompressionConfig config;
     config.enable = false;
-    config.max_tokens = 1;
+    config.context_length = 1;
 
     ContextCompressor compressor(provider.get(), config);
 
@@ -119,8 +118,9 @@ TEST_CASE("compress returns messages unchanged when disabled", "[compression]") 
 TEST_CASE("compress triggers summarization when over threshold", "[compression]") {
     auto provider = std::make_shared<MockSummaryProvider>();
     CompressionConfig config;
-    config.max_tokens = 10;
-    config.keep_recent_turns = 1;
+    config.context_length = 20;
+    config.protect_first_n = 0;
+    config.protect_last_n = 2;
 
     ContextCompressor compressor(provider.get(), config);
 
@@ -150,8 +150,9 @@ TEST_CASE("compress falls back to truncation on summarization failure", "[compre
     provider->set_fail(true);
 
     CompressionConfig config;
-    config.max_tokens = 10;
-    config.keep_recent_turns = 1;
+    config.context_length = 20;
+    config.protect_first_n = 0;
+    config.protect_last_n = 2;
 
     ContextCompressor compressor(provider.get(), config);
 
@@ -167,7 +168,7 @@ TEST_CASE("compress falls back to truncation on summarization failure", "[compre
     REQUIRE(result.value().size() < msgs.size());
     bool found_breadcrumb = false;
     for (const auto& m : result.value()) {
-        if (m.content.find("pruned") != std::string::npos) {
+        if (m.content.find("fallback") != std::string::npos) {
             found_breadcrumb = true;
         }
     }
@@ -176,8 +177,9 @@ TEST_CASE("compress falls back to truncation on summarization failure", "[compre
 
 TEST_CASE("compress with null provider falls back to truncation", "[compression]") {
     CompressionConfig config;
-    config.max_tokens = 10;
-    config.keep_recent_turns = 1;
+    config.context_length = 10;
+    config.protect_first_n = 0;
+    config.protect_last_n = 2;
 
     ContextCompressor compressor(nullptr, config);
 
@@ -196,8 +198,7 @@ TEST_CASE("compress with null provider falls back to truncation", "[compression]
 TEST_CASE("compress does nothing for short conversation", "[compression]") {
     auto provider = std::make_shared<MockSummaryProvider>();
     CompressionConfig config;
-    config.max_tokens = 10;
-    config.keep_recent_turns = 4;
+    config.context_length = 100;
 
     ContextCompressor compressor(provider.get(), config);
 
@@ -213,7 +214,10 @@ TEST_CASE("compress does nothing for short conversation", "[compression]") {
 
 TEST_CASE("CompressionConfig default values", "[compression]") {
     CompressionConfig config;
-    REQUIRE(config.max_tokens == 8000);
-    REQUIRE(config.keep_recent_turns == 4);
+    REQUIRE(config.context_length == 0);
+    REQUIRE(config.threshold_percent == 0.50);
+    REQUIRE(config.target_ratio == 0.20);
+    REQUIRE(config.protect_first_n == 3);
+    REQUIRE(config.protect_last_n == 20);
     REQUIRE(config.enable == true);
 }

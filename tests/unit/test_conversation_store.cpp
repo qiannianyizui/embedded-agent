@@ -128,6 +128,35 @@ TEST_CASE("ConversationStore remove non-existent returns false", "[conversation]
     REQUIRE_FALSE(r.value());  // false = not found
 }
 
+TEST_CASE("ConversationStore archive_and_compact keeps full history", "[conversation]") {
+    TempConvStore t;
+    auto id = t.store.create().value();
+
+    t.store.append(id, {Role::User, "Hello", std::nullopt, std::nullopt, std::nullopt});
+    t.store.append(id, {Role::Assistant, "Hi there", std::nullopt, std::nullopt, std::nullopt});
+
+    std::vector<Message> compressed;
+    compressed.push_back({Role::User, "[Conversation Summary] Earlier turns",
+                          std::nullopt, std::nullopt, std::nullopt});
+    compressed.push_back({Role::Assistant, "Continue from summary",
+                          std::nullopt, std::nullopt, std::nullopt});
+
+    REQUIRE(t.store.archive_and_compact(id, compressed).ok());
+
+    auto active = t.store.load(id);
+    REQUIRE(active.ok());
+    REQUIRE(active.value().size() == compressed.size());
+    REQUIRE(active.value()[0].content == "[Conversation Summary] Earlier turns");
+
+    auto all = t.store.load_all(id);
+    REQUIRE(all.ok());
+    REQUIRE(all.value().size() == 4);  // 2 archived + 2 active
+
+    auto meta = t.store.get_meta(id);
+    REQUIRE(meta.ok());
+    REQUIRE(meta.value().message_count == static_cast<int>(compressed.size()));
+}
+
 TEST_CASE("ConversationStore tool_calls serialization", "[conversation]") {
     TempConvStore t;
     auto id = t.store.create().value();

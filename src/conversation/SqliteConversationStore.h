@@ -24,6 +24,10 @@ public:
     Result<std::string> create(const std::string& model = "") override;
     Result<void> append(const std::string& conversation_id, const Message& msg) override;
     Result<std::vector<Message>> load(const std::string& conversation_id) override;
+    Result<std::vector<Message>> load_all(const std::string& conversation_id) override;
+    Result<void> archive_and_compact(
+        const std::string& conversation_id,
+        const std::vector<Message>& compressed_messages) override;
     Result<std::vector<ConversationMeta>> list(int limit = 50, int offset = 0) override;
     Result<ConversationMeta> get_meta(const std::string& conversation_id) override;
     Result<bool> remove(const std::string& conversation_id) override;
@@ -37,6 +41,8 @@ private:
     Result<void> create_tables();
     Result<void> update_meta_on_append(const std::string& conversation_id,
                                         const std::string& first_user_content);
+    Result<std::vector<Message>> load_impl(const std::string& conversation_id,
+                                           bool active_only);
     std::string role_to_string(Role role) const;
     Role string_to_role(const std::string& s) const;
     json message_to_extra_json(const Message& msg) const;

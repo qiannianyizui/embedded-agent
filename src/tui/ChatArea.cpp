@@ -5,6 +5,7 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/component.hpp>
 #include <algorithm>
+#include <cctype>
 
 namespace ea::tui {
 
@@ -89,6 +90,27 @@ void ChatArea::append_system(const std::string& text, bool plain) {
     if (follow_bottom_) scroll_y_ = 1.0f;
 }
 
+void ChatArea::restore_history(const std::vector<ea::Message>& history) {
+    for (const auto& msg : history) {
+        if (msg.content.empty()) continue;
+        switch (msg.role) {
+            case ea::Role::User:
+                append_user(msg.content);
+                break;
+            case ea::Role::Assistant:
+                append_assistant(msg.content);
+                break;
+            case ea::Role::Tool:
+                append_tool_end(msg.name ? *msg.name : "tool", msg.content,
+                                /*is_error=*/false);
+                break;
+            case ea::Role::System:
+                append_system(msg.content);
+                break;
+        }
+    }
+}
+
 void ChatArea::finish_message() {
     if (!streaming_content_.empty()) {
         ChatMessage msg;
@@ -146,6 +168,61 @@ void ChatArea::clear_new_flag() {
 
 namespace {
 
+// Word-wrapping renderer that also breaks between CJK characters (FTXUI's
+// paragraph() only wraps on ASCII spaces, so Chinese long lines get clipped).
+ftxui::Element wrap_text(const std::string& content) {
+    using namespace ftxui;
+    Elements lines;
+    size_t start = 0;
+    while (start <= content.size()) {
+        size_t nl = content.find('\n', start);
+        std::string line = (nl == std::string::npos)
+            ? content.substr(start) : content.substr(start, nl - start);
+
+        Elements tokens;
+        std::string word;
+        auto flush_word = [&] {
+            if (!word.empty()) {
+                tokens.push_back(text(word));
+                word.clear();
+            }
+        };
+
+        for (size_t i = 0; i < line.size();) {
+            unsigned char c = static_cast<unsigned char>(line[i]);
+            if (c == ' ') {
+                flush_word();
+                tokens.push_back(text(" "));
+                ++i;
+            } else if (c < 0x80) {
+                if (std::isalnum(c) || c == '_' || c == '-' || c == '.' ||
+                    c == '/') {
+                    word += static_cast<char>(c);
+                } else {
+                    flush_word();
+                    tokens.push_back(text(std::string(1, static_cast<char>(c))));
+                }
+                ++i;
+            } else {
+                flush_word();
+                size_t len = 1;
+                if ((c & 0xE0) == 0xC0) len = 2;
+                else if ((c & 0xF0) == 0xE0) len = 3;
+                else if ((c & 0xF8) == 0xF0) len = 4;
+                tokens.push_back(text(line.substr(i, len)));
+                i += len;
+            }
+        }
+        flush_word();
+
+        if (tokens.empty()) tokens.push_back(text(""));
+        lines.push_back(flexbox(std::move(tokens), FlexboxConfig().SetGap(0, 0)));
+        if (nl == std::string::npos) break;
+        start = nl + 1;
+    }
+    return vbox(std::move(lines));
+}
+
 // Small role chip: "● agent · 12:03"
 ftxui::Element render_chip(const std::string& label, const std::string& time,
                            ftxui::Color col) {
@@ -180,8 +257,10 @@ ftxui::Element ChatArea::render_user(const ChatMessage& msg) {
     auto& theme = default_theme();
     auto role = theme.role_user();
 
-    auto bubble = vbox({
-        text("  " + msg.content + "  ") | color(role.body_color),
+    auto bubble = hbox({
+        text("  "),
+        wrap_text(msg.content) | color(role.body_color) | xflex,
+        text("  "),
     }) | bgcolor(theme.color.user_bg)
        | borderRounded | color(theme.color.rail);
 
@@ -204,7 +283,7 @@ ftxui::Element ChatArea::render_assistant(const ChatMessage& msg) {
         text("┃ ") | color(role.accent_color) | bold,
         vbox({
             render_chip(role.label, msg.timestamp, role.chip_color),
-            text(msg.content) | color(role.body_color),
+            wrap_text(msg.content) | color(role.body_color) | xflex,
         }) | xflex,
     });
 }
@@ -256,15 +335,15 @@ ftxui::Element ChatArea::render_system(const ChatMessage& msg) {
     Color c = msg.is_error ? theme.color.error : theme.color.muted;
     if (msg.plain) {
         return hbox({
-            text("  ") ,
-            text(msg.content) | color(c) | dim,
+            text("  "),
+            wrap_text(msg.content) | color(c) | dim | xflex,
         });
     }
     std::string glyph = msg.is_error ? "⚠" : "·";
 
     return hbox({
         text("  " + glyph + " ") | color(c),
-        text(msg.content) | color(c) | (msg.is_error ? ftxui::bold : ftxui::dim),
+        wrap_text(msg.content) | color(c) | (msg.is_error ? ftxui::bold : ftxui::dim) | xflex,
     });
 }
 
@@ -300,7 +379,7 @@ ftxui::Element ChatArea::render_streaming() {
             render_chip(role.label, "", role.chip_color),
             hbox({
                 text(frame + " ") | color(theme.color.accent),
-                text(streaming_content_) | color(role.body_color),
+                wrap_text(streaming_content_) | color(role.body_color) | xflex,
             }),
         }) | xflex,
     });

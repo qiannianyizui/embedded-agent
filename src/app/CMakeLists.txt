@@ -1,6 +1,7 @@
 add_library(ea-app OBJECT
     AppBuilder.cpp
     auto_resume.cpp
+    onboarding.cpp
     IRunner.cpp
     TuiRunner.cpp
 )

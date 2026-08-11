@@ -25,6 +25,7 @@ void StatusBar::set_busy(bool busy, const std::string& activity) {
     busy_ = busy;
     if (busy) {
         spinner_state_.start(activity);
+        session_start_ = std::chrono::steady_clock::now();
     } else {
         spinner_state_.stop();
     }
@@ -37,6 +38,13 @@ void StatusBar::update_usage(int input_tokens, int output_tokens) {
 
 void StatusBar::update_cost(double cost_usd) {
     cost_usd_ = cost_usd;
+}
+
+void StatusBar::reset_stats() {
+    input_tokens_ = 0;
+    output_tokens_ = 0;
+    cost_usd_ = 0.0;
+    session_start_ = std::chrono::steady_clock::now();
 }
 
 void StatusBar::set_model(const std::string& model) {
@@ -79,12 +87,7 @@ ftxui::Element StatusBar::render() {
         segments.push_back(text(spinner_frame_text(spinner_state_))
                                | color(theme.color.accent));
     } else {
-        auto now = std::chrono::steady_clock::now();
-        auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - session_start_).count();
         segments.push_back(text("● ready") | color(theme.color.ok) | bold);
-        segments.push_back(text("  " + fmtDuration(elapsed_ms))
-                               | color(theme.color.muted) | dim);
     }
 
     // Tokens

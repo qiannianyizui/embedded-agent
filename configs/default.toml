@@ -6,8 +6,14 @@ soul = "You are a helpful AI assistant running on a Linux/Android device."
 
 [agent.compression]
 enable = true
-max_tokens = 8000
-keep_recent_turns = 4
+context_length = 0            # 0 = use default 128000
+threshold_percent = 0.50
+target_ratio = 0.20
+protect_first_n = 3
+protect_last_n = 20
+max_summary_tokens = 0        # 0 = auto
+abort_on_summary_failure = false
+in_place = true
 
 [log]
 level = "debug"
@@ -34,6 +40,16 @@ timeout = 60
 backend = "sqlite"
 path = ""
 enable_fts5 = true
+
+[memory.files]
+enable = true
+dir = ""
+memory_char_limit = 2200
+user_char_limit = 1375
+
+[onboarding]
+profile_build = true
+profile_build_offered = false
 
 [memory.strategy]
 type = "progressive"

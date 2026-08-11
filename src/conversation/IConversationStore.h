@@ -30,6 +30,15 @@ public:
     // Load all messages for a conversation
     virtual Result<std::vector<Message>> load(const std::string& conversation_id) = 0;
 
+    // Load every message including archived (pre-compaction) rows.
+    virtual Result<std::vector<Message>> load_all(const std::string& conversation_id) = 0;
+
+    // Mark the current active transcript as archived and store a compressed
+    // transcript as the new active context (same conversation id).
+    virtual Result<void> archive_and_compact(
+        const std::string& conversation_id,
+        const std::vector<Message>& compressed_messages) = 0;
+
     // List conversations (ordered by updated_at descending)
     virtual Result<std::vector<ConversationMeta>> list(int limit = 50, int offset = 0) = 0;
 

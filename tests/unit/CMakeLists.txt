@@ -30,6 +30,8 @@ add_executable(ea-unit-tests
     test_web_search.cpp
     test_tool_search.cpp
     test_tool_output_config.cpp
+    test_curated_memory_store.cpp
+    test_onboarding.cpp
     test_agent_loop.cpp
     test_system_prompt.cpp
     test_loop_detector.cpp
@@ -80,6 +82,7 @@ add_executable(ea-tui-tests
         test_tui_event_listener.cpp
         test_tui_command_palette.cpp
         test_tui_input_bar.cpp
+        test_tui_session_sidebar.cpp
         test_tui_app.cpp
         test_tui_theme.cpp
         test_tui_spinner.cpp
@@ -87,7 +90,7 @@ add_executable(ea-tui-tests
     )
     target_link_libraries(ea-tui-tests PRIVATE
         ea-test-common
-        ea-base ea-io ea-net ea-log ea-config ea-security
+        ea-base ea-io ea-net ea-log ea-config ea-security ea-memory ea-hrr
         ea-agent ea-trace ea-conversation ea-budget
         ea-provider ea-tool ea-skill ea-mcp ea-platform
         ea-tui

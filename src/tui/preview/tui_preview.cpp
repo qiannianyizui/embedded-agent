@@ -53,6 +53,13 @@ public:
         return ea::Result<std::vector<ea::Message>>(
             std::vector<ea::Message>{});
     }
+    ea::Result<std::vector<ea::Message>> load_all(const std::string&) override {
+        return ea::Result<std::vector<ea::Message>>(std::vector<ea::Message>{});
+    }
+    ea::Result<void> archive_and_compact(const std::string&,
+                                         const std::vector<ea::Message>&) override {
+        return ea::Result<void>();
+    }
     ea::Result<std::vector<ConversationMeta>> list(int, int) override {
         std::vector<ConversationMeta> sessions;
         ConversationMeta a;

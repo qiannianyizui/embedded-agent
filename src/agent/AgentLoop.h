@@ -14,6 +14,7 @@
 #include "IMemoryStrategy.h"
 #include "conversation/IConversationStore.h"
 #include "budget/BudgetTracker.h"
+#include "memory/CuratedMemoryStore.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -29,7 +30,6 @@ public:
     struct Config {
         int max_iterations = 90;
         int max_tool_output_bytes = 65536;
-        int max_messages = 100;
         bool auto_memory = true;
         bool stream = true;  // Enable streaming output
         bool auto_persist = true;
@@ -37,6 +37,7 @@ public:
         std::string soul;   // Identity text (from SOUL.md or config)
         std::string context_files;  // Project context file content
         std::string skills_index;   // Rendered <available_skills> block
+        std::string onboarding_directive;  // First-run profile-build directive
     };
 
     using OutputFn = std::function<void(const std::string&)>;
@@ -53,10 +54,15 @@ public:
               ContextCompressor* compressor = nullptr,
               IMemoryStrategy* strategy = nullptr,
               conversation::IConversationStore* conv_store = nullptr,
-              budget::BudgetTracker* budget_tracker = nullptr);
+              budget::BudgetTracker* budget_tracker = nullptr,
+              memory::CuratedMemoryStore* curated_memory = nullptr);
 
     Result<void> run(const std::string& user_input);
     void interrupt();
+    void set_onboarding_directive(std::string directive) {
+        config_.onboarding_directive = std::move(directive);
+        onboarding_injected_ = false;
+    }
     const std::vector<Message>& history() const;
     void clear_history();
 
@@ -64,6 +70,14 @@ public:
     void restore_conversation(const std::string& conversation_id,
                               std::vector<Message> messages);
     const std::string& conversation_id() const { return conversation_id_; }
+
+    struct CompressionResult {
+        int before = 0;
+        int after = 0;
+        bool compressed = false;
+    };
+    // Manual /compress [focus] — Hermes-style live context compaction.
+    Result<CompressionResult> compress_context(const std::string& focus_topic = {});
 
     // Budget tracking
     budget::BudgetTracker* budget_tracker() const { return budget_tracker_; }
@@ -80,7 +94,9 @@ private:
     void build_system_prompt_once();
     void emit(AgentEventType type, const TurnContext& ctx);
     void emit_event(const AgentEvent& event);
+    void append_to_history(Message msg);
     void persist_new_messages();
+    void persist_or_archive(bool compression_applied);
 
     IProvider* provider_;
     ToolRegistry* registry_;
@@ -94,13 +110,15 @@ private:
     IMemoryStrategy* strategy_;
     conversation::IConversationStore* conv_store_;
     budget::BudgetTracker* budget_tracker_;
+    memory::CuratedMemoryStore* curated_memory_ = nullptr;
 
     std::vector<Message> history_;
     std::string base_system_prompt_;
     std::string system_prompt_;
     std::string conversation_id_;
-    size_t saved_count_ = 0;
+    std::vector<Message> pending_persist_;
     std::atomic<bool> interrupted_{false};
+    bool onboarding_injected_ = false;
 
     // Step chain
     std::vector<std::unique_ptr<ITurnStep>> steps_;

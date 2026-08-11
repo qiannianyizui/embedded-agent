@@ -74,6 +74,17 @@ TEST_CASE("SystemPrompt with user profile", "[agent][systemprompt]") {
     REQUIRE(prompt.find("Senior developer, prefers C++") != std::string::npos);
 }
 
+TEST_CASE("SystemPrompt with curated memory", "[agent][systemprompt]") {
+    PromptContext ctx;
+    ctx.curated_memory = "- Project uses CMake\n- Prefer TDD";
+
+    auto prompt = build_system_prompt(ctx);
+
+    REQUIRE(prompt.find("# Persistent Memory") != std::string::npos);
+    REQUIRE(prompt.find("Project uses CMake") != std::string::npos);
+    REQUIRE(prompt.find("Prefer TDD") != std::string::npos);
+}
+
 TEST_CASE("SystemPrompt always includes timestamp", "[agent][systemprompt]") {
     PromptContext ctx;  // all empty
 

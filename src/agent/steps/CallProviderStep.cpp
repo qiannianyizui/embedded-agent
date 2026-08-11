@@ -31,7 +31,8 @@ void emit_llm_request(TurnContext& ctx, const std::vector<Message>& messages) {
     for (const auto& msg : messages) {
         msgs_array.push_back(json{{"role", role_str(msg.role)}, {"content", msg.content}});
     }
-    event.request_messages = msgs_array.dump();
+    event.request_messages = msgs_array.dump(
+        -1, ' ', false, json::error_handler_t::replace);
 
     ctx.emit_fn(event);
 }
@@ -74,7 +75,18 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
     if (compressor_) {
         auto compressed = compressor_->compress(messages);
         if (compressed.ok()) {
-            messages = std::move(compressed.value());
+            if (compressor_->compressed_last_call() &&
+                compressed.value().size() < messages.size()) {
+                messages = compressed.value();
+                ctx.compression_applied = true;
+                if (!messages.empty() && messages[0].role == Role::System) {
+                    ctx.messages.assign(messages.begin() + 1, messages.end());
+                } else {
+                    ctx.messages = messages;
+                }
+            } else {
+                messages = std::move(compressed.value());
+            }
         }
         // If compression fails, use original messages (graceful degradation)
     }
@@ -121,6 +133,9 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
         ctx.response.tool_calls = std::move(accumulated_calls);
         ctx.response.stop_reason = has_tool_calls ? "tool_calls" : "stop";
 
+        if (compressor_ && ctx.response.usage.input_tokens > 0) {
+            compressor_->update_from_response(ctx.response.usage.input_tokens);
+        }
         emit_llm_response(ctx);
 
         return {};
@@ -135,6 +150,9 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
         }
 
         ctx.response = response.value();
+        if (compressor_ && ctx.response.usage.input_tokens > 0) {
+            compressor_->update_from_response(ctx.response.usage.input_tokens);
+        }
 
         // Simulate Content chunk
         if (!ctx.response.content.empty()) {
@@ -168,6 +186,9 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
     }
 
     ctx.response = std::move(response.value());
+    if (compressor_ && ctx.response.usage.input_tokens > 0) {
+        compressor_->update_from_response(ctx.response.usage.input_tokens);
+    }
 
     emit_llm_response(ctx);
 

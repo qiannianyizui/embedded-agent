@@ -3,6 +3,7 @@
 #include "AppBuilder.h"
 #include "provider/ProviderFactory.h"
 #include "memory/HolographicMemory.h"
+#include "memory/CuratedMemoryStore.h"
 #include "tool/ToolRegistry.h"
 #include "tool/ShellTool.h"
 #include "tool/FileTool.h"
@@ -106,6 +107,20 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug) {
             cfg.memory.trust_negative,
         });
 
+    // 4.5. File-backed curated memory (USER.md / MEMORY.md)
+    if (cfg.memory.files.enable) {
+        memory::CuratedMemoryConfig files_cfg;
+        files_cfg.dir = cfg.memory.files.dir;
+        files_cfg.memory_char_limit = cfg.memory.files.memory_char_limit;
+        files_cfg.user_char_limit = cfg.memory.files.user_char_limit;
+        ctx.curated_memory = std::make_unique<memory::CuratedMemoryStore>(files_cfg);
+        auto files_open = ctx.curated_memory->open();
+        if (!files_open.ok()) {
+            EA_WARN("Curated memory open failed: {}", files_open.error().message);
+            ctx.curated_memory.reset();  // Continue without file memory
+        }
+    }
+
     // 5. Create security policy
     ctx.security = std::make_unique<security::SecurityPolicy>();
     if (!cfg.security.workspace.empty()) {
@@ -131,8 +146,15 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug) {
     if (cfg.agent.compression.enable) {
         agent::CompressionConfig comp_cfg;
         comp_cfg.enable = cfg.agent.compression.enable;
-        comp_cfg.max_tokens = cfg.agent.compression.max_tokens;
-        comp_cfg.keep_recent_turns = cfg.agent.compression.keep_recent_turns;
+        comp_cfg.context_length = cfg.agent.compression.context_length;
+        comp_cfg.threshold_percent = cfg.agent.compression.threshold_percent;
+        comp_cfg.target_ratio = cfg.agent.compression.target_ratio;
+        comp_cfg.protect_first_n = cfg.agent.compression.protect_first_n;
+        comp_cfg.protect_last_n = cfg.agent.compression.protect_last_n;
+        comp_cfg.max_summary_tokens = cfg.agent.compression.max_summary_tokens;
+        comp_cfg.abort_on_summary_failure =
+            cfg.agent.compression.abort_on_summary_failure;
+        comp_cfg.in_place = cfg.agent.compression.in_place;
         ctx.compressor = std::make_unique<agent::ContextCompressor>(ctx.effective_provider, comp_cfg);
     }
 
@@ -178,8 +200,10 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug) {
     ctx.web_search = tool::WebSearchFactory::create(web_search_cfg, &ctx.http_client);
     ctx.registry->register_tool(std::make_unique<tool::WebTool>(
         &ctx.http_client, ctx.web_search.get()));
-    ctx.registry->register_tool(std::make_unique<tool::MemoryTool>(ctx.memory.get()));
-    ctx.registry->register_tool(std::make_unique<tool::FactStoreTool>(ctx.memory.get()));
+    ctx.registry->register_tool(std::make_unique<tool::MemoryTool>(
+        ctx.memory.get(), ctx.curated_memory.get()));
+    ctx.registry->register_tool(std::make_unique<tool::FactStoreTool>(
+        ctx.memory.get(), ctx.curated_memory.get()));
     ctx.registry->register_tool(std::make_unique<tool::FactFeedbackTool>(ctx.memory.get()));
 
     // 7.3. Skills: discover SKILL.md files and expose skills_list/skill_view

@@ -97,6 +97,18 @@ TEST_CASE("InputBar clear resets state", "[tui]") {
     // Should not crash
 }
 
+TEST_CASE("InputBar has no right-side hint", "[tui]") {
+    InputBar bar;
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                        ftxui::Dimension::Fixed(3));
+    ftxui::Render(screen, bar.component()->Render());
+    std::string out = screen.ToString();
+
+    REQUIRE(out.find("Enter to send") == std::string::npos);
+    REQUIRE(out.find("/help") == std::string::npos);
+}
+
 TEST_CASE("Container::Vertical routes focus to InputBar", "[tui]") {
     // Only InputBar goes in the Container — ChatArea/StatusBar are
     // non-focusable and should NOT be in the focus chain.

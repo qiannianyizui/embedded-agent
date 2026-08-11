@@ -490,7 +490,7 @@ TEST_CASE("AgentLoop with strategy processes turns", "[agent][memory][strategy]"
 
     AgentLoop loop(
         provider.get(), &registry, memory.get(),
-        AgentLoop::Config{5, 1024, 100, true, false},
+        AgentLoop::Config{5, 1024, true, false},
         [](const std::string&) {},
         nullptr,  // no stream
         nullptr,  // no security
@@ -523,7 +523,7 @@ TEST_CASE("AgentLoop without strategy works as before", "[agent][memory]") {
 
     AgentLoop loop(
         provider.get(), &registry, memory.get(),
-        AgentLoop::Config{5, 1024, 100, true, false},
+        AgentLoop::Config{5, 1024, true, false},
         [](const std::string&) {},
         nullptr,
         nullptr,
@@ -545,7 +545,7 @@ TEST_CASE("AgentLoop with NullMemoryStrategy behaves same as no strategy", "[age
 
     AgentLoop loop(
         provider.get(), &registry, memory.get(),
-        AgentLoop::Config{5, 1024, 100, true, false},
+        AgentLoop::Config{5, 1024, true, false},
         [](const std::string&) {},
         nullptr,
         nullptr,

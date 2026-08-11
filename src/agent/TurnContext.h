@@ -64,6 +64,14 @@ struct TurnContext {
     // Event emission callback — set by AgentLoop for step-level events
     std::function<void(const AgentEvent&)> emit_fn;
 
+    // Called when a step appends a real conversation message. AgentLoop uses
+    // this to keep persistence in sync even when history is pruned.
+    std::function<void(Message)> append_message_fn;
+
+    // Set by CallProviderStep when the context compressor replaced the live
+    // message list during this turn.
+    bool compression_applied = false;
+
     TurnContext(std::vector<Message>& msgs, std::atomic<bool>& intr)
         : messages(msgs), interrupted(intr) {}
 };

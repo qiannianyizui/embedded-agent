@@ -2,45 +2,12 @@
 #include "agent/TurnContext.h"
 #include "agent/ITurnStep.h"
 #include "agent/LoopDetector.h"
-#include "agent/steps/HistoryPruneStep.h"
 #include "agent/steps/BuildToolSpecsStep.h"
 #include "agent/steps/ParseResponseStep.h"
 #include "agent/steps/CollectResultsStep.h"
 
 using namespace ea;
 using namespace ea::agent;
-
-TEST_CASE("HistoryPruneStep prunes when over limit", "[agent][steps]") {
-    std::vector<Message> msgs;
-    // Add system + 5 messages
-    msgs.push_back({Role::System, "system", std::nullopt, std::nullopt, std::nullopt});
-    for (int i = 0; i < 5; ++i) {
-        msgs.push_back({Role::User, "msg" + std::to_string(i), std::nullopt, std::nullopt, std::nullopt});
-    }
-
-    std::atomic<bool> intr{false};
-    TurnContext ctx(msgs, intr);
-
-    HistoryPruneStep step(4);  // max 4 messages
-    auto result = step.execute(ctx);
-    REQUIRE(result.ok());
-    // Should have pruned: system + breadcrumb + remaining messages
-    REQUIRE(msgs.size() <= 5);  // system + breadcrumb + at most 3 remaining
-}
-
-TEST_CASE("HistoryPruneStep no-op when under limit", "[agent][steps]") {
-    std::vector<Message> msgs;
-    msgs.push_back({Role::System, "system", std::nullopt, std::nullopt, std::nullopt});
-    msgs.push_back({Role::User, "msg1", std::nullopt, std::nullopt, std::nullopt});
-
-    std::atomic<bool> intr{false};
-    TurnContext ctx(msgs, intr);
-
-    HistoryPruneStep step(100);
-    auto result = step.execute(ctx);
-    REQUIRE(result.ok());
-    REQUIRE(msgs.size() == 2);
-}
 
 TEST_CASE("BuildToolSpecsStep with null registry", "[agent][steps]") {
     std::vector<Message> msgs;

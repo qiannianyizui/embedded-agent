@@ -155,6 +155,32 @@ TEST_CASE("ChatArea multiple message types coexist", "[tui]") {
     REQUIRE(area.messages()[4].role == ea::Role::Assistant);
 }
 
+TEST_CASE("ChatArea restore_history renders persisted conversation", "[tui]") {
+    ChatArea area;
+
+    std::vector<ea::Message> history;
+    history.push_back({ea::Role::User, "Hello", std::nullopt,
+                       std::nullopt, std::nullopt});
+    history.push_back({ea::Role::Assistant, "Hi there", std::nullopt,
+                       std::nullopt, std::nullopt});
+    ea::Message tool_msg;
+    tool_msg.role = ea::Role::Tool;
+    tool_msg.content = "file list ok";
+    tool_msg.name = "file";
+    history.push_back(std::move(tool_msg));
+
+    area.restore_history(history);
+
+    REQUIRE(area.messages().size() == 3);
+    REQUIRE(area.messages()[0].role == ea::Role::User);
+    REQUIRE(area.messages()[0].content == "Hello");
+    REQUIRE(area.messages()[1].role == ea::Role::Assistant);
+    REQUIRE(area.messages()[1].content == "Hi there");
+    REQUIRE(area.messages()[2].role == ea::Role::Tool);
+    REQUIRE(area.messages()[2].tool_name == "file");
+    REQUIRE(area.messages()[2].content == "file list ok");
+}
+
 TEST_CASE("ChatArea clear_new_flag idempotent", "[tui]") {
     ChatArea area;
     area.clear_new_flag();
@@ -260,4 +286,18 @@ TEST_CASE("ChatArea bottom-follows inside full TUI layout", "[tui]") {
     // "history message 1" is a prefix of "history message 11": match with a
     // trailing space so only the actual first message is targeted.
     REQUIRE(bottom.find("history message 1 ") == std::string::npos);
+}
+
+TEST_CASE("ChatArea wraps long CJK lines instead of clipping", "[tui]") {
+    ChatArea area;
+    area.append_assistant(
+        "当然，这完全自愿，你也可以随时再决定，或者直接跳过开始提问就好！😊");
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(30),
+                                        ftxui::Dimension::Fixed(8));
+    ftxui::Render(screen,
+                  area.component()->Render() | ftxui::flex | ftxui::yframe);
+    auto out = screen.ToString();
+
+    REQUIRE(out.find("提问就好") != std::string::npos);
 }

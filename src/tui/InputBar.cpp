@@ -37,6 +37,14 @@ InputBar::InputBar()
     ftxui::InputOption option;
     option.placeholder = placeholder_;
     option.multiline = false;
+    // The whole input row is inverted below; don't let the inner Input invert
+    // again (that would double-swap and break the uniform background).
+    option.transform = [](ftxui::InputState state) {
+        if (state.is_placeholder) {
+            state.element |= ftxui::dim;
+        }
+        return state.element;
+    };
 
     input_component_ = ftxui::Input(&input_, option);
 
@@ -84,23 +92,12 @@ ftxui::Element InputBar::render() {
         prompt = prompt | color(theme.color.prompt) | bold;
     }
 
-    // Right-side hint only while empty, so it never fights the cursor
-    Element hint = text("Enter to send · /help");
-    if (busy_) {
-        // Keep the input usable while the agent works; Enter queues the
-        // message and it is sent when the current turn finishes.
-        hint = text("");
-    } else if (!input_.empty()) {
-        hint = text("");
-    }
-
     return hbox({
                prompt,
                input_component_->Render() | xflex,
-               hint | color(theme.color.dim) | dim,
                text("  "),
            })
-        | bgcolor(theme.color.surface);
+        | inverted;
 }
 
 bool InputBar::on_event(ftxui::Event event) {

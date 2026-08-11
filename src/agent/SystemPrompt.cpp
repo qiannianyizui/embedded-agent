@@ -47,6 +47,10 @@ SystemPromptParts build_system_prompt_parts(const PromptContext& ctx) {
         vol << "\n";
     }
 
+    if (!ctx.curated_memory.empty()) {
+        vol << "# Persistent Memory\n" << ctx.curated_memory << "\n\n";
+    }
+
     if (!ctx.user_profile.empty()) {
         vol << "# User Profile\n" << ctx.user_profile << "\n\n";
     }

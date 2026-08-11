@@ -3,6 +3,7 @@
 #include "config/Config.h"
 #include "provider/IProvider.h"
 #include "memory/HolographicMemory.h"
+#include "memory/CuratedMemoryStore.h"
 #include "tool/ToolRegistry.h"
 #include "security/SecurityPolicy.h"
 #include "security/IApprovalHandler.h"
@@ -32,6 +33,7 @@ struct AppContext {
 
     // Storage
     std::unique_ptr<ea::memory::HolographicMemory> memory;
+    std::unique_ptr<ea::memory::CuratedMemoryStore> curated_memory;
     std::unique_ptr<ea::conversation::SqliteConversationStore> conversation_store;
     std::shared_ptr<ea::budget::SqliteUsageStore> usage_store;
 

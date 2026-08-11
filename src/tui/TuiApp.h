@@ -87,6 +87,7 @@ private:
     void submit_input(const std::string& input);
     void execute_command(const std::string& command);
     void run_agent(const std::string& input);
+    void start_new_session();
     void push_banner();
     // Coalesced redraw request; must only be called from the UI thread.
     void request_redraw();

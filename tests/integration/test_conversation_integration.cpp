@@ -82,7 +82,7 @@ TEST_CASE("AgentLoop auto-persists messages", "[agent][conversation]") {
 
     AgentLoop loop(
         &f.provider, &f.registry, &f.memory,
-        AgentLoop::Config{10, 65536, 100, true, false, true},
+        AgentLoop::Config{10, 65536, true, false, true},
         [](const std::string&) {},
         AgentLoop::StreamFn(nullptr),
         static_cast<security::SecurityPolicy*>(nullptr),
@@ -117,7 +117,7 @@ TEST_CASE("AgentLoop restore_conversation", "[agent][conversation]") {
     // Second: restore into a new AgentLoop
     AgentLoop loop(
         &f.provider, &f.registry, &f.memory,
-        AgentLoop::Config{10, 65536, 100, true, false, true},
+        AgentLoop::Config{10, 65536, true, false, true},
         [](const std::string&) {},
         AgentLoop::StreamFn(nullptr),
         static_cast<security::SecurityPolicy*>(nullptr),
@@ -159,7 +159,7 @@ TEST_CASE("AgentLoop without conv_store works normally", "[agent][conversation]"
 
     AgentLoop loop(
         &provider, &registry, &memory,
-        AgentLoop::Config{10, 65536, 100, true, false, true},
+        AgentLoop::Config{10, 65536, true, false, true},
         [](const std::string&) {},
         AgentLoop::StreamFn(nullptr),
         static_cast<security::SecurityPolicy*>(nullptr),
@@ -179,7 +179,7 @@ TEST_CASE("AgentLoop clear_history resets conversation_id", "[agent][conversatio
 
     AgentLoop loop(
         &f.provider, &f.registry, &f.memory,
-        AgentLoop::Config{10, 65536, 100, true, false, true},
+        AgentLoop::Config{10, 65536, true, false, true},
         [](const std::string&) {},
         AgentLoop::StreamFn(nullptr),
         static_cast<security::SecurityPolicy*>(nullptr),
@@ -200,4 +200,86 @@ TEST_CASE("AgentLoop clear_history resets conversation_id", "[agent][conversatio
     loop.run("Second");
     REQUIRE_FALSE(loop.conversation_id().empty());
     REQUIRE(loop.conversation_id() != first_id);
+}
+
+TEST_CASE("AgentLoop persists every user message across history pruning",
+          "[agent][conversation]") {
+    ConvIntegrationFixture f;
+
+    AgentLoop loop(
+        &f.provider, &f.registry, &f.memory,
+        AgentLoop::Config{10, 65536, true, false, true},
+        [](const std::string&) {},
+        AgentLoop::StreamFn(nullptr),
+        static_cast<security::SecurityPolicy*>(nullptr),
+        static_cast<security::IApprovalHandler*>(nullptr),
+        static_cast<ContextCompressor*>(nullptr),
+        static_cast<IMemoryStrategy*>(nullptr),
+        &f.conv_store
+    );
+
+    constexpr int kTurns = 20;
+    for (int i = 0; i < kTurns; ++i) {
+        auto result = loop.run("user-" + std::to_string(i));
+        REQUIRE(result.ok());
+    }
+
+    auto msgs = f.conv_store.load(loop.conversation_id());
+    REQUIRE(msgs.ok());
+    REQUIRE(msgs.value().size() == static_cast<size_t>(kTurns * 2));
+
+    for (int i = 0; i < kTurns; ++i) {
+        REQUIRE(msgs.value()[static_cast<size_t>(i * 2)].role == Role::User);
+        REQUIRE(msgs.value()[static_cast<size_t>(i * 2)].content
+                == "user-" + std::to_string(i));
+        REQUIRE(msgs.value()[static_cast<size_t>(i * 2 + 1)].role == Role::Assistant);
+    }
+}
+
+TEST_CASE("AgentLoop compress_context archives and replaces live context",
+          "[agent][conversation]") {
+    ConvIntegrationFixture f;
+
+    auto conv_id = f.conv_store.create().value();
+    for (int i = 0; i < 10; ++i) {
+        f.conv_store.append(conv_id, {Role::User, "Question " + std::to_string(i),
+                                      std::nullopt, std::nullopt, std::nullopt});
+        f.conv_store.append(conv_id, {Role::Assistant, "Answer " + std::to_string(i),
+                                      std::nullopt, std::nullopt, std::nullopt});
+    }
+
+    ea::agent::CompressionConfig comp_cfg;
+    comp_cfg.context_length = 20;
+    comp_cfg.protect_first_n = 0;
+    comp_cfg.protect_last_n = 2;
+    ea::agent::ContextCompressor compressor(&f.provider, comp_cfg);
+
+    AgentLoop loop(
+        &f.provider, &f.registry, &f.memory,
+        AgentLoop::Config{10, 65536, true, false, true},
+        [](const std::string&) {},
+        AgentLoop::StreamFn(nullptr),
+        static_cast<security::SecurityPolicy*>(nullptr),
+        static_cast<security::IApprovalHandler*>(nullptr),
+        &compressor,
+        static_cast<IMemoryStrategy*>(nullptr),
+        &f.conv_store
+    );
+
+    auto loaded = f.conv_store.load(conv_id);
+    REQUIRE(loaded.ok());
+    loop.restore_conversation(conv_id, std::move(loaded.value()));
+
+    auto result = loop.compress_context();
+    REQUIRE(result.ok());
+    REQUIRE(result.value().compressed);
+    REQUIRE(result.value().after < result.value().before);
+
+    auto active = f.conv_store.load(conv_id);
+    REQUIRE(active.ok());
+    REQUIRE(active.value().size() == static_cast<size_t>(result.value().after));
+
+    auto all = f.conv_store.load_all(conv_id);
+    REQUIRE(all.ok());
+    REQUIRE(all.value().size() > active.value().size());
 }

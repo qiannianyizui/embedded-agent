@@ -10,6 +10,8 @@ namespace ea::tui {
 
 CommandPalette::CommandPalette() {
     commands_ = {
+        {"/new",   "Start a new session", "⌃N"},
+        {"/compress", "Compress older context"},
         {"/help",   "Show help and keybindings"},
         {"/usage",  "Show token usage"},
         {"/cost",   "Show session cost"},
@@ -19,7 +21,7 @@ CommandPalette::CommandPalette() {
         {"/skill <name>", "Load a skill"},
         {"/export", "Export current conversation"},
         {"/import", "Import a conversation"},
-        {"/clear",  "Clear current conversation"},
+        {"/clear",  "Clear the chat view"},
         {"/quit",   "Exit the agent", "⌃C"},
     };
 }
