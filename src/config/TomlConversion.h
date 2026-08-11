@@ -43,6 +43,9 @@ TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::config::SecurityConfig::Approval,
 TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::config::SkillConfig,
     enable, dirs, disabled, template_vars, inline_shell, inline_shell_timeout)
 
+TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::config::WebConfig,
+    search_backend, searxng_url, exa_api_key, parallel_api_key)
+
 // ============================================================================
 // Manual specializations — structs with non-trivial mapping
 // ============================================================================
@@ -326,6 +329,7 @@ struct from<ea::config::AppConfig> {
         if (v.contains("memory"))       cfg.memory       = toml::find<ea::config::MemoryConfig>(v, "memory");
         if (v.contains("security"))     cfg.security     = toml::find<ea::config::SecurityConfig>(v, "security");
         if (v.contains("skills"))       cfg.skills       = toml::find<ea::config::SkillConfig>(v, "skills");
+        if (v.contains("web"))          cfg.web          = toml::find<ea::config::WebConfig>(v, "web");
         if (v.contains("conversation")) cfg.conversation = toml::find<ea::config::ConversationConfig>(v, "conversation");
         if (v.contains("budget"))       cfg.budget       = toml::find<ea::budget::BudgetConfig>(v, "budget");
         if (v.contains("mcp")) {
@@ -350,6 +354,7 @@ struct into<ea::config::AppConfig> {
         v["memory"]       = into<ea::config::MemoryConfig>::into_toml<TC>(cfg.memory);
         v["security"]     = into<ea::config::SecurityConfig>::into_toml<TC>(cfg.security);
         v["skills"]       = into<ea::config::SkillConfig>::into_toml<TC>(cfg.skills);
+        v["web"]          = into<ea::config::WebConfig>::into_toml<TC>(cfg.web);
         v["conversation"] = into<ea::config::ConversationConfig>::into_toml<TC>(cfg.conversation);
         // Budget section — only if non-trivial
         if (!cfg.budget.pricing.empty() || cfg.budget.warn_cost_usd > 0) {

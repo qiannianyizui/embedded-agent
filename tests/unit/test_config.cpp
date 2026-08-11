@@ -43,6 +43,12 @@ disabled = ["legacy-skill"]
 template_vars = false
 inline_shell = true
 inline_shell_timeout = 5
+
+[web]
+search_backend = "searxng"
+searxng_url = "http://localhost:8080"
+exa_api_key = "exa-secret"
+parallel_api_key = "parallel-secret"
 )");
 
     auto cfg = load(tmp);
@@ -55,6 +61,10 @@ inline_shell_timeout = 5
     REQUIRE(cfg.value().skills.template_vars == false);
     REQUIRE(cfg.value().skills.inline_shell == true);
     REQUIRE(cfg.value().skills.inline_shell_timeout == 5);
+    REQUIRE(cfg.value().web.search_backend == "searxng");
+    REQUIRE(cfg.value().web.searxng_url == "http://localhost:8080");
+    REQUIRE(cfg.value().web.exa_api_key == "exa-secret");
+    REQUIRE(cfg.value().web.parallel_api_key == "parallel-secret");
 
     ea::fs::remove(tmp);
 }

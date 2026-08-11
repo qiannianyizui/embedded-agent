@@ -94,6 +94,13 @@ struct SkillConfig {
     int inline_shell_timeout = 10;       // Seconds per inline shell snippet
 };
 
+struct WebConfig {
+    std::string search_backend = "duckduckgo";  // duckduckgo | searxng | exa | parallel
+    std::string searxng_url;                    // e.g. http://localhost:8080
+    std::string exa_api_key;                    // optional
+    std::string parallel_api_key;               // optional
+};
+
 struct McpServerConfig {
     std::string name;
     std::string command;
@@ -119,6 +126,7 @@ struct AppConfig {
     SecurityConfig security;
     AgentConfig agent;
     SkillConfig skills;
+    WebConfig web;
     std::vector<McpServerConfig> mcp_servers;
     std::string config_path;
 };

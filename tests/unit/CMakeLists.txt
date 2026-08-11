@@ -27,6 +27,7 @@ add_executable(ea-unit-tests
     test_tool_file.cpp
     test_tool_memory.cpp
     test_tool_web.cpp
+    test_web_search.cpp
     test_tool_search.cpp
     test_tool_output_config.cpp
     test_agent_loop.cpp

@@ -14,6 +14,7 @@
 #include "conversation/SqliteConversationStore.h"
 #include "mcp/McpClient.h"
 #include "skill/Skill.h"
+#include "tool/WebSearch.h"
 #include "net/HttpClient.h"
 #include <memory>
 #include <vector>
@@ -50,6 +51,9 @@ struct AppContext {
     // Skills
     std::unique_ptr<ea::skill::SkillManager> skills;
     std::string skills_index;   // Rendered <available_skills> block for system prompt
+
+    // Web search
+    std::unique_ptr<ea::tool::IWebSearchBackend> web_search;
 
     // MCP
     std::vector<std::shared_ptr<ea::mcp::McpClient>> mcp_clients;

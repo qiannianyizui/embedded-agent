@@ -164,6 +164,8 @@ TEST_CASE("AppBuilder registers skills tools and builds index", "[app]") {
     auto& ctx = result.value();
     REQUIRE(ctx.skills != nullptr);
     REQUIRE(ctx.skills_index.find("sample-skill") != std::string::npos);
+    REQUIRE(ctx.web_search != nullptr);
+    REQUIRE(ctx.web_search->name() == "duckduckgo");
     REQUIRE(ctx.registry->find("skills_list") != nullptr);
     REQUIRE(ctx.registry->find("skill_view") != nullptr);
     REQUIRE(ctx.registry->find("skill_manage") != nullptr);

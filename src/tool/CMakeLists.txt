@@ -4,6 +4,7 @@ add_library(ea-tool OBJECT
     ShellTool.cpp
     FileTool.cpp
     SearchTool.cpp
+    WebSearch.cpp
     WebTool.cpp
     MemoryTool.cpp
     FactStoreTool.cpp

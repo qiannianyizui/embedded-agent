@@ -63,3 +63,9 @@ disabled = []
 template_vars = true
 inline_shell = false
 inline_shell_timeout = 10
+
+[web]
+search_backend = "duckduckgo"
+searxng_url = ""
+exa_api_key = ""
+parallel_api_key = ""

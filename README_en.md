@@ -131,7 +131,7 @@ Provider types: `openai` / `anthropic` / `ollama`
 | ShellTool | Execute shell commands | ✅ | ✅ |
 | FileTool | Read/write files | ✅ | ✅ |
 | SearchTool | Search file contents | ❌ | ❌ |
-| WebTool | HTTP requests | ❌ | ❌ |
+| WebTool | Fetch pages and convert to text/markdown | ❌ | ❌ |
 | MemoryTool | Memory store/recall | ✅ | ❌ |
 | SkillsListTool | List skills by category/keyword | ❌ | ❌ |
 | SkillViewTool | Load a skill's full content | ❌ | ❌ |
@@ -157,6 +157,24 @@ and `tags`.
   inline `!`cmd`` snippets require `[skills] inline_shell = true`
 - Config: `[skills] enable = true`, `disabled = ["skill-name"]`
 - Env var: `EA_SKILLS_DIR` adds an extra skills root
+
+## Web Search Backends
+
+The `web` tool's `search` action supports pluggable backends selected via
+`[web]`:
+
+```toml
+[web]
+search_backend = "duckduckgo"   # duckduckgo | searxng | exa | parallel
+searxng_url = ""                # self-hosted SearXNG, e.g. http://localhost:8080
+exa_api_key = ""                # optional Exa API key
+parallel_api_key = ""           # optional Parallel API key
+```
+
+- `duckduckgo`: default, no key, scrapes the HTML search page
+- `searxng`: no key, requires `searxng_url`
+- `exa` / `parallel`: opencode-style MCP public endpoints, no key by default,
+  optional keys raise quotas
 
 ## Memory System
 

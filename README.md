@@ -130,7 +130,7 @@ Provider 类型：`openai` / `anthropic` / `ollama`
 | ShellTool | 执行 shell 命令 | ✅ | ✅ |
 | FileTool | 读写文件 | ✅ | ✅ |
 | SearchTool | 搜索文件内容 | ❌ | ❌ |
-| WebTool | HTTP 请求 | ❌ | ❌ |
+| WebTool | 抓取网页并转换为 text/markdown | ❌ | ❌ |
 | MemoryTool | 记忆存取 | ✅ | ❌ |
 | SkillsListTool | 按分类/关键词列出技能 | ❌ | ❌ |
 | SkillViewTool | 加载技能完整内容 | ❌ | ❌ |
@@ -152,6 +152,22 @@ Provider 类型：`openai` / `anthropic` / `ollama`
 - 模板预处理：`${EA_SKILL_DIR}` / `${EA_SKILL_NAME}` 默认替换；`!`cmd`` 内联 shell 需开启 `[skills] inline_shell = true`
 - 配置：`[skills] enable = true`，`disabled = ["技能名"]`
 - 环境变量：`EA_SKILLS_DIR` 可追加技能根目录
+
+## Web 搜索后端
+
+`web` 工具的 `search` 动作支持可插拔后端，通过 `[web]` 配置切换：
+
+```toml
+[web]
+search_backend = "duckduckgo"   # duckduckgo | searxng | exa | parallel
+searxng_url = ""                # 自托管 SearXNG 地址，例如 http://localhost:8080
+exa_api_key = ""                # Exa 可选 API key
+parallel_api_key = ""           # Parallel 可选 API key
+```
+
+- `duckduckgo`：默认，免 key，抓取 HTML 搜索页
+- `searxng`：免 key，需要 `searxng_url`
+- `exa` / `parallel`：opencode 同款 MCP 公共端点，默认免 key，可选配置 key 提高配额
 
 ## 记忆系统
 

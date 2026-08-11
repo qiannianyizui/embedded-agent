@@ -8,6 +8,7 @@
 #include "tool/FileTool.h"
 #include "tool/SearchTool.h"
 #include "tool/WebTool.h"
+#include "tool/WebSearch.h"
 #include "tool/MemoryTool.h"
 #include "tool/FactStoreTool.h"
 #include "tool/FactFeedbackTool.h"
@@ -169,7 +170,14 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug) {
     ctx.registry->register_tool(std::make_unique<tool::ShellTool>());
     ctx.registry->register_tool(std::make_unique<tool::FileTool>());
     ctx.registry->register_tool(std::make_unique<tool::SearchTool>());
-    ctx.registry->register_tool(std::make_unique<tool::WebTool>(&ctx.http_client));
+    tool::WebSearchBackendConfig web_search_cfg;
+    web_search_cfg.backend = cfg.web.search_backend;
+    web_search_cfg.searxng_url = cfg.web.searxng_url;
+    web_search_cfg.exa_api_key = cfg.web.exa_api_key;
+    web_search_cfg.parallel_api_key = cfg.web.parallel_api_key;
+    ctx.web_search = tool::WebSearchFactory::create(web_search_cfg, &ctx.http_client);
+    ctx.registry->register_tool(std::make_unique<tool::WebTool>(
+        &ctx.http_client, ctx.web_search.get()));
     ctx.registry->register_tool(std::make_unique<tool::MemoryTool>(ctx.memory.get()));
     ctx.registry->register_tool(std::make_unique<tool::FactStoreTool>(ctx.memory.get()));
     ctx.registry->register_tool(std::make_unique<tool::FactFeedbackTool>(ctx.memory.get()));
