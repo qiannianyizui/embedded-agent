@@ -112,6 +112,7 @@ struct SkillConfig {
     bool template_vars = true;           // Replace ${EA_SKILL_DIR}/${EA_SKILL_NAME}
     bool inline_shell = false;           // Execute !`cmd` snippets in SKILL.md
     int inline_shell_timeout = 10;       // Seconds per inline shell snippet
+    std::vector<std::string> plugin_mirrors;  // Prefixes tried before github.com
 };
 
 struct WebConfig {

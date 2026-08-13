@@ -43,6 +43,7 @@ disabled = ["legacy-skill"]
 template_vars = false
 inline_shell = true
 inline_shell_timeout = 5
+plugin_mirrors = ["https://ghfast.top/", "https://gitee.com/"]
 
 [web]
 search_backend = "searxng"
@@ -61,6 +62,9 @@ parallel_api_key = "parallel-secret"
     REQUIRE(cfg.value().skills.template_vars == false);
     REQUIRE(cfg.value().skills.inline_shell == true);
     REQUIRE(cfg.value().skills.inline_shell_timeout == 5);
+    REQUIRE(cfg.value().skills.plugin_mirrors.size() == 2);
+    REQUIRE(cfg.value().skills.plugin_mirrors[0] == "https://ghfast.top/");
+    REQUIRE(cfg.value().skills.plugin_mirrors[1] == "https://gitee.com/");
     REQUIRE(cfg.value().web.search_backend == "searxng");
     REQUIRE(cfg.value().web.searxng_url == "http://localhost:8080");
     REQUIRE(cfg.value().web.exa_api_key == "exa-secret");

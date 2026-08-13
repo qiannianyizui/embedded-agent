@@ -44,7 +44,8 @@ TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::config::SecurityConfig::Approval,
     mode, auto_approve_dangerous)
 
 TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::config::SkillConfig,
-    enable, dirs, disabled, template_vars, inline_shell, inline_shell_timeout)
+    enable, dirs, disabled, template_vars, inline_shell, inline_shell_timeout,
+    plugin_mirrors)
 
 TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::config::WebConfig,
     search_backend, searxng_url, exa_api_key, parallel_api_key)

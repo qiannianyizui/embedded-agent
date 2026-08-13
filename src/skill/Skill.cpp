@@ -358,9 +358,11 @@ std::string source_url_from_entry(const json& entry) {
 
 }  // namespace
 
-PluginManager::PluginManager(std::string plugins_dir, std::string marketplace_path)
+PluginManager::PluginManager(std::string plugins_dir, std::string marketplace_path,
+                             std::vector<std::string> mirrors)
     : plugins_dir_(std::move(plugins_dir))
-    , marketplace_path_(std::move(marketplace_path)) {}
+    , marketplace_path_(std::move(marketplace_path))
+    , mirrors_(std::move(mirrors)) {}
 
 Result<void> PluginManager::ensure_marketplace() const {
     auto exists = efs::exists(marketplace_path_);
@@ -392,6 +394,60 @@ Result<std::string> PluginManager::find_marketplace_file(
     return Error::not_found(
         "Marketplace not registered: " + name +
         " (use /plugin marketplace add <owner/repo>)");
+}
+
+std::vector<std::string> PluginManager::clone_candidates(
+    const std::string& url) const {
+    const std::string kGithub = "https://github.com/";
+    if (url.rfind(kGithub, 0) != 0) return {url};
+
+    auto path = url.substr(kGithub.size());
+    std::vector<std::string> candidates;
+    for (auto mirror : mirrors_) {
+        if (mirror.empty()) continue;
+        if (mirror.back() != '/') mirror += '/';
+        if (mirror.find("github.com/") != std::string::npos) {
+            candidates.push_back(mirror + path);
+        } else {
+            candidates.push_back(mirror + url);
+        }
+    }
+    candidates.push_back(url);
+    return candidates;
+}
+
+bool PluginManager::probe_reachable(const std::string& url) const {
+    std::string cmd = "git ls-remote --exit-code " + shell_quote(url) + " HEAD";
+    auto res = process::exec(cmd, "", std::chrono::seconds(10), 4096);
+    return res.ok() && res.value().exit_code == 0;
+}
+
+Result<void> PluginManager::clone_with_fallback(
+    const std::string& url, const std::string& target) const {
+    std::vector<std::string> failures;
+    for (const auto& candidate : clone_candidates(url)) {
+        if (!probe_reachable(candidate)) {
+            failures.push_back(candidate + " (unreachable)");
+            continue;
+        }
+
+        std::string cmd = "git clone --depth 1 -- " + shell_quote(candidate) +
+                          " " + shell_quote(target);
+        auto res = process::exec(cmd, "", std::chrono::seconds(120), 65536);
+        if (res.ok() && res.value().exit_code == 0) return {};
+
+        std::error_code ec;
+        fs::remove_all(target, ec);
+        auto detail = res.ok() ? res.value().stderr_output : "clone error";
+        if (detail.size() > 200) detail.resize(200);
+        failures.push_back(candidate + " (clone failed: " + detail + ")");
+    }
+
+    std::string msg = "All plugin sources failed:\n";
+    for (const auto& failure : failures) {
+        msg += "  - " + failure + "\n";
+    }
+    return Error::io(msg);
 }
 
 Result<std::string> PluginManager::resolve_url(const std::string& source) const {
@@ -475,13 +531,8 @@ Result<std::string> PluginManager::install(const std::string& source) {
         return Error::io("git is required to install plugins");
     }
 
-    std::string cmd = "git clone --depth 1 -- " + shell_quote(url.value()) +
-                      " " + shell_quote(target);
-    auto res = process::exec(cmd, "", std::chrono::seconds(120), 65536);
-    if (!res.ok()) return res.error();
-    if (res.value().exit_code != 0) {
-        return Error::io("git clone failed:\n" + res.value().stderr_output);
-    }
+    auto clone = clone_with_fallback(url.value(), target);
+    if (!clone.ok()) return clone.error();
 
     auto skills = efs::is_dir(target + "/skills");
     if (!skills.ok() || !skills.value()) {
@@ -574,13 +625,8 @@ Result<std::string> PluginManager::add_marketplace(const std::string& source) {
         return Error::io("git is required to register marketplaces");
     }
 
-    std::string cmd = "git clone --depth 1 -- " + shell_quote(url) + " " +
-                      shell_quote(target);
-    auto res = process::exec(cmd, "", std::chrono::seconds(120), 65536);
-    if (!res.ok()) return res.error();
-    if (res.value().exit_code != 0) {
-        return Error::io("git clone failed:\n" + res.value().stderr_output);
-    }
+    auto clone = clone_with_fallback(url, target);
+    if (!clone.ok()) return clone.error();
 
     auto file = find_marketplace_file(name);
     if (!file.ok()) {

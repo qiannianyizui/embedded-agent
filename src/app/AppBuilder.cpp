@@ -223,7 +223,8 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug) {
         if (cfg_dir.ok()) {
             ctx.plugins = std::make_unique<skill::PluginManager>(
                 cfg_dir.value() + "/plugins",
-                cfg_dir.value() + "/marketplace.json");
+                cfg_dir.value() + "/marketplace.json",
+                cfg.skills.plugin_mirrors);
             auto marketplace = ctx.plugins->ensure_marketplace();
             if (!marketplace.ok()) {
                 EA_WARN("Failed to create plugin marketplace: {}",

@@ -87,7 +87,8 @@ private:
 // roots on the next startup.
 class PluginManager {
 public:
-    PluginManager(std::string plugins_dir, std::string marketplace_path);
+    PluginManager(std::string plugins_dir, std::string marketplace_path,
+                  std::vector<std::string> mirrors = {});
 
     // source = git URL or name from the marketplace JSON.
     Result<std::string> install(const std::string& source);
@@ -104,9 +105,14 @@ private:
     Result<std::string> resolve_url(const std::string& source) const;
     Result<std::string> find_marketplace_file(const std::string& name) const;
     std::string marketplaces_dir() const;
+    Result<void> clone_with_fallback(const std::string& url,
+                                     const std::string& target) const;
+    std::vector<std::string> clone_candidates(const std::string& url) const;
+    bool probe_reachable(const std::string& url) const;
 
     std::string plugins_dir_;
     std::string marketplace_path_;
+    std::vector<std::string> mirrors_;
 };
 
 }  // namespace ea::skill
