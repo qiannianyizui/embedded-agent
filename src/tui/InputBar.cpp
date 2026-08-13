@@ -109,9 +109,10 @@ bool InputBar::on_event(ftxui::Event event) {
             if (history_.empty() || history_.back() != input_) {
                 history_.push_back(input_);
             }
-            on_submit_(input_);
+            auto submitted = input_;
             input_.clear();
             history_index_ = -1;
+            on_submit_(submitted);
         }
         return true;
     }

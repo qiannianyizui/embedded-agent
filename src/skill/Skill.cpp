@@ -1,4 +1,5 @@
 #include "Skill.h"
+#include "base/Types.h"
 #include "io/FileSystem.h"
 #include "io/Process.h"
 #include "platform/Platform.h"
@@ -294,6 +295,374 @@ std::string preprocess(const std::string& content,
 }
 
 }  // namespace
+
+namespace {
+
+const char* kDefaultMarketplace = R"json({
+  "plugins": {
+    "superpowers": {
+      "url": "https://github.com/obra/superpowers.git",
+      "description": "Core skills library: TDD, brainstorming, planning"
+    }
+  }
+})json";
+
+bool looks_like_git_url(const std::string& s) {
+    return s.rfind("https://", 0) == 0 || s.rfind("git@", 0) == 0;
+}
+
+bool valid_plugin_name(const std::string& name) {
+    if (name.empty() || name == "." || name == "..") return false;
+    for (char c : name) {
+        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '-' ||
+              c == '_' || c == '.')) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool safe_git_url(const std::string& s) {
+    if (s.empty() || s.front() == '-') return false;
+    return s.find_first_of(" \t\n\r\"'\\`$;&|<>(){}[]*?") == std::string::npos;
+}
+
+std::string shell_quote(const std::string& s) {
+    return "'" + replace_all(s, "'", "'\\''") + "'";
+}
+
+std::string plugin_name_from_url(const std::string& url) {
+    auto u = url;
+    while (!u.empty() && u.back() == '/') u.pop_back();
+    auto slash = u.rfind('/');
+    auto pos = slash == std::string::npos ? u.rfind(':') : slash;
+    auto name = pos == std::string::npos ? u : u.substr(pos + 1);
+    if (name.size() > 4 && name.compare(name.size() - 4, 4, ".git") == 0) {
+        name.resize(name.size() - 4);
+    }
+    return name;
+}
+
+std::string source_url_from_entry(const json& entry) {
+    if (entry.contains("url") && entry["url"].is_string()) {
+        return entry["url"].get<std::string>();
+    }
+    if (!entry.contains("source")) return "";
+    const auto& source = entry["source"];
+    if (source.is_string()) return source.get<std::string>();
+    if (source.is_object() && source.contains("url") && source["url"].is_string()) {
+        return source["url"].get<std::string>();
+    }
+    return "";
+}
+
+}  // namespace
+
+PluginManager::PluginManager(std::string plugins_dir, std::string marketplace_path)
+    : plugins_dir_(std::move(plugins_dir))
+    , marketplace_path_(std::move(marketplace_path)) {}
+
+Result<void> PluginManager::ensure_marketplace() const {
+    auto exists = efs::exists(marketplace_path_);
+    if (exists.ok() && exists.value()) return {};
+    auto parent = fs::path(marketplace_path_).parent_path().string();
+    auto mk = efs::mkdir_p(parent);
+    if (!mk.ok()) return mk.error();
+    return efs::write_file(marketplace_path_, kDefaultMarketplace);
+}
+
+std::string PluginManager::marketplaces_dir() const {
+    return fs::path(plugins_dir_).parent_path().string() + "/marketplaces";
+}
+
+Result<std::string> PluginManager::find_marketplace_file(
+    const std::string& name) const {
+    if (!valid_plugin_name(name)) {
+        return Error::invalid_arg("Invalid marketplace name");
+    }
+    auto dir = marketplaces_dir() + "/" + name;
+    const std::vector<std::string> candidates = {
+        dir + "/.claude-plugin/marketplace.json",
+        dir + "/marketplace.json",
+    };
+    for (const auto& candidate : candidates) {
+        auto exists = efs::exists(candidate);
+        if (exists.ok() && exists.value()) return candidate;
+    }
+    return Error::not_found(
+        "Marketplace not registered: " + name +
+        " (use /plugin marketplace add <owner/repo>)");
+}
+
+Result<std::string> PluginManager::resolve_url(const std::string& source) const {
+    if (looks_like_git_url(source)) {
+        if (!safe_git_url(source)) {
+            return Error::invalid_arg("Unsafe git URL");
+        }
+        return source;
+    }
+
+    std::string plugin_name = source;
+    std::string marketplace_file = marketplace_path_;
+    auto at = source.rfind('@');
+    if (at != std::string::npos) {
+        plugin_name = source.substr(0, at);
+        auto marketplace = source.substr(at + 1);
+        if (plugin_name.empty() || marketplace.empty()) {
+            return Error::invalid_arg("Expected <plugin>@<marketplace>");
+        }
+        auto found = find_marketplace_file(marketplace);
+        if (!found.ok()) return found.error();
+        marketplace_file = found.value();
+    } else {
+        auto ensured = ensure_marketplace();
+        if (!ensured.ok()) return ensured.error();
+    }
+
+    auto content = efs::read_file(marketplace_file);
+    if (!content.ok()) return content.error();
+
+    json j;
+    try {
+        j = json::parse(content.value());
+    } catch (...) {
+        return Error::parse("Invalid marketplace JSON: " + marketplace_file);
+    }
+
+    std::string url;
+    if (j.contains("plugins") && j["plugins"].is_object() &&
+        j["plugins"].contains(plugin_name)) {
+        url = source_url_from_entry(j["plugins"][plugin_name]);
+    } else if (j.contains("plugins") && j["plugins"].is_array()) {
+        for (const auto& entry : j["plugins"]) {
+            if (entry.contains("name") && entry["name"].is_string() &&
+                entry["name"].get<std::string>() == plugin_name) {
+                url = source_url_from_entry(entry);
+                break;
+            }
+        }
+    }
+
+    if (url.empty()) {
+        return Error::not_found(
+            "Unknown plugin: " + plugin_name + " in " + marketplace_file);
+    }
+
+    if (!safe_git_url(url)) {
+        return Error::invalid_arg("Unsafe URL in marketplace for " + plugin_name);
+    }
+    return url;
+}
+
+Result<std::string> PluginManager::install(const std::string& source) {
+    auto url = resolve_url(source);
+    if (!url.ok()) return url.error();
+
+    auto name = plugin_name_from_url(url.value());
+    if (!valid_plugin_name(name)) {
+        return Error::invalid_arg("Invalid plugin name derived from URL: " + name);
+    }
+
+    auto target = plugins_dir_ + "/" + name;
+    auto exists = efs::exists(target);
+    if (exists.ok() && exists.value()) {
+        return Error::invalid_arg("Plugin already installed: " + name);
+    }
+
+    auto mk = efs::mkdir_p(plugins_dir_);
+    if (!mk.ok()) return mk.error();
+    if (!process::command_exists("git")) {
+        return Error::io("git is required to install plugins");
+    }
+
+    std::string cmd = "git clone --depth 1 -- " + shell_quote(url.value()) +
+                      " " + shell_quote(target);
+    auto res = process::exec(cmd, "", std::chrono::seconds(120), 65536);
+    if (!res.ok()) return res.error();
+    if (res.value().exit_code != 0) {
+        return Error::io("git clone failed:\n" + res.value().stderr_output);
+    }
+
+    auto skills = efs::is_dir(target + "/skills");
+    if (!skills.ok() || !skills.value()) {
+        std::error_code ec;
+        fs::remove_all(target, ec);
+        return Error::invalid_arg(
+            "Plugin has no skills/ directory (only this layout is supported): " +
+            name);
+    }
+    return name;
+}
+
+Result<std::vector<PluginInfo>> PluginManager::list() const {
+    std::vector<PluginInfo> result;
+    auto exists = efs::exists(plugins_dir_);
+    if (!exists.ok()) return exists.error();
+    if (!exists.value()) return result;
+    auto dir = efs::is_dir(plugins_dir_);
+    if (!dir.ok()) return dir.error();
+    if (!dir.value()) return result;
+
+    auto entries = efs::list_dir(plugins_dir_);
+    if (!entries.ok()) return entries.error();
+    for (const auto& name : entries.value()) {
+        if (!valid_plugin_name(name)) continue;
+        auto p = plugins_dir_ + "/" + name;
+        auto is_dir = efs::is_dir(p);
+        if (is_dir.ok() && is_dir.value()) {
+            result.push_back({name, p});
+        }
+    }
+    std::sort(result.begin(), result.end(),
+              [](const PluginInfo& a, const PluginInfo& b) {
+                  return a.name < b.name;
+              });
+    return result;
+}
+
+Result<void> PluginManager::remove(const std::string& name) {
+    if (!valid_plugin_name(name)) {
+        return Error::invalid_arg("Invalid plugin name");
+    }
+    auto target = plugins_dir_ + "/" + name;
+    auto exists = efs::exists(target);
+    if (!exists.ok()) return exists.error();
+    if (!exists.value()) return Error::not_found("Plugin not installed: " + name);
+    auto dir = efs::is_dir(target);
+    if (!dir.ok()) return dir.error();
+    if (!dir.value()) return Error::not_found("Plugin not installed: " + name);
+
+    std::error_code ec;
+    fs::remove_all(target, ec);
+    if (ec) return Error::io("Failed to remove plugin: " + ec.message());
+    return {};
+}
+
+Result<std::string> PluginManager::add_marketplace(const std::string& source) {
+    std::string url;
+    if (looks_like_git_url(source)) {
+        if (!safe_git_url(source)) {
+            return Error::invalid_arg("Unsafe git URL");
+        }
+        url = source;
+    } else {
+        if (source.find('/') == std::string::npos || source.front() == '/') {
+            return Error::invalid_arg(
+                "Marketplace must be <owner/repo> or a git URL");
+        }
+        url = "https://github.com/" + source + ".git";
+        if (!safe_git_url(url)) {
+            return Error::invalid_arg("Unsafe marketplace source");
+        }
+    }
+
+    auto name = plugin_name_from_url(url);
+    if (!valid_plugin_name(name)) {
+        return Error::invalid_arg("Invalid marketplace name derived from URL");
+    }
+
+    auto target = marketplaces_dir() + "/" + name;
+    auto exists = efs::exists(target);
+    if (exists.ok() && exists.value()) {
+        return Error::invalid_arg("Marketplace already registered: " + name);
+    }
+
+    auto root = marketplaces_dir();
+    auto mk = efs::mkdir_p(root);
+    if (!mk.ok()) return mk.error();
+    if (!process::command_exists("git")) {
+        return Error::io("git is required to register marketplaces");
+    }
+
+    std::string cmd = "git clone --depth 1 -- " + shell_quote(url) + " " +
+                      shell_quote(target);
+    auto res = process::exec(cmd, "", std::chrono::seconds(120), 65536);
+    if (!res.ok()) return res.error();
+    if (res.value().exit_code != 0) {
+        return Error::io("git clone failed:\n" + res.value().stderr_output);
+    }
+
+    auto file = find_marketplace_file(name);
+    if (!file.ok()) {
+        std::error_code ec;
+        fs::remove_all(target, ec);
+        return Error::invalid_arg(
+            "Marketplace has no .claude-plugin/marketplace.json: " + name);
+    }
+    return name;
+}
+
+Result<std::vector<MarketplaceInfo>> PluginManager::list_marketplaces() const {
+    std::vector<MarketplaceInfo> result;
+    auto root = marketplaces_dir();
+    auto exists = efs::exists(root);
+    if (!exists.ok()) return exists.error();
+    if (!exists.value()) return result;
+    auto dir = efs::is_dir(root);
+    if (!dir.ok()) return dir.error();
+    if (!dir.value()) return result;
+
+    auto entries = efs::list_dir(root);
+    if (!entries.ok()) return entries.error();
+    for (const auto& name : entries.value()) {
+        if (!valid_plugin_name(name)) continue;
+        auto p = root + "/" + name;
+        auto is_dir = efs::is_dir(p);
+        if (is_dir.ok() && is_dir.value()) {
+            result.push_back({name, p});
+        }
+    }
+    std::sort(result.begin(), result.end(),
+              [](const MarketplaceInfo& a, const MarketplaceInfo& b) {
+                  return a.name < b.name;
+              });
+    return result;
+}
+
+Result<void> PluginManager::remove_marketplace(const std::string& name) {
+    if (!valid_plugin_name(name)) {
+        return Error::invalid_arg("Invalid marketplace name");
+    }
+    auto target = marketplaces_dir() + "/" + name;
+    auto exists = efs::exists(target);
+    if (!exists.ok()) return exists.error();
+    if (!exists.value()) {
+        return Error::not_found("Marketplace not registered: " + name);
+    }
+    auto dir = efs::is_dir(target);
+    if (!dir.ok()) return dir.error();
+    if (!dir.value()) {
+        return Error::not_found("Marketplace not registered: " + name);
+    }
+
+    std::error_code ec;
+    fs::remove_all(target, ec);
+    if (ec) return Error::io("Failed to remove marketplace: " + ec.message());
+    return {};
+}
+
+Result<std::vector<std::string>> PluginManager::skill_roots() const {
+    std::vector<std::string> roots;
+    auto exists = efs::exists(plugins_dir_);
+    if (!exists.ok()) return exists.error();
+    if (!exists.value()) return roots;
+    auto dir = efs::is_dir(plugins_dir_);
+    if (!dir.ok()) return dir.error();
+    if (!dir.value()) return roots;
+
+    auto entries = efs::list_dir(plugins_dir_);
+    if (!entries.ok()) return entries.error();
+    for (const auto& name : entries.value()) {
+        if (!valid_plugin_name(name)) continue;
+        auto skills = plugins_dir_ + "/" + name + "/skills";
+        auto is_skills = efs::is_dir(skills);
+        if (is_skills.ok() && is_skills.value()) {
+            roots.push_back(skills);
+        }
+    }
+    std::sort(roots.begin(), roots.end());
+    return roots;
+}
 
 SkillManager::SkillManager(std::vector<std::string> roots,
                            std::vector<std::string> disabled,

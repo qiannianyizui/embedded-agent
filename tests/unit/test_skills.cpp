@@ -278,3 +278,63 @@ TEST_CASE("SkillManager caches by mtime and preprocesses templates/inline shell"
 
     fsys::remove_all(base);
 }
+
+TEST_CASE("PluginManager validates URLs, lists and removes plugins", "[skill]") {
+    auto base = fsys::temp_directory_path() / "ea_plugin_test";
+    fsys::remove_all(base);
+    PluginManager pm((base / "plugins").string(),
+                     (base / "marketplace.json").string());
+
+    auto unsafe = pm.install("https://example.com/repo;rm -rf /");
+    REQUIRE_FALSE(unsafe.ok());
+
+    auto unknown = pm.install("does-not-exist");
+    REQUIRE_FALSE(unknown.ok());
+    REQUIRE(ea::fs::exists((base / "marketplace.json").string()).value());
+
+    auto roots = pm.skill_roots();
+    REQUIRE(roots.ok());
+    REQUIRE(roots.value().empty());
+
+    auto skill_dir = base / "plugins" / "demo" / "skills" / "general" / "x";
+    fsys::create_directories(skill_dir);
+    ea::fs::write_file((skill_dir / "SKILL.md").string(),
+                       "---\nname: x\n---\n# X\n");
+
+    roots = pm.skill_roots();
+    REQUIRE(roots.ok());
+    REQUIRE(roots.value().size() == 1);
+    REQUIRE(roots.value()[0].find("demo/skills") != std::string::npos);
+
+    auto list = pm.list();
+    REQUIRE(list.ok());
+    REQUIRE(list.value().size() == 1);
+    REQUIRE(list.value()[0].name == "demo");
+
+    REQUIRE(pm.remove("demo").ok());
+    list = pm.list();
+    REQUIRE(list.ok());
+    REQUIRE(list.value().empty());
+
+    auto mkt_dir = base / "marketplaces" / "demo" / ".claude-plugin";
+    fsys::create_directories(mkt_dir);
+    ea::fs::write_file(
+        (mkt_dir / "marketplace.json").string(),
+        R"json({
+          "name": "demo",
+          "plugins": [
+            {"name": "alpha", "source": {"source": "url", "url": "https://example.com/alpha.git"}}
+          ]
+        })json");
+
+    auto marketplaces = pm.list_marketplaces();
+    REQUIRE(marketplaces.ok());
+    REQUIRE(marketplaces.value().size() == 1);
+    REQUIRE(marketplaces.value()[0].name == "demo");
+
+    REQUIRE_FALSE(pm.install("missing@demo").ok());
+    REQUIRE_FALSE(pm.install("alpha@not-registered").ok());
+    REQUIRE(pm.remove_marketplace("demo").ok());
+
+    fsys::remove_all(base);
+}

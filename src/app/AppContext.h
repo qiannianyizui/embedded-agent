@@ -52,6 +52,7 @@ struct AppContext {
 
     // Skills
     std::unique_ptr<ea::skill::SkillManager> skills;
+    std::unique_ptr<ea::skill::PluginManager> plugins;
     std::string skills_index;   // Rendered <available_skills> block for system prompt
 
     // Web search

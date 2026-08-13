@@ -26,6 +26,9 @@ TuiApp::~TuiApp() {
     if (heartbeat_thread_.joinable()) {
         heartbeat_thread_.join();
     }
+    if (plugin_thread_.joinable()) {
+        plugin_thread_.join();
+    }
     if (agent_thread_.joinable()) {
         if (loop_) loop_->interrupt();
         agent_thread_.join();
@@ -335,6 +338,38 @@ void TuiApp::run_agent(const std::string& input) {
     });
 }
 
+void TuiApp::run_plugin_async(std::string status,
+                              std::function<Result<std::string>()> op,
+                              const std::string& success_prefix,
+                              const std::string& success_suffix) {
+    if (plugin_busy_.exchange(true)) {
+        chat_area_.append_error("A plugin operation is already running");
+        request_redraw();
+        return;
+    }
+    chat_area_.append_system(std::move(status));
+    request_redraw();
+
+    if (plugin_thread_.joinable()) plugin_thread_.join();
+    plugin_thread_ = std::thread([this, op = std::move(op),
+                                  success_prefix, success_suffix] {
+        auto result = op();
+        auto ok = result.ok();
+        std::string message = ok
+            ? success_prefix + result.value() + success_suffix
+            : result.error().message;
+        screen_.Post([this, ok, message] {
+            if (ok) {
+                chat_area_.append_assistant(message);
+            } else {
+                chat_area_.append_error(message);
+            }
+            request_redraw();
+        });
+        plugin_busy_.store(false);
+    });
+}
+
 void TuiApp::execute_command(const std::string& cmd) {
     if (cmd == "/quit" || cmd == "/exit") {
         screen_.Exit();
@@ -540,6 +575,110 @@ void TuiApp::execute_command(const std::string& cmd) {
                   "\n\nFollow the skill instructions above.");
         return;
     }
+    if (cmd == "/plugin" || cmd.substr(0, 8) == "/plugin ") {
+        if (!plugins_) {
+            chat_area_.append_error("Plugin system not available");
+            return;
+        }
+        std::string args = cmd == "/plugin" ? "" : cmd.substr(8);
+        while (!args.empty() &&
+               (args.front() == ' ' || args.front() == '\n')) {
+            args.erase(args.begin());
+        }
+        while (!args.empty() && (args.back() == ' ' || args.back() == '\n')) {
+            args.pop_back();
+        }
+
+        if (args.empty() || args == "list") {
+            auto list = plugins_->list();
+            if (!list.ok()) {
+                chat_area_.append_error(list.error().message);
+                return;
+            }
+            if (list.value().empty()) {
+                chat_area_.append_assistant(
+                    "No plugins installed.\n"
+                    "Install with: /plugin install <name-or-url>");
+                return;
+            }
+            std::ostringstream oss;
+            oss << "Installed plugins:\n";
+            for (const auto& info : list.value()) {
+                oss << "  - " << info.name << "\n";
+            }
+            oss << "\nNewly installed plugins activate after restart.";
+            chat_area_.append_assistant(oss.str());
+            return;
+        }
+        if (args == "marketplace" || args.rfind("marketplace ", 0) == 0) {
+            auto sub = args == "marketplace" ? "" : args.substr(12);
+            while (!sub.empty() && sub.front() == ' ') sub.erase(sub.begin());
+            if (sub.empty() || sub == "list") {
+                auto list = plugins_->list_marketplaces();
+                if (!list.ok()) {
+                    chat_area_.append_error(list.error().message);
+                    return;
+                }
+                if (list.value().empty()) {
+                    chat_area_.append_assistant(
+                        "No marketplaces registered.\n"
+                        "Register with: /plugin marketplace add <owner/repo>");
+                    return;
+                }
+                std::ostringstream oss;
+                oss << "Registered marketplaces:\n";
+                for (const auto& m : list.value()) {
+                    oss << "  - " << m.name << "\n";
+                }
+                chat_area_.append_assistant(oss.str());
+                return;
+            }
+            if (sub.rfind("add ", 0) == 0) {
+                auto source = sub.substr(4);
+                run_plugin_async(
+                    "⏳ 正在注册 marketplace: " + source + " ...",
+                    [this, source] {
+                        return plugins_->add_marketplace(source);
+                    },
+                    "已注册 marketplace: ");
+                return;
+            }
+            if (sub.rfind("remove ", 0) == 0) {
+                auto name = sub.substr(7);
+                auto result = plugins_->remove_marketplace(name);
+                if (!result.ok()) {
+                    chat_area_.append_error(result.error().message);
+                    return;
+                }
+                chat_area_.append_assistant("Removed marketplace: " + name);
+                return;
+            }
+            chat_area_.append_error(
+                "Usage: /plugin marketplace [list|add <owner/repo>|remove <name>]");
+            return;
+        }
+        if (args.rfind("install ", 0) == 0) {
+            auto source = args.substr(8);
+            run_plugin_async(
+                "⏳ 正在安装插件: " + source + " ...",
+                [this, source] { return plugins_->install(source); },
+                "已安装插件: ", "\n重启后生效。");
+            return;
+        }
+        if (args.rfind("remove ", 0) == 0) {
+            auto name = args.substr(7);
+            auto result = plugins_->remove(name);
+            if (!result.ok()) {
+                chat_area_.append_error(result.error().message);
+                return;
+            }
+            chat_area_.append_assistant("Removed plugin: " + name);
+            return;
+        }
+        chat_area_.append_error(
+            "Usage: /plugin [list|install <name-or-url>|remove <name>]");
+        return;
+    }
     if (cmd == "/help") {
         chat_area_.append_assistant(
             "Commands:\n"
@@ -554,6 +693,8 @@ void TuiApp::execute_command(const std::string& cmd) {
             "  /import <path>— Import conversation from JSONL file\n"
             "  /skills       — List available skills\n"
             "  /skill <name> — Load a skill and follow its instructions\n"
+            "  /plugin       — List, install, or remove plugins\n"
+            "  /plugin marketplace — Register plugin marketplaces\n"
             "  /clear        — Clear the chat view\n"
             "  /quit, /exit  — Exit the agent\n"
             "\n"

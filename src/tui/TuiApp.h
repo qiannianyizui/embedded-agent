@@ -38,6 +38,7 @@ public:
 
     void set_model(const std::string& model);
     void set_skills(ea::skill::SkillManager* skills) { skills_ = skills; }
+    void set_plugins(ea::skill::PluginManager* plugins) { plugins_ = plugins; }
 
     // Global event routing used by the root CatchEvent (also testable).
     bool handle_global_event(ftxui::Event event);
@@ -71,8 +72,11 @@ private:
     ea::budget::BudgetTracker* budget_tracker_ = nullptr;
     ea::conversation::IConversationStore* conv_store_ = nullptr;
     ea::skill::SkillManager* skills_ = nullptr;
+    ea::skill::PluginManager* plugins_ = nullptr;
     std::thread agent_thread_;
+    std::thread plugin_thread_;
     std::atomic<bool> agent_busy_{false};
+    std::atomic<bool> plugin_busy_{false};
     std::string model_;
 
     // Component tree
@@ -87,6 +91,10 @@ private:
     void submit_input(const std::string& input);
     void execute_command(const std::string& command);
     void run_agent(const std::string& input);
+    void run_plugin_async(std::string status,
+                          std::function<Result<std::string>()> op,
+                          const std::string& success_prefix,
+                          const std::string& success_suffix = "");
     void start_new_session();
     void push_banner();
     // Coalesced redraw request; must only be called from the UI thread.

@@ -19,6 +19,7 @@ CommandPalette::CommandPalette() {
         {"/resume", "Resume a conversation"},
         {"/skills", "List available skills"},
         {"/skill <name>", "Load a skill"},
+        {"/plugin", "List or install plugins"},
         {"/export", "Export current conversation"},
         {"/import", "Import a conversation"},
         {"/clear",  "Clear the chat view"},

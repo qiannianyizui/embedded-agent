@@ -164,4 +164,82 @@ Result<ToolResult> SkillManageTool::execute(const json& args) {
     return Error::tool_error("Unknown skill_manage action: " + action);
 }
 
+json PluginInstallTool::parameters_schema() const {
+    return json::parse(R"({
+        "type": "object",
+        "properties": {
+            "source": {"type": "string"}
+        },
+        "required": ["source"]
+    })");
+}
+
+Result<ToolResult> PluginInstallTool::execute(const json& args) {
+    if (!plugins_) return Error::tool_error("Plugin system is not available");
+    if (!args.contains("source") || !args["source"].is_string()) {
+        return Error::tool_error("Missing or invalid 'source' parameter");
+    }
+
+    auto result = plugins_->install(args["source"].get<std::string>());
+    if (!result.ok()) {
+        return ToolResult{"", result.error().message, true};
+    }
+    return ToolResult{
+        "",
+        "Installed plugin: " + result.value() +
+            "\nRestart the agent to activate its skills.",
+        false};
+}
+
+json PluginMarketplaceTool::parameters_schema() const {
+    return json::parse(R"({
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": ["add", "list", "remove"]},
+            "source": {"type": "string"},
+            "name": {"type": "string"}
+        },
+        "required": ["action"]
+    })");
+}
+
+Result<ToolResult> PluginMarketplaceTool::execute(const json& args) {
+    if (!plugins_) return Error::tool_error("Plugin system is not available");
+    if (!args.contains("action") || !args["action"].is_string()) {
+        return Error::tool_error("Missing or invalid 'action' parameter");
+    }
+
+    auto action = args["action"].get<std::string>();
+    if (action == "add") {
+        if (!args.contains("source") || !args["source"].is_string()) {
+            return Error::tool_error("Missing or invalid 'source' parameter");
+        }
+        auto result = plugins_->add_marketplace(args["source"].get<std::string>());
+        if (!result.ok()) return ToolResult{"", result.error().message, true};
+        return ToolResult{"", "Registered marketplace: " + result.value(), false};
+    }
+    if (action == "list") {
+        auto result = plugins_->list_marketplaces();
+        if (!result.ok()) return ToolResult{"", result.error().message, true};
+        if (result.value().empty()) {
+            return ToolResult{"", "No marketplaces registered.", false};
+        }
+        std::ostringstream oss;
+        oss << "Registered marketplaces:\n";
+        for (const auto& m : result.value()) {
+            oss << "  - " << m.name << "\n";
+        }
+        return ToolResult{"", oss.str(), false};
+    }
+    if (action == "remove") {
+        if (!args.contains("name") || !args["name"].is_string()) {
+            return Error::tool_error("Missing or invalid 'name' parameter");
+        }
+        auto result = plugins_->remove_marketplace(args["name"].get<std::string>());
+        if (!result.ok()) return ToolResult{"", result.error().message, true};
+        return ToolResult{"", "Removed marketplace: " + args["name"].get<std::string>(), false};
+    }
+    return Error::tool_error("Unknown plugin_marketplace action: " + action);
+}
+
 }  // namespace ea::tool

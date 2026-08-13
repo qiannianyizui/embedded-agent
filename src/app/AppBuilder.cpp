@@ -220,6 +220,21 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug) {
         for (const auto& dir : cfg.skills.dirs) {
             roots.push_back(fs::expand_tilde(dir));
         }
+        if (cfg_dir.ok()) {
+            ctx.plugins = std::make_unique<skill::PluginManager>(
+                cfg_dir.value() + "/plugins",
+                cfg_dir.value() + "/marketplace.json");
+            auto marketplace = ctx.plugins->ensure_marketplace();
+            if (!marketplace.ok()) {
+                EA_WARN("Failed to create plugin marketplace: {}",
+                        marketplace.error().message);
+            }
+            auto plugin_roots = ctx.plugins->skill_roots();
+            if (plugin_roots.ok()) {
+                roots.insert(roots.end(), plugin_roots.value().begin(),
+                             plugin_roots.value().end());
+            }
+        }
 
         skill::SkillOptions skill_opts;
         skill_opts.template_vars = cfg.skills.template_vars;
@@ -241,6 +256,12 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug) {
             std::make_unique<tool::SkillViewTool>(ctx.skills.get()));
         ctx.registry->register_tool(
             std::make_unique<tool::SkillManageTool>(ctx.skills.get()));
+        if (ctx.plugins) {
+            ctx.registry->register_tool(
+                std::make_unique<tool::PluginInstallTool>(ctx.plugins.get()));
+            ctx.registry->register_tool(
+                std::make_unique<tool::PluginMarketplaceTool>(ctx.plugins.get()));
+        }
     }
 
     // 7.5. Connect MCP servers and register their tools

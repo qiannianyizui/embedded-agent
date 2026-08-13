@@ -16,6 +16,7 @@ int TuiRunner::run(AppContext& ctx) {
                       ? ctx.config.agent.model
                       : ctx.config.provider.default_model);
     tui.set_skills(ctx.skills.get());
+    tui.set_plugins(ctx.plugins.get());
 
     auto tui_output = tui.output_fn();
     auto tui_stream = tui.stream_fn();

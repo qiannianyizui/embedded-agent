@@ -16,6 +16,16 @@ struct SkillInfo {
     std::vector<std::string> platforms;
 };
 
+struct PluginInfo {
+    std::string name;
+    std::string directory;
+};
+
+struct MarketplaceInfo {
+    std::string name;
+    std::string directory;
+};
+
 struct SkillOptions {
     bool template_vars = true;      // Replace ${EA_SKILL_DIR}/${EA_SKILL_NAME}
     bool inline_shell = false;      // Execute !`cmd` snippets in SKILL.md
@@ -70,6 +80,33 @@ private:
     mutable std::vector<SkillInfo> cache_;
     mutable std::string cache_key_;
     mutable bool cache_valid_ = false;
+};
+
+// Installs plugins from git URLs or a marketplace JSON (config dir).
+// Each plugin must expose skills/; those dirs are added as SkillManager
+// roots on the next startup.
+class PluginManager {
+public:
+    PluginManager(std::string plugins_dir, std::string marketplace_path);
+
+    // source = git URL or name from the marketplace JSON.
+    Result<std::string> install(const std::string& source);
+    Result<std::vector<PluginInfo>> list() const;
+    Result<void> remove(const std::string& name);
+    Result<std::vector<std::string>> skill_roots() const;
+    Result<void> ensure_marketplace() const;
+    // source = owner/repo or git URL; registers a Claude Code style marketplace.
+    Result<std::string> add_marketplace(const std::string& source);
+    Result<std::vector<MarketplaceInfo>> list_marketplaces() const;
+    Result<void> remove_marketplace(const std::string& name);
+
+private:
+    Result<std::string> resolve_url(const std::string& source) const;
+    Result<std::string> find_marketplace_file(const std::string& name) const;
+    std::string marketplaces_dir() const;
+
+    std::string plugins_dir_;
+    std::string marketplace_path_;
 };
 
 }  // namespace ea::skill
