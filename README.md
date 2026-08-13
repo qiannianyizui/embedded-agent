@@ -1,18 +1,18 @@
 # embedded-agent
 
-**C++17 轻量级 AI Agent 框架** — 面向 Linux 与嵌入式场景，当前以 TUI 交互为主，核心以静态库形式供嵌入式集成。
+**A lightweight C++17 AI Agent framework** — designed for Linux and embedded scenarios. The current runtime surface is the TUI; the core is also built as a static library for embedded integration.
 
-## 特性
+## Features
 
-- **分层微内核架构** — 核心接口 + 可插拔策略/装饰器，运行时 TUI 模式
-- **多 Provider 支持** — OpenAI、Anthropic、Ollama，内置重试/降级/路由
-- **可扩展工具系统** — Toolset 分组 + 条件可用性 + 安全元数据
-- **持久化记忆** — SQLite FTS5 全文检索 + InMemory/Null 后端 + Agent 隔离
-- **循环检测** — 精确重复 / 乒乓交替 / 无进展 三模式自动检测与升级干预
-- **TurnStep 链** — 可插拔步骤编排，支持自定义步骤注入
-- **零依赖编译** — 仅需 CMake 3.16+、C++17 编译器，第三方库源码内附
+- **Layered Microkernel Architecture** — Core interfaces + pluggable strategies/decorators, TUI runtime
+- **Multi-Provider Support** — OpenAI, Anthropic, Ollama with built-in retry/fallback/routing
+- **Extensible Tool System** — Toolset grouping + conditional availability + security metadata
+- **Persistent Memory** — SQLite FTS5 full-text search + InMemory/Null backends + Agent isolation
+- **Loop Detection** — Exact repeat / ping-pong / no-progress — three-pattern auto-detection with escalating intervention
+- **TurnStep Chain** — Pluggable step orchestration, supports custom step injection
+- **Zero-Dependency Build** — Only requires CMake 3.16+ and a C++17 compiler; third-party libs bundled
 
-## 架构概览
+## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -33,213 +33,243 @@
 └─────────────────────────────────────────────┘
 ```
 
-## 快速开始
+## Quick Start
 
-### 依赖
+### Prerequisites
 
 - CMake ≥ 3.16
-- C++17 编译器 (GCC 9+ / Clang 10+)
-- SQLite3 开发库
+- C++17 compiler (GCC 9+ / Clang 10+)
+- Git (required for plugin/marketplace installs)
+- Network on first build (FetchContent pulls third-party sources)
 
-### 构建
+### Build
 
 ```bash
 git clone https://gitee.com/QianNianYiZui_admin_admin/embedded-agent.git
 cd embedded-agent
 mkdir build && cd build
 
-# 默认 TUI 模式
+# Default TUI mode
 cmake ..
 cmake --build . -j$(nproc)
 
-# 核心逻辑同时编译为静态库 embedded-agent-core，可直接链接进其他应用
+# The artifact is ./ea; the core is also built as the static library
+# embedded-agent-core, which can be linked into other applications.
 ```
 
-### 运行
+### Run
 
 ```bash
-# 首次运行会生成默认配置 ~/.embedded-agent/config.json
-./embedded-agent
+# First run generates default config at ~/.embedded-agent/config.toml
+./ea
 
-# 指定配置文件
-./embedded-agent -c /path/to/config.json
+# Specify config file
+./ea -c /path/to/config.toml
 
-# 调试模式
-./embedded-agent --debug
+# Debug mode
+./ea --debug
 ```
 
-交互式输入，`/quit` 或 `/exit` 退出。
+Interactive input; type `/quit` or `/exit` to leave.
 
-### 配置
+### Configuration
 
-配置文件 `~/.embedded-agent/config.json`：
+Config file `~/.embedded-agent/config.toml`:
 
-```json
-{
-  "provider": {
-    "type": "openai",
-    "api_key": "sk-...",
-    "model": "gpt-4o",
-    "base_url": "https://api.openai.com/v1"
-  },
-  "memory": {
-    "path": "",
-    "enable_fts5": true
-  },
-  "agent": {
-    "max_iterations": 90
-  },
-  "security": {
-    "workspace": "",
-    "allowed_commands": []
-  }
-}
+```toml
+[provider]
+type = "openai_compatible"
+base_url = "https://api.openai.com/v1"
+api_key = "sk-..."
+default_model = "gpt-4o"
+
+[agent]
+max_iterations = 90
+
+[security.approval]
+mode = "auto"
+auto_approve_dangerous = false
+
+[skills]
+enable = true
+plugin_mirrors = []   # e.g. ["https://ghfast.top/"]
 ```
 
-Provider 类型：`openai` / `anthropic` / `ollama`
+Provider types: `openai_compatible` / `anthropic` / `ollama`
 
-## 模块说明
+## Modules
 
-| 模块 | 路径 | 说明 |
-|------|------|------|
-| **core** | `src/core/` | 核心接口：IProvider, ITool, IMemory, Types |
-| **agent** | `src/agent/` | AgentLoop, TurnStep 链, LoopDetector, SystemPrompt |
-| **provider** | `src/provider/` | OpenAI/Anthropic/Ollama 实现, ReliableProvider, RouterProvider |
-| **tool** | `src/tool/` | ToolRegistry, Toolset, Shell/File/Search/Web/Memory 工具 |
-| **skill** | `src/skill/` | SKILL.md 发现/解析，skills_list / skill_view 工具 |
+| Module | Path | Description |
+|--------|------|-------------|
+| **core** | `src/core/` | Core interfaces: IProvider, ITool, IMemory, Types |
+| **agent** | `src/agent/` | AgentLoop, TurnStep chain, LoopDetector, SystemPrompt |
+| **provider** | `src/provider/` | OpenAI/Anthropic/Ollama, ReliableProvider, RouterProvider |
+| **tool** | `src/tool/` | ToolRegistry, Toolset, Shell/File/Search/Web/Memory tools |
+| **skill** | `src/skill/` | SKILL.md discovery/parsing, skills_list / skill_view tools |
 | **memory** | `src/memory/` | SqliteMemory, InMemoryBackend, ScopedMemory, MemoryManager |
-| **security** | `src/security/` | SecurityPolicy（工作区限制、命令白名单） |
-| **config** | `src/config/` | JSON 配置加载 |
-| **common** | `src/common/` | Result, Error, HttpClient, Logger, SSE 解析 |
+| **security** | `src/security/` | SecurityPolicy (workspace restriction, command allowlist) |
+| **config** | `src/config/` | JSON config loading |
+| **common** | `src/common/` | Result, Error, HttpClient, Logger, SSE parser |
 
-## Provider 增强
+## Provider Enhancements
 
-| 组件 | 功能 |
-|------|------|
-| `ProviderCapabilities` | 声明原生工具调用/流式/视觉/缓存等能力 |
-| `ReliableProvider` | 装饰器：指数退避重试 + 降级回退 |
-| `RouterProvider` | 按 route_hint 路由到不同模型/Provider |
-| `CredentialPool` | API Key 轮转 + 健康追踪 |
-| `ErrorClassifier` | 错误分类（可重试/不可重试/限流） |
-| `PromptGuidedTools` | 为无原生工具调用的 Provider 注入工具描述 |
+| Component | Function |
+|-----------|----------|
+| `ProviderCapabilities` | Declare native tool calling / streaming / vision / caching capabilities |
+| `ReliableProvider` | Decorator: exponential backoff retry + fallback |
+| `RouterProvider` | Route to different models/providers via route_hint |
+| `CredentialPool` | API key rotation + health tracking |
+| `ErrorClassifier` | Error classification (retryable / non-retryable / rate-limit) |
+| `PromptGuidedTools` | Inject tool descriptions for providers without native tool calling |
 
-## 工具系统
+## Tool System
 
-| 工具 | 说明 | `is_mutating` | `is_dangerous` |
-|------|------|:---:|:---:|
-| ShellTool | 执行 shell 命令 | ✅ | ✅ |
-| FileTool | 读写文件 | ✅ | ✅ |
-| SearchTool | 搜索文件内容 | ❌ | ❌ |
-| WebTool | 抓取网页并转换为 text/markdown | ❌ | ❌ |
-| MemoryTool | 记忆存取 | ✅ | ❌ |
-| SkillsListTool | 按分类/关键词列出技能 | ❌ | ❌ |
-| SkillViewTool | 加载技能完整内容 | ❌ | ❌ |
-| SkillManageTool | 创建/更新/删除/启用/禁用技能 | ✅ | ✅ |
+| Tool | Description | `is_mutating` | `is_dangerous` |
+|------|-------------|:---:|:---:|
+| ShellTool | Execute shell commands | ✅ | ✅ |
+| FileTool | Read/write files | ✅ | ✅ |
+| SearchTool | Search file contents | ❌ | ❌ |
+| WebTool | Fetch pages and convert to text/markdown | ❌ | ❌ |
+| MemoryTool | Memory store/recall | ✅ | ❌ |
+| SkillsListTool | List skills by category/keyword | ❌ | ❌ |
+| SkillViewTool | Load a skill's full content | ❌ | ❌ |
+| SkillManageTool | Create/update/delete/enable/disable skills | ✅ | ✅ |
 
-- **Toolset** 分组 + `CheckFn` 条件可用性
-- **ToolOutputConfig** 全局 + 单工具输出截断
-- **ToolRegistry** 激活/停用 Toolset，向后兼容 `register_tool()`
+- **Toolset** grouping + `CheckFn` conditional availability
+- **ToolOutputConfig** global + per-tool output truncation
+- **ToolRegistry** activate/deactivate Toolsets, backward-compatible `register_tool()`
 
-## Skills 系统
+## Skills System
 
-技能采用 Hermes 风格的组织方式：每个技能是 `skills/<分类>/<技能名>/SKILL.md`，文件头用 YAML frontmatter 声明 `name`、`description`、`version`、`platforms`、`tags`。
+Skills follow the Hermes layout: each skill is `skills/<category>/<name>/SKILL.md`
+with YAML frontmatter declaring `name`, `description`, `version`, `platforms`,
+and `tags`.
 
-- 发现目录：`~/.embedded-agent/skills`、当前目录 `./skills`、`[skills].dirs` 额外目录
-- 系统提示词只注入 `<available_skills>` 索引，模型需要时通过 `skill_view` 按需加载完整内容
-- `skill_manage` 支持 `create` / `update` / `delete` / `disable` / `enable`
-- TUI 支持 `/skills`（列出技能）和 `/skill <name>`（加载技能）
-- 技能索引按文件 mtime/size 缓存，外部修改自动失效
-- 模板预处理：`${EA_SKILL_DIR}` / `${EA_SKILL_NAME}` 默认替换；`!`cmd`` 内联 shell 需开启 `[skills] inline_shell = true`
-- 配置：`[skills] enable = true`，`disabled = ["技能名"]`
-- 环境变量：`EA_SKILLS_DIR` 可追加技能根目录
+- Discovery roots: `~/.embedded-agent/skills`, `./skills`, plus `[skills].dirs`
+- The system prompt only contains the `<available_skills>` index; the model
+  loads full content on demand through `skill_view`
+- `skill_manage` supports `create` / `update` / `delete` / `disable` / `enable`
+- TUI commands: `/skills` lists skills, `/skill <name>` loads one
+- The skill index is cached by file mtime/size and invalidates on external edits
+- Template preprocessing: `${EA_SKILL_DIR}` / `${EA_SKILL_NAME}` by default;
+  inline `!`cmd`` snippets require `[skills] inline_shell = true`
+- Config: `[skills] enable = true`, `disabled = ["skill-name"]`,
+  `plugin_mirrors = []`
+- Env var: `EA_SKILLS_DIR` adds an extra skills root
 
-## Web 搜索后端
+## Plugin System
 
-`web` 工具的 `search` 动作支持可插拔后端，通过 `[web]` 配置切换：
+Claude Code style plugin/marketplace support:
+
+- Register a marketplace: `/plugin marketplace add <owner/repo>`
+- Install a plugin: `/plugin install <name>@<marketplace>` or
+  `/plugin install <git-url>`
+- Plugins are cloned to `~/.embedded-agent/plugins/<name>`; their `skills/`
+  directories activate after restart
+- `[skills] plugin_mirrors` lists mirror prefixes, probed in order with
+  `git ls-remote` before cloning, with automatic fallback on failure
+- Agent-side tools: `plugin_install`, `plugin_marketplace`
+
+## Web Search Backends
+
+The `web` tool's `search` action supports pluggable backends selected via
+`[web]`:
 
 ```toml
 [web]
 search_backend = "duckduckgo"   # duckduckgo | searxng | exa | parallel
-searxng_url = ""                # 自托管 SearXNG 地址，例如 http://localhost:8080
-exa_api_key = ""                # Exa 可选 API key
-parallel_api_key = ""           # Parallel 可选 API key
+searxng_url = ""                # self-hosted SearXNG, e.g. http://localhost:8080
+exa_api_key = ""                # optional Exa API key
+parallel_api_key = ""           # optional Parallel API key
 ```
 
-- `duckduckgo`：默认，免 key，抓取 HTML 搜索页
-- `searxng`：免 key，需要 `searxng_url`
-- `exa` / `parallel`：opencode 同款 MCP 公共端点，默认免 key，可选配置 key 提高配额
+- `duckduckgo`: default, no key, scrapes the HTML search page
+- `searxng`: no key, requires `searxng_url`
+- `exa` / `parallel`: opencode-style MCP public endpoints, no key by default,
+  optional keys raise quotas
 
-## 记忆系统
+## Memory System
 
-| 组件 | 功能 |
-|------|------|
-| `SqliteMemory` | SQLite + FTS5 全文检索，WAL 模式 |
-| `InMemoryBackend` | 内存后端，测试/临时场景 |
-| `NullMemory` | 空操作后端 |
-| `ScopedMemory` | Agent 隔离装饰器 + read_allowlist 跨 Agent 读取 |
-| `MemoryManager` | 编排层：prefetch/sync_turn/system_prompt_block |
-| `MemoryFactory` | 按类型创建后端 |
+| Component | Function |
+|-----------|----------|
+| `SqliteMemory` | SQLite + FTS5 full-text search, WAL mode |
+| `InMemoryBackend` | In-memory backend for testing / ephemeral use |
+| `NullMemory` | No-op backend |
+| `ScopedMemory` | Agent isolation decorator + read_allowlist for cross-agent reads |
+| `MemoryManager` | Orchestration: prefetch / sync_turn / system_prompt_block |
+| `MemoryFactory` | Create backends by type |
 
 ## Agent Loop
 
-TurnStep 链执行顺序：
+TurnStep chain execution order:
 
 ```
 HistoryPrune → BuildToolSpecs → CallProvider → ParseResponse
     → ExecuteTools → LoopDetect → CollectResults
 ```
 
-循环检测三模式：
+Loop detection — three patterns:
 
-| 模式 | 触发条件 | 动作 |
-|------|---------|------|
-| 精确重复 | 相同 tool+args 连续 3+ 次 | Block（清除待执行调用） |
-| 乒乓交替 | 两个工具交替 4+ 轮 | Warn（警告提示） |
-| 无进展 | 同工具同结果 5+ 次 | Break（终止循环） |
+| Pattern | Trigger | Action |
+|---------|---------|--------|
+| Exact repeat | Same tool+args 3+ times consecutively | Block (clear pending calls) |
+| Ping-pong | Two tools alternating for 4+ cycles | Warn (warning message) |
+| No progress | Same tool with identical result 5+ times | Break (terminate loop) |
 
-## 测试
+## Testing
 
 ```bash
 cd build
 cmake .. -DBUILD_TESTING=ON
 cmake --build . -j$(nproc)
 
-# 运行全部测试
+# Run all tests
 ./tests/ea-tests
 
-# 按标签过滤
+# Filter by tag
 ./tests/ea-tests "[memory]"
 ./tests/ea-tests "[agent]"
 ./tests/ea-tests "[loopdetect]"
 ```
 
-当前：**228 测试用例 / 551 断言**
+Current: **455 test cases / 4607 assertions**
 
-## 技术栈
+## Tech Stack
 
-| 库 | 用途 | 方式 |
-|----|------|------|
-| nlohmann/json | JSON 处理 | 源码内附 |
-| spdlog | 日志 | 源码内附 |
-| CLI11 | 命令行解析 | 源码内附 |
-| cpp-httplib | HTTP 客户端（网络层） | 源码内附 |
-| mbedtls | TLS | 源码内附 |
-| SQLite3 | 嵌入式数据库 | 系统依赖 |
-| Catch2 | 测试框架 | CMake FetchContent |
+| Library | Purpose | Method |
+|---------|---------|--------|
+| nlohmann/json | JSON handling | Bundled |
+| spdlog | Logging | Bundled |
+| CLI11 | CLI parsing | Bundled |
+| cpp-httplib | HTTP client (net layer) | Header-only (TLS via system OpenSSL) |
+| mbedtls | SHA-256 (HRR vectors) | Bundled |
+| SQLite3 | Embedded database | Downloaded amalgamation at build time |
+| Catch2 | Test framework | CMake FetchContent |
 
-## 运行模式
+## Runtime Mode
 
-当前只保留 TUI 模式（FTXUI 界面）：
+Only the TUI mode (FTXUI) is currently shipped:
 
 ```bash
-./embedded-agent          # 默认启动 TUI
-./embedded-agent tui      # 显式指定 TUI
-./embedded-agent -c path/to/config.toml
+./ea          # starts the TUI by default
+./ea tui      # explicit TUI mode
+./ea -c path/to/config.toml
 ```
 
-CLI（REPL）与 Server（HTTP API）模式已移除；如需嵌入式集成，链接
-`embedded-agent-core` 静态库即可。
+The CLI (REPL) and Server (HTTP API) modes have been removed. For embedded
+integration, link against the `embedded-agent-core` static library.
 
-## 许可证
+Optional feature toggles:
+
+```bash
+-DEA_ENABLE_MEMORY=ON       # Memory system (default ON)
+-DEA_ENABLE_STREAMING=ON    # Streaming response (default ON)
+-DEA_ENABLE_TOOLS_WEB=ON    # WebTool (default ON)
+-DEA_ENABLE_TOOLS_SHELL=ON  # ShellTool (default ON)
+-DEA_ENABLE_ROUTER=OFF      # RouterProvider (default OFF)
+-DEA_ENABLE_FALLBACK=OFF    # ReliableProvider fallback (default OFF)
+```
+
+## License
 
 MIT License

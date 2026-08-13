@@ -24,7 +24,7 @@ target_include_directories(ea-blackbox-tests PRIVATE
 target_compile_definitions(ea-blackbox-tests PRIVATE
     CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     CMAKE_BINARY_DIR="${CMAKE_BINARY_DIR}"
-    EA_BINARY_PATH="${CMAKE_BINARY_DIR}/embedded-agent"
+    EA_BINARY_PATH="${CMAKE_BINARY_DIR}/ea"
 )
 include(CTest)
 add_test(NAME ea-blackbox-tests COMMAND ea-blackbox-tests)

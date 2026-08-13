@@ -175,7 +175,7 @@ target_include_directories(embedded-agent-core PUBLIC
     ${CMAKE_BINARY_DIR}/include
 )
 
-add_executable(embedded-agent src/main.cpp)
-ea_target_compile_options(embedded-agent)
-target_link_libraries(embedded-agent PRIVATE
+add_executable(ea src/main.cpp)
+ea_target_compile_options(ea)
+target_link_libraries(ea PRIVATE
     embedded-agent-core CLI11::CLI11 ea-tui ftxui::component)
