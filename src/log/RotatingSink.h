@@ -1,8 +1,7 @@
-// CompressedRotatingSink — spdlog custom sink with zstd streaming compression
-// and size-based rotation with total-size cleanup.
+// RotatingSink — spdlog custom sink with size-based rotation and total-size cleanup.
 //
-// Active file:   {log_dir}/agent.log.zst
-// Sealed files:  {log_dir}/agent_log_YYYYMMDD_HHMMSS.zst
+// Active file:   {log_dir}/agent.log
+// Sealed files:  {log_dir}/agent_log_YYYYMMDD_HHMMSS.log
 //
 // When the active file exceeds max_file_bytes, it is sealed (renamed with
 // timestamp) and a new active file is opened. If the total size of all
@@ -11,7 +10,6 @@
 
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/base_sink.h>
-#include <zstd.h>
 #include <cstdio>
 #include <chrono>
 #include <algorithm>
@@ -21,21 +19,21 @@
 
 namespace ea::log {
 
-class CompressedRotatingSink : public spdlog::sinks::base_sink<std::mutex> {
+class RotatingSink : public spdlog::sinks::base_sink<std::mutex> {
 public:
-    CompressedRotatingSink(const std::string& log_dir,
-                           int max_file_bytes,
-                           int max_total_bytes)
+    RotatingSink(const std::string& log_dir,
+                 int max_file_bytes,
+                 int max_total_bytes)
         : log_dir_(log_dir)
         , max_file_bytes_(max_file_bytes)
         , max_total_bytes_(max_total_bytes)
-        , active_path_(log_dir + "/agent.log.zst")
+        , active_path_(log_dir + "/agent.log")
     {
         std::filesystem::create_directories(log_dir);
         open_active();
     }
 
-    ~CompressedRotatingSink() override {
+    ~RotatingSink() override {
         close_active();
     }
 
@@ -47,17 +45,8 @@ protected:
         spdlog::memory_buf_t formatted;
         formatter_->format(msg, formatted);
 
-        // Feed into zstd compressor
-        ZSTD_inBuffer input = {formatted.data(), formatted.size(), 0};
-        while (input.pos < input.size) {
-            ZSTD_outBuffer output = {out_buf_, sizeof(out_buf_), 0};
-            size_t ret = ZSTD_compressStream2(cctx_, &output, &input, ZSTD_e_continue);
-            if (ZSTD_isError(ret)) return;
-            if (output.pos > 0) {
-                std::fwrite(out_buf_, 1, output.pos, file_);
-                written_bytes_ += output.pos;
-            }
-        }
+        std::fwrite(formatted.data(), 1, formatted.size(), file_);
+        written_bytes_ += formatted.size();
 
         // Check if rotation needed
         if (written_bytes_ >= static_cast<size_t>(max_file_bytes_)) {
@@ -66,42 +55,21 @@ protected:
     }
 
     void flush_() override {
-        if (!file_) return;
-
-        // Flush zstd stream
-        ZSTD_inBuffer input = {nullptr, 0, 0};
-        while (true) {
-            ZSTD_outBuffer output = {out_buf_, sizeof(out_buf_), 0};
-            size_t ret = ZSTD_compressStream2(cctx_, &output, &input, ZSTD_e_flush);
-            if (output.pos > 0) {
-                std::fwrite(out_buf_, 1, output.pos, file_);
-            }
-            if (ret == 0) break;
-            if (ZSTD_isError(ret)) break;
-        }
-        std::fflush(file_);
+        if (file_) std::fflush(file_);
     }
 
 private:
-    static constexpr size_t OUT_BUF_SIZE = 64 * 1024;
-    static constexpr int ZSTD_LEVEL = 3;  // fast + decent ratio
-
     std::string log_dir_;
     int max_file_bytes_;
     int max_total_bytes_;
     std::string active_path_;
 
     FILE* file_ = nullptr;
-    ZSTD_CCtx* cctx_ = nullptr;
-    char out_buf_[OUT_BUF_SIZE];
     size_t written_bytes_ = 0;
 
     void open_active() {
         file_ = std::fopen(active_path_.c_str(), "ab");  // append binary
         if (!file_) return;
-
-        cctx_ = ZSTD_createCCtx();
-        ZSTD_CCtx_setParameter(cctx_, ZSTD_c_compressionLevel, ZSTD_LEVEL);
 
         // Count existing bytes for append mode
         written_bytes_ = std::filesystem::exists(active_path_)
@@ -110,21 +78,6 @@ private:
     }
 
     void close_active() {
-        if (cctx_) {
-            // End the zstd frame
-            ZSTD_inBuffer input = {nullptr, 0, 0};
-            while (true) {
-                ZSTD_outBuffer output = {out_buf_, sizeof(out_buf_), 0};
-                size_t ret = ZSTD_compressStream2(cctx_, &output, &input, ZSTD_e_end);
-                if (output.pos > 0 && file_) {
-                    std::fwrite(out_buf_, 1, output.pos, file_);
-                }
-                if (ret == 0) break;
-                if (ZSTD_isError(ret)) break;
-            }
-            ZSTD_freeCCtx(cctx_);
-            cctx_ = nullptr;
-        }
         if (file_) {
             std::fflush(file_);
             std::fclose(file_);
@@ -143,7 +96,7 @@ private:
         char ts[32];
         std::strftime(ts, sizeof(ts), "%Y%m%d_%H%M%S", &tm_buf);
 
-        std::string sealed_path = log_dir_ + "/agent_log_" + ts + ".zst";
+        std::string sealed_path = log_dir_ + "/agent_log_" + ts + ".log";
         std::filesystem::rename(active_path_, sealed_path);
 
         // Cleanup old sealed files if total size exceeds limit
@@ -170,7 +123,7 @@ private:
             auto name = entry.path().filename().string();
             if (name.size() > 15 &&
                 name.compare(0, 10, "agent_log_") == 0 &&
-                name.compare(name.size() - 4, 4, ".zst") == 0) {
+                name.compare(name.size() - 4, 4, ".log") == 0) {
                 try {
                     sealed.push_back({entry.path(),
                                       fs::file_size(entry.path()),

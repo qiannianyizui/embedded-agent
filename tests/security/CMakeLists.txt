@@ -15,7 +15,6 @@ target_link_libraries(ea-security-tests PRIVATE
     ea-provider ea-tool ea-skill ea-agent ea-trace ea-mcp ea-platform ea-security
     nlohmann_json::nlohmann_json
     httplib::httplib
-    PkgConfig::UUID PkgConfig::ZSTD
     Catch2::Catch2WithMain
 )
 target_include_directories(ea-security-tests PRIVATE

@@ -1,9 +1,10 @@
 #include "TraceEvent.h"
 #include "embedded-agent/Version.h"
-#include <uuid/uuid.h>
 #include <chrono>
 #include <cstring>
+#include <cstdio>
 #include <ctime>
+#include <random>
 #include <sstream>
 #include <iomanip>
 
@@ -62,10 +63,16 @@ EventOutcome parse_outcome(const std::string& s) {
 // --- UUID generation ---
 
 std::string generate_uuid() {
-    uuid_t uuid;
-    uuid_generate_random(uuid);
+    static thread_local std::mt19937_64 rng{std::random_device{}()};
+    const uint64_t hi = (rng() & 0xffffffffffff0fffULL) | 0x0000000000004000ULL;  // v4
+    const uint64_t lo = (rng() & 0x3fffffffffffffffULL) | 0x8000000000000000ULL;  // RFC 4122
     char buf[37];
-    uuid_unparse_lower(uuid, buf);
+    std::snprintf(buf, sizeof(buf), "%08x-%04x-%04x-%04x-%012llx",
+                  static_cast<unsigned>(hi >> 32),
+                  static_cast<unsigned>((hi >> 16) & 0xffff),
+                  static_cast<unsigned>(hi & 0xffff),
+                  static_cast<unsigned>((lo >> 48) & 0xffff),
+                  static_cast<unsigned long long>(lo & 0xffffffffffffULL));
     return std::string(buf, 36);
 }
 

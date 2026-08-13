@@ -9,4 +9,4 @@ target_include_directories(ea-trace PUBLIC
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/include
 )
-target_link_libraries(ea-trace PUBLIC ea-base ea-log PkgConfig::UUID)
+target_link_libraries(ea-trace PUBLIC ea-base ea-log)

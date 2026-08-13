@@ -48,6 +48,8 @@ FetchContent_Declare(cli11
 FetchContent_Declare(httplib
     URL https://github.com/yhirose/cpp-httplib/archive/v0.18.3.tar.gz
 )
+# httplib auto-links system OpenSSL/zlib/brotli; brotli is optional and unused
+set(HTTPLIB_USE_BROTLI_IF_AVAILABLE OFF CACHE BOOL "" FORCE)
 
 # --- compiled ---
 set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
@@ -58,23 +60,6 @@ FetchContent_Declare(mbedtls
 )
 
 FetchContent_MakeAvailable(json toml11 spdlog cli11 httplib mbedtls)
-
-# --- zstd (system-installed, for compressed log sink) ---
-find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
-    pkg_check_modules(ZSTD IMPORTED_TARGET libzstd)
-endif()
-if(NOT ZSTD_FOUND)
-    find_package(zstd REQUIRED)
-endif()
-
-# --- libuuid (system-installed, for trace event IDs) ---
-if(PkgConfig_FOUND)
-    pkg_check_modules(UUID IMPORTED_TARGET uuid)
-endif()
-if(NOT UUID_FOUND)
-    find_package(uuid REQUIRED)
-endif()
 
 # --- FTXUI (TUI library) ---
 FetchContent_Declare(ftxui
@@ -181,8 +166,6 @@ target_link_libraries(embedded-agent-core PUBLIC
     mbedx509
     mbedcrypto
     sqlite3
-    PkgConfig::UUID
-    PkgConfig::ZSTD
 )
 # Eigen (always linked for HRR vector operations)
 target_link_libraries(embedded-agent-core PUBLIC Eigen3::Eigen)

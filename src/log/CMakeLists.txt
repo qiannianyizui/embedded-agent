@@ -9,5 +9,4 @@ target_include_directories(ea-log PUBLIC
 target_link_libraries(ea-log PUBLIC
     ea-base
     spdlog::spdlog
-    PkgConfig::ZSTD
 )

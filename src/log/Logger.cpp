@@ -1,5 +1,5 @@
 #include "Logger.h"
-#include "CompressedRotatingSink.h"
+#include "RotatingSink.h"
 #include "config/Config.h"
 #include <spdlog/sinks/stdout_color_sinks.h>
 
@@ -33,9 +33,9 @@ void init(const Config& cfg) {
     console->set_level(cfg.verbose ? cfg.level : spdlog::level::off);
     sinks.push_back(console);
 
-    // Compressed rotating file sink
+    // Rotating file sink
     if (cfg.persist) {
-        auto file = std::make_shared<CompressedRotatingSink>(
+        auto file = std::make_shared<RotatingSink>(
             cfg.log_dir, cfg.max_file_bytes, cfg.max_total_bytes);
         file->set_level(cfg.level);
         sinks.push_back(file);

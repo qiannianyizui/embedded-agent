@@ -41,6 +41,7 @@ add_executable(ea-unit-tests
     test_subagent.cpp
     test_streaming.cpp
     test_events.cpp
+    test_trace_uuid.cpp
     test_security_policy.cpp
     test_approval_handler.cpp
     test_stdin_approval_handler.cpp
@@ -63,7 +64,6 @@ target_link_libraries(ea-unit-tests PRIVATE
     ea-app ea-skill ea-tui
     nlohmann_json::nlohmann_json
     httplib::httplib
-    PkgConfig::UUID PkgConfig::ZSTD
     Catch2::Catch2WithMain
 )
 target_include_directories(ea-unit-tests PRIVATE
@@ -97,7 +97,6 @@ add_executable(ea-tui-tests
         ftxui::component
         nlohmann_json::nlohmann_json
         httplib::httplib
-        PkgConfig::UUID PkgConfig::ZSTD
         Catch2::Catch2WithMain
     )
     target_include_directories(ea-tui-tests PRIVATE
