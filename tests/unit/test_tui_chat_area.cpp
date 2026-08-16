@@ -72,6 +72,9 @@ TEST_CASE("ChatArea clear removes all messages", "[tui]") {
     REQUIRE_FALSE(area.has_new_messages());
     REQUIRE(area.messages().empty());
     REQUIRE(area.streaming_content().empty());
+    REQUIRE(area.total_lines() == 0);
+    REQUIRE(area.scroll_top() == 0);
+    REQUIRE(area.follow_bottom());
 }
 
 TEST_CASE("ChatArea tool messages", "[tui]") {
@@ -189,47 +192,88 @@ TEST_CASE("ChatArea clear_new_flag idempotent", "[tui]") {
     REQUIRE_FALSE(area.has_new_messages());
 }
 
-TEST_CASE("ChatArea wheel scrolls transcript", "[tui]") {
+TEST_CASE("ChatArea total_lines reflects wrap width", "[tui]") {
     ChatArea area;
+    area.append_system("aaaa bbbb cccc");
+
+    // No width constraint: single line.
+    REQUIRE(area.total_lines() == 1);
+
+    area.set_layout_width(6);
+    REQUIRE(area.total_lines() == 3);  // "aaaa" | "bbbb" | "cccc"
+
+    // Width changes re-wrap everything.
+    area.set_layout_width(11);
+    REQUIRE(area.total_lines() == 2);  // "aaaa bbbb" | "cccc"
+}
+
+TEST_CASE("ChatArea total_lines counts rendered message chrome", "[tui]") {
+    ChatArea area;
+    area.append_user("msg");        // chip + bubble borders + 1 line = 4
+    area.append_assistant("reply"); // chip + 1 line = 2
+    area.append_tool_start("sh", R"({"cmd":"ls"})");  // fixed 4 rows
+    REQUIRE(area.total_lines() == 10);
+}
+
+TEST_CASE("ChatArea wheel scrolls transcript by lines", "[tui]") {
+    ChatArea area;
+    area.set_viewport_hint(3);
     for (int i = 0; i < 10; ++i) {
         area.append_user("msg " + std::to_string(i));
     }
 
-    REQUIRE(area.scroll_y() == 1.0f);
+    REQUIRE(area.total_lines() == 40);  // 4 rows per user message
+    REQUIRE(area.scroll_top() == 37);   // 40 - viewport(3)
     REQUIRE(area.follow_bottom());
 
     REQUIRE(area.on_event(wheel_event(ftxui::Mouse::WheelUp)));
-    REQUIRE(area.scroll_y() < 1.0f);
+    REQUIRE(area.scroll_top() == 34);
     REQUIRE_FALSE(area.follow_bottom());
 
     REQUIRE(area.on_event(wheel_event(ftxui::Mouse::WheelUp)));
-    REQUIRE(area.scroll_y() < 0.9f);
+    REQUIRE(area.scroll_top() == 31);
+
+    // Wheel up clamps at the top.
+    for (int i = 0; i < 15; ++i) {
+        area.on_event(wheel_event(ftxui::Mouse::WheelUp));
+    }
+    REQUIRE(area.scroll_top() == 0);
 
     // Scrolling back to the bottom re-enables follow.
-    while (area.scroll_y() < 1.0f) {
+    while (area.scroll_top() < 37) {
         REQUIRE(area.on_event(wheel_event(ftxui::Mouse::WheelDown)));
     }
-    REQUIRE(area.scroll_y() == 1.0f);
+    REQUIRE(area.scroll_top() == 37);
     REQUIRE(area.follow_bottom());
 }
 
 TEST_CASE("ChatArea follows bottom on new messages unless scrolled up", "[tui]") {
     ChatArea area;
-    area.append_user("first");
+    area.set_viewport_hint(3);
+    for (int i = 0; i < 10; ++i) {
+        area.append_user("m" + std::to_string(i));
+    }
+    REQUIRE(area.scroll_top() == 37);
 
     area.on_event(wheel_event(ftxui::Mouse::WheelUp));
-    area.append_assistant("second");
-    REQUIRE(area.scroll_y() < 1.0f);  // Stay where the user scrolled.
+    area.append_assistant("new message");
+    REQUIRE(area.scroll_top() == 34);  // Stay where the user scrolled.
+    REQUIRE_FALSE(area.follow_bottom());
 
-    while (area.scroll_y() < 1.0f) {
+    while (area.scroll_top() < 39) {  // 42 rows, viewport 3 -> max 39
         area.on_event(wheel_event(ftxui::Mouse::WheelDown));
     }
-    area.append_user("third");
-    REQUIRE(area.scroll_y() == 1.0f);  // Follow the newest message again.
+    REQUIRE(area.follow_bottom());
+    REQUIRE(area.scroll_top() == 39);
+
+    area.append_user("last");
+    REQUIRE(area.scroll_top() == 43);  // Follow the newest message again.
 }
 
 TEST_CASE("ChatArea viewport follows bottom and scrolls up", "[tui]") {
     ChatArea area;
+    area.set_layout_width(56);
+    area.set_viewport_hint(8);
     for (int i = 0; i < 20; ++i) {
         area.append_user("message number " + std::to_string(i));
     }
@@ -247,7 +291,7 @@ TEST_CASE("ChatArea viewport follows bottom and scrolls up", "[tui]") {
     REQUIRE(bottom.find("message number 19") != std::string::npos);
     REQUIRE(bottom.find("message number 0") == std::string::npos);
 
-    for (int i = 0; i < 15; ++i) {
+    while (area.scroll_top() > 0) {
         area.on_event(wheel_event(ftxui::Mouse::WheelUp));
     }
 
@@ -258,8 +302,10 @@ TEST_CASE("ChatArea viewport follows bottom and scrolls up", "[tui]") {
 
 TEST_CASE("ChatArea bottom-follows inside full TUI layout", "[tui]") {
     ChatArea area;
+    area.set_layout_width(76);
+    area.set_viewport_hint(18);  // 24-row screen minus 6 rows of chrome
     for (int i = 0; i < 15; ++i) {
-        area.append_user("history message " + std::to_string(i + 1));
+        area.append_system("history message " + std::to_string(i + 1));
     }
 
     auto render = [&] {
@@ -281,15 +327,48 @@ TEST_CASE("ChatArea bottom-follows inside full TUI layout", "[tui]") {
         return screen.ToString();
     };
 
+    // 15 lines fit in the 18-row chat area: everything is visible, pinned
+    // at the top, newest message at the bottom.
     auto bottom = render();
     REQUIRE(bottom.find("history message 15") != std::string::npos);
-    // "history message 1" is a prefix of "history message 11": match with a
-    // trailing space so only the actual first message is targeted.
-    REQUIRE(bottom.find("history message 1 ") == std::string::npos);
+    REQUIRE(bottom.find("history message 1 ") != std::string::npos);
+}
+
+TEST_CASE("ChatArea virtualizes long histories", "[tui]") {
+    ChatArea area;
+    area.set_layout_width(56);
+    area.set_viewport_hint(6);
+    for (int i = 0; i < 200; ++i) {
+        area.append_user("virtual line " + std::to_string(i));
+    }
+
+    auto render = [&] {
+        auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(60),
+                                            ftxui::Dimension::Fixed(6));
+        ftxui::Render(screen,
+                      area.component()->Render() | ftxui::flex | ftxui::yframe);
+        return screen.ToString();
+    };
+
+    auto bottom = render();
+    REQUIRE(bottom.find("virtual line 199") != std::string::npos);
+    REQUIRE(bottom.find("virtual line 0") == std::string::npos);
+    REQUIRE(area.scroll_top() == 794);  // 800 rows - viewport(6)
+
+    for (int i = 0; i < 30; ++i) {
+        area.on_event(wheel_event(ftxui::Mouse::WheelUp));
+    }
+    REQUIRE(area.scroll_top() == 704);
+
+    auto mid = render();
+    REQUIRE(mid.find("virtual line 176") != std::string::npos);
+    REQUIRE(mid.find("virtual line 199") == std::string::npos);
+    REQUIRE(mid.find("virtual line 0") == std::string::npos);
 }
 
 TEST_CASE("ChatArea wraps long CJK lines instead of clipping", "[tui]") {
     ChatArea area;
+    area.set_layout_width(26);  // 30-column screen minus 4 margin columns
     area.append_assistant(
         "当然，这完全自愿，你也可以随时再决定，或者直接跳过开始提问就好！😊");
 
@@ -300,4 +379,54 @@ TEST_CASE("ChatArea wraps long CJK lines instead of clipping", "[tui]") {
     auto out = screen.ToString();
 
     REQUIRE(out.find("提问就好") != std::string::npos);
+}
+
+TEST_CASE("ChatArea wraps streaming output incrementally", "[tui]") {
+    ChatArea area;
+    area.set_layout_width(10);
+    ea::StreamChunk chunk;
+    chunk.type = ea::StreamChunk::Type::Content;
+
+    // First word group folds into a final line; the open tail stays partial.
+    chunk.data = "aaaa bbbb ";
+    area.append_stream_chunk(chunk);
+    chunk.data = "cccc";
+    area.append_stream_chunk(chunk);
+    chunk.data = " dddd";
+    area.append_stream_chunk(chunk);
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(40),
+                                        ftxui::Dimension::Fixed(8));
+    ftxui::Render(screen,
+                  area.component()->Render() | ftxui::flex | ftxui::yframe);
+    auto out = screen.ToString();
+
+    // Width 10: "aaaa bbbb" folded, "cccc dddd" open on the next line.
+    REQUIRE(out.find("aaaa bbbb") != std::string::npos);
+    REQUIRE(out.find("cccc dddd") != std::string::npos);
+}
+
+TEST_CASE("ChatArea streaming newlines fold into final lines", "[tui]") {
+    ChatArea area;
+    ea::StreamChunk chunk;
+    chunk.type = ea::StreamChunk::Type::Content;
+
+    chunk.data = "line one\n";
+    area.append_stream_chunk(chunk);
+    chunk.data = "line two\n";
+    area.append_stream_chunk(chunk);
+    chunk.data = "line three";
+    area.append_stream_chunk(chunk);
+
+    REQUIRE(area.total_lines() == 4);  // 3 lines + chip row
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(40),
+                                        ftxui::Dimension::Fixed(8));
+    ftxui::Render(screen,
+                  area.component()->Render() | ftxui::flex | ftxui::yframe);
+    auto out = screen.ToString();
+
+    REQUIRE(out.find("line one") != std::string::npos);
+    REQUIRE(out.find("line two") != std::string::npos);
+    REQUIRE(out.find("line three") != std::string::npos);
 }

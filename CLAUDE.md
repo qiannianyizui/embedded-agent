@@ -73,6 +73,7 @@ HistoryPrune → BuildToolSpecs → CallProvider → ParseResponse → ExecuteTo
 - `NullMemory` — header-only no-op backend
 - `ScopedMemory` — decorator: prefixes category with `agent_id:`, filters reads by agent scope + `read_allowlist`
 - `MemoryManager` — orchestration: `prefetch()` → `on_turn_start` + recall, `sync_turn()` → `on_turn_end` + clear cache
+- `MemoryExtractor` — background-thread batch fact extraction: reads conversation transcripts from `conversations.db` (never deleted), extracts facts via LLM into `long_term` memory. Triggered fire-and-forget at session boundaries (`/new`, `/resume`, `/quit`, `/exit`, Ctrl+C, window-close backstop in `TuiRunner`) plus startup catch-up; per-conversation watermark (`extraction_progress` table) makes extraction incremental and idempotent. The per-turn LLM extraction formerly in `ProgressiveMemoryStrategy` was moved here — the strategy now only injects memory into the system prompt
 
 ### Build Config (`include/ea/build_config.h.in`)
 

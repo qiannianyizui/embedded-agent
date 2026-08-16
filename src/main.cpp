@@ -7,6 +7,7 @@
 #include "trace/Trace.h"
 #include <CLI/CLI.hpp>
 #include <iostream>
+#include <unistd.h>  // getcwd
 
 int main(int argc, char* argv[]) {
     CLI::App app{"embedded-agent — Lightweight AI Agent (TUI)"};
@@ -23,6 +24,10 @@ int main(int argc, char* argv[]) {
     app.require_subcommand(0, 1);
 
     CLI11_PARSE(app, argc, argv);
+
+    // Workspace = startup directory (before anything could chdir)
+    char cwd_buf[4096];
+    std::string cwd = getcwd(cwd_buf, sizeof(cwd_buf)) ? cwd_buf : "";
 
     // Initialize logging with defaults (before config is loaded)
     auto cfg_dir = ea::fs::config_dir();
@@ -55,7 +60,7 @@ int main(int argc, char* argv[]) {
     ea::trace::init(trace_cfg);
 
     // Build application context (verbose flag also enables debug mode for agent)
-    auto ctx_result = ea::app::AppBuilder::build(cfg_result.value(), verbose);
+    auto ctx_result = ea::app::AppBuilder::build(cfg_result.value(), verbose, cwd);
     if (!ctx_result.ok()) {
         EA_ERROR("App init failed: {}", ctx_result.error().message);
         std::cerr << "Init error: " << ctx_result.error().message << std::endl;

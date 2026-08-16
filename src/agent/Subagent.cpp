@@ -22,6 +22,7 @@ Result<std::string> Subagent::execute(const std::string& task) {
     std::string output;
     AgentLoop::Config sub_cfg;
     sub_cfg.max_iterations = config_.max_iterations;
+    sub_cfg.model = config_.model;
     if (!config_.system_prompt.empty()) {
         sub_cfg.soul = config_.system_prompt;
     }

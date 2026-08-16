@@ -53,15 +53,12 @@ profile_build_offered = false
 
 [memory.strategy]
 type = "progressive"
-working_turns = 6
-short_term_max = 20
-long_term_importance = 8
 enable_fact_extraction = true
-enable_auto_summarize = true
+long_term_importance = 8
+fact_extraction_prompt = ""
 
 [security]
 autonomy = "supervised"
-workspace = ""
 allowed_commands = [
     "ls", "cat", "head", "tail", "grep", "find", "wc",
     "pwd", "echo", "date", "whoami", "uname",

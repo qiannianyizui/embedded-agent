@@ -4,6 +4,7 @@
 #include "provider/ProviderFactory.h"
 #include "memory/HolographicMemory.h"
 #include "memory/CuratedMemoryStore.h"
+#include "memory/MemoryExtractor.h"
 #include "tool/ToolRegistry.h"
 #include "tool/ShellTool.h"
 #include "tool/FileTool.h"
@@ -16,6 +17,7 @@
 #include "agent/ContextCompressor.h"
 #include "agent/ProgressiveMemoryStrategy.h"
 #include "agent/SubagentOrchestrator.h"
+#include "agent/PlanExitTool.h"
 #include "agent/DelegateTool.h"
 #include "agent/ContextDiscovery.h"
 #include "mcp/McpClient.h"
@@ -32,13 +34,23 @@
 #include "log/Logger.h"
 #include "io/FileSystem.h"
 #include "net/HttpClient.h"
+#include <unistd.h>  // getcwd
 
 namespace ea::app {
 
-Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug) {
+Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug,
+                                     const std::string& cwd) {
     AppContext ctx;
     ctx.config = cfg;
     ctx.debug = debug;
+
+    // Workspace = startup directory (passed in from main); fall back to
+    // the process cwd. It drives the security policy boundary and ShellTool.
+    std::string workspace = cwd;
+    if (workspace.empty()) {
+        char buf[4096];
+        if (getcwd(buf, sizeof(buf))) workspace = buf;
+    }
 
     // Ensure data directory exists before creating databases
     auto data_result = fs::data_dir();
@@ -123,8 +135,8 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug) {
 
     // 5. Create security policy
     ctx.security = std::make_unique<security::SecurityPolicy>();
-    if (!cfg.security.workspace.empty()) {
-        ctx.security->set_workspace(cfg.security.workspace);
+    if (!workspace.empty()) {
+        ctx.security->set_workspace(workspace);
     }
     if (!cfg.security.allowed_commands.empty()) {
         ctx.security->set_allowed_commands(cfg.security.allowed_commands);
@@ -184,13 +196,30 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug) {
         ctx.conversation_store.reset();  // Continue without persistence
     }
 
+    // 5.9. Background memory extraction worker — reads conversation
+    // transcripts from conversations.db and extracts facts into long-term
+    // memory at session boundaries + startup catch-up.
+    if (ctx.conversation_store && ctx.memory && ctx.provider) {
+        memory::MemoryExtractor::Config ext_cfg;
+        ext_cfg.enable = cfg.memory.strategy.enable_fact_extraction;
+        ext_cfg.long_term_importance = cfg.memory.strategy.long_term_importance;
+        ext_cfg.extraction_prompt = cfg.memory.strategy.fact_extraction_prompt;
+        ctx.memory_extractor = std::make_unique<memory::MemoryExtractor>(
+            ctx.provider, ctx.memory.get(), conv_path, ext_cfg);
+        ctx.memory_extractor->start();
+    }
+
     // 6. Create HTTP client for WebTool
     ctx.http_client = net::HttpClient{};
 
     // 7. Register tools
     ctx.registry = std::make_unique<tool::ToolRegistry>();
-    ctx.registry->register_tool(std::make_unique<tool::ShellTool>());
+    ctx.plan_mode = std::make_shared<agent::PlanModeState>();
+    ctx.registry->register_tool(
+        std::make_unique<tool::ShellTool>(workspace));
     ctx.registry->register_tool(std::make_unique<tool::FileTool>());
+    ctx.registry->register_tool(
+        std::make_unique<agent::PlanExitTool>(ctx.approval.get(), ctx.plan_mode));
     ctx.registry->register_tool(std::make_unique<tool::SearchTool>());
     tool::WebSearchBackendConfig web_search_cfg;
     web_search_cfg.backend = cfg.web.search_backend;
@@ -309,9 +338,49 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug) {
         ctx.orchestrator->register_template(sub_cfg);
     }
 
-    if (!cfg.agent.subagents.empty()) {
-        ctx.registry->register_tool(std::make_unique<agent::DelegateTool>(ctx.orchestrator.get()));
-    }
+    // Built-in templates for the superpowers skill workflows. User config
+    // always wins by name.
+    auto ensure_template = [&](agent::SubagentConfig sub_cfg) {
+        if (!ctx.orchestrator->has_template(sub_cfg.name)) {
+            ctx.orchestrator->register_template(std::move(sub_cfg));
+        }
+    };
+
+    agent::SubagentConfig general;
+    general.name = "general-purpose";
+    general.description = "General-purpose subagent for independent tasks";
+    general.system_prompt =
+        "You are a general-purpose subagent. Complete the assigned task "
+        "autonomously: understand the context first, make minimal changes, "
+        "run the relevant verification, and do not delegate to other "
+        "sub-agents. Report what you changed and what you verified.";
+    ensure_template(general);
+
+    agent::SubagentConfig implementer;
+    implementer.name = "implementer";
+    implementer.description = "Implements one plan task with tests and verification";
+    implementer.system_prompt =
+        "You are an implementer subagent working on one task from an "
+        "implementation plan. Read the plan and any referenced files, "
+        "implement exactly the assigned task with minimal changes, run the "
+        "project's tests or verification, and do not delegate to other "
+        "sub-agents. Report one status: complete, needs-input, blocked, or "
+        "failed, with evidence.";
+    implementer.max_iterations = 40;
+    ensure_template(implementer);
+
+    agent::SubagentConfig reviewer;
+    reviewer.name = "reviewer";
+    reviewer.description = "Reviews a task's changes against the plan and codebase";
+    reviewer.system_prompt =
+        "You are a code reviewer subagent. Review the specified changes "
+        "against the plan or spec and the surrounding code. Do not edit "
+        "files; run read-only commands or tests only as needed. Return a "
+        "prioritized findings list covering correctness, spec compliance, "
+        "code quality, and test coverage.";
+    ensure_template(reviewer);
+
+    ctx.registry->register_tool(std::make_unique<agent::DelegateTool>(ctx.orchestrator.get()));
 
     // 8. Discover context files (SOUL.md + project context)
     agent::ContextDiscoveryConfig disc_cfg;

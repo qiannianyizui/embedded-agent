@@ -21,7 +21,6 @@ TEST_CASE("Config::save creates a TOML file", "[config]") {
     cfg.agent.model = "claude-sonnet-5";
     cfg.agent.max_iterations = 42;
     cfg.security.autonomy = "autonomous";
-    cfg.security.workspace = "/tmp/test";
     cfg.config_path = path;
 
     auto result = save(cfg);
@@ -44,7 +43,6 @@ TEST_CASE("Config save/load roundtrip preserves key fields", "[config]") {
     cfg.agent.max_iterations = 50;
     cfg.agent.stream = false;
     cfg.security.autonomy = "supervised";
-    cfg.security.workspace = "/home/user/project";
     cfg.config_path = path;
 
     auto save_result = save(cfg);
@@ -61,7 +59,6 @@ TEST_CASE("Config save/load roundtrip preserves key fields", "[config]") {
     REQUIRE(loaded.agent.max_iterations == 50);
     REQUIRE(loaded.agent.stream == false);
     REQUIRE(loaded.security.autonomy == "supervised");
-    REQUIRE(loaded.security.workspace == "/home/user/project");
 
     std::remove(path.c_str());
 }

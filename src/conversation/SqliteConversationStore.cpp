@@ -129,6 +129,11 @@ Result<void> SqliteConversationStore::create_tables() {
         );
         CREATE INDEX IF NOT EXISTS idx_messages_conv_seq ON messages(conversation_id, seq);
         CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);
+        CREATE TABLE IF NOT EXISTS extraction_progress (
+            conversation_id TEXT PRIMARY KEY,
+            last_message_id INTEGER NOT NULL,
+            updated_at      TEXT NOT NULL
+        );
     )";
 
     char* err = nullptr;
@@ -195,6 +200,12 @@ json SqliteConversationStore::message_to_extra_json(const Message& msg) const {
     if (msg.tool_call_id.has_value()) {
         extra["tool_call_id"] = msg.tool_call_id.value();
     }
+    if (!msg.mode.empty()) {
+        extra["mode"] = msg.mode;
+    }
+    if (!msg.plan_file.empty()) {
+        extra["plan_file"] = msg.plan_file;
+    }
     return extra;
 }
 
@@ -224,6 +235,12 @@ Message SqliteConversationStore::row_to_message(const std::string& role,
             }
             if (extra.contains("tool_call_id")) {
                 msg.tool_call_id = extra["tool_call_id"].get<std::string>();
+            }
+            if (extra.contains("mode") && extra["mode"].is_string()) {
+                msg.mode = extra["mode"].get<std::string>();
+            }
+            if (extra.contains("plan_file") && extra["plan_file"].is_string()) {
+                msg.plan_file = extra["plan_file"].get<std::string>();
             }
         } catch (...) {
             // Malformed extra_json — skip optional fields
@@ -639,6 +656,12 @@ Result<std::string> SqliteConversationStore::export_jsonl(const std::string& con
         if (msg.tool_call_id.has_value()) {
             line["tool_call_id"] = msg.tool_call_id.value();
         }
+        if (!msg.mode.empty()) {
+            line["mode"] = msg.mode;
+        }
+        if (!msg.plan_file.empty()) {
+            line["plan_file"] = msg.plan_file;
+        }
         result += line.dump() + "\n";
     }
     return result;
@@ -695,6 +718,12 @@ Result<std::string> SqliteConversationStore::import_jsonl(const std::string& jso
         }
         if (obj.contains("tool_call_id") && obj["tool_call_id"].is_string()) {
             msg.tool_call_id = obj["tool_call_id"].get<std::string>();
+        }
+        if (obj.contains("mode") && obj["mode"].is_string()) {
+            msg.mode = obj["mode"].get<std::string>();
+        }
+        if (obj.contains("plan_file") && obj["plan_file"].is_string()) {
+            msg.plan_file = obj["plan_file"].get<std::string>();
         }
 
         auto append_r = append(conv_id, msg);

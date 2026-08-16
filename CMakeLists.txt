@@ -64,7 +64,7 @@ FetchContent_MakeAvailable(json toml11 spdlog cli11 httplib mbedtls)
 # --- FTXUI (TUI library) ---
 FetchContent_Declare(ftxui
     URL https://github.com/ArthurSonzogni/FTXUI/archive/v7.0.1.tar.gz
-    PATCH_COMMAND patch -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/ftxui-nonblocking-flush.patch
+    PATCH_COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/patch-ftxui.sh ${CMAKE_CURRENT_SOURCE_DIR}
 )
 FetchContent_MakeAvailable(ftxui)
 

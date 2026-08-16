@@ -17,11 +17,19 @@ public:
 
     void on_event(const ea::agent::AgentEvent& event) override;
 
+    // Invoked (posted to the UI thread) when a turn's visible output
+    // starts/ends — used to track whether the agent is past its reply or
+    // still producing it.
+    void set_on_turn_start(std::function<void()> fn) { on_turn_start_ = std::move(fn); }
+    void set_on_turn_end(std::function<void()> fn) { on_turn_end_ = std::move(fn); }
+
 private:
     ChatArea& chat_area_;
     StatusBar& status_bar_;
     TopBar& top_bar_;
     std::function<void(std::function<void()>)> post_fn_;
+    std::function<void()> on_turn_start_;
+    std::function<void()> on_turn_end_;
 };
 
 }  // namespace ea::tui

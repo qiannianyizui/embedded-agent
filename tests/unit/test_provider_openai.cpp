@@ -40,7 +40,22 @@ TEST_CASE("OpenAIProvider build_request_body basic", "[provider]") {
     REQUIRE(body["messages"][1]["role"] == "user");
     REQUIRE(body["messages"][1]["content"] == "Hello");
     REQUIRE(body["temperature"] == 0.7f);
-    REQUIRE(body["max_tokens"] == 4096);
+    REQUIRE_FALSE(body.contains("max_tokens"));  // 0 = don't send
+}
+
+TEST_CASE("OpenAIProvider build_request_body sends max_tokens when set", "[provider]") {
+    OpenAIProvider::Config cfg;
+    OpenAIProvider provider(cfg);
+
+    std::vector<Message> messages = {
+        Message{Role::User, "Hello", std::nullopt, std::nullopt, std::nullopt}
+    };
+    ChatOptions opts;
+    opts.max_tokens = 2048;
+
+    auto body = provider.build_request_body(messages, {}, "gpt-4o", opts, false);
+
+    REQUIRE(body["max_tokens"] == 2048);
 }
 
 TEST_CASE("OpenAIProvider build_request_body with tools", "[provider]") {

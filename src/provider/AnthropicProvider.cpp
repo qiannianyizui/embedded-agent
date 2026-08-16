@@ -35,7 +35,8 @@ json AnthropicProvider::build_request_body(
 ) const {
     json body;
     body["model"] = model.empty() ? config_.default_model : model;
-    body["max_tokens"] = opts.max_tokens;
+    // Anthropic requires max_tokens; fall back to 8192 when unset (0).
+    body["max_tokens"] = opts.max_tokens > 0 ? opts.max_tokens : 8192;
     body["stream"] = stream;
 
     // Extract system message and build messages array

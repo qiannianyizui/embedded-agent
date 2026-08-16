@@ -40,6 +40,9 @@ struct TurnContext {
     int max_iterations = 90;
     int max_tool_output_bytes = 65536;
 
+    // Max output tokens for provider calls (0 = don't send; model default)
+    int max_tokens = 0;
+
     // Control flags
     bool should_stop = false;
     std::atomic<bool>& interrupted;
@@ -54,6 +57,10 @@ struct TurnContext {
 
     // Resolved model name for this turn (for trace attribution)
     std::string model;
+
+    // Plan mode state for this turn
+    bool plan_mode = false;
+    std::string plan_file;
 
     // Streaming callback — when set, CallProviderStep uses stream_chat
     std::function<void(const StreamChunk&)> stream_callback;

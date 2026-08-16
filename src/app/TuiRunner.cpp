@@ -17,6 +17,7 @@ int TuiRunner::run(AppContext& ctx) {
                       : ctx.config.provider.default_model);
     tui.set_skills(ctx.skills.get());
     tui.set_plugins(ctx.plugins.get());
+    tui.set_memory_extractor(ctx.memory_extractor.get());
 
     auto tui_output = tui.output_fn();
     auto tui_stream = tui.stream_fn();
@@ -31,7 +32,10 @@ int TuiRunner::run(AppContext& ctx) {
             ctx.soul,
             ctx.context_files,
             ctx.skills_index,
-            ""
+            "",
+            ctx.plan_mode,
+            "",
+            ctx.config.agent.max_tokens
         },
         tui_output,
         tui_stream,
@@ -73,6 +77,17 @@ int TuiRunner::run(AppContext& ctx) {
     tui_loop.set_onboarding_directive(onboarding_directive);
 
     tui.run(tui_loop, ctx.budget_tracker.get(), ctx.conversation_store.get());
+
+    // Session-end backstop: hand the final conversation to the background
+    // extractor for exit paths that bypassed the TUI command handlers
+    // (e.g. window close). The extractor's destructor (AppContext teardown)
+    // joins the worker, so an in-flight extraction completes before exit.
+    if (ctx.memory_extractor) {
+        const auto& cid = tui_loop.conversation_id();
+        if (!cid.empty()) {
+            ctx.memory_extractor->enqueue(cid);
+        }
+    }
     return 0;
 }
 

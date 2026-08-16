@@ -24,9 +24,10 @@ public:
 
     Result<LLMResponse> chat(const std::vector<Message>&,
                               const std::vector<ToolSpec>&,
-                              const std::string&,
+                              const std::string& model,
                               const ChatOptions&) override {
         call_count_++;
+        last_model_ = model;
         LLMResponse resp;
         resp.content = next_text_;
         resp.stop_reason = "stop";
@@ -40,10 +41,12 @@ public:
     }
 
     int call_count() const { return call_count_; }
+    const std::string& last_model() const { return last_model_; }
 
 private:
     std::string next_text_;
     int call_count_ = 0;
+    std::string last_model_;
 };
 
 TEST_CASE("SubagentConfig default values", "[subagent]") {
@@ -95,6 +98,7 @@ TEST_CASE("SubagentOrchestrator delegate executes subtask", "[subagent]") {
     cfg.name = "researcher";
     cfg.description = "Research assistant";
     cfg.system_prompt = "You are a research assistant.";
+    cfg.model = "research-model";
     cfg.max_iterations = 1;
     orchestrator.register_template(cfg);
 
@@ -102,6 +106,7 @@ TEST_CASE("SubagentOrchestrator delegate executes subtask", "[subagent]") {
     REQUIRE(result.ok());
     REQUIRE(result.value() == "Research result: found 3 relevant papers");
     REQUIRE(provider->call_count() >= 1);
+    REQUIRE(provider->last_model() == "research-model");
 }
 
 TEST_CASE("DelegateTool single delegation", "[subagent]") {

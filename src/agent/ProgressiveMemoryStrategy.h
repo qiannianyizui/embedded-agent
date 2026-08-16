@@ -1,5 +1,5 @@
-// ProgressiveMemoryStrategy — active, incremental memory management
-// Extract facts → summarize → inject across turns
+// ProgressiveMemoryStrategy — memory prompt injection across turns.
+// Fact extraction runs in the background MemoryExtractor.
 #pragma once
 #include "IMemoryStrategy.h"
 #include <string>
@@ -28,21 +28,6 @@ public:
     const ProgressiveMemoryConfig& config() const { return config_; }
 
 private:
-    // Extract key facts from this turn using LLM
-    void extract_facts(MemoryStrategyContext& ctx);
-
-    // Summarize old working memory into short-term
-    void summarize_old_messages(MemoryStrategyContext& ctx);
-
-    // Evict excess short-term entries
-    void evict_short_term(IMemory* memory);
-
-    // Get the effective extraction prompt
-    std::string get_extraction_prompt() const;
-
-    // Get the effective summarization prompt
-    std::string get_summarization_prompt() const;
-
     ProgressiveMemoryConfig config_;
 };
 

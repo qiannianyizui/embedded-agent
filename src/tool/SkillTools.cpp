@@ -52,6 +52,9 @@ Result<ToolResult> SkillsListTool::execute(const json& args) {
             oss << "  " << info.category << ":\n";
         }
         oss << "    - " << info.name;
+        if (!info.alias.empty() && info.alias != info.name) {
+            oss << " (" << info.alias << ")";
+        }
         if (!info.description.empty()) oss << ": " << info.description;
         oss << "\n";
         ++count;

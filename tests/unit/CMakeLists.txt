@@ -12,6 +12,7 @@ add_executable(ea-unit-tests
     test_holographic_memory.cpp
     test_scoped_memory.cpp
     test_memory_manager.cpp
+    test_memory_extractor.cpp
     test_memory_strategy.cpp
     test_provider_openai.cpp
     test_provider_anthropic.cpp
@@ -39,6 +40,7 @@ add_executable(ea-unit-tests
     test_turn_context.cpp
     test_turn_steps.cpp
     test_subagent.cpp
+    test_plan_mode.cpp
     test_streaming.cpp
     test_events.cpp
     test_trace_uuid.cpp
@@ -78,9 +80,11 @@ target_compile_definitions(ea-unit-tests PRIVATE
 # TUI unit tests
 add_executable(ea-tui-tests
         test_tui_chat_area.cpp
+        test_text_wrap.cpp
         test_tui_approval_handler.cpp
         test_tui_event_listener.cpp
         test_tui_command_palette.cpp
+        test_tui_skills_dialog.cpp
         test_tui_input_bar.cpp
         test_tui_session_sidebar.cpp
         test_tui_app.cpp

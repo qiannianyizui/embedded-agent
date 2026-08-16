@@ -89,7 +89,9 @@ json OpenAIProvider::build_request_body(
 
     // Options
     body["temperature"] = opts.temperature;
-    body["max_tokens"] = opts.max_tokens;
+    if (opts.max_tokens > 0) {
+        body["max_tokens"] = opts.max_tokens;
+    }
     body["top_p"] = opts.top_p;
     if (opts.stop.has_value()) {
         body["stop"] = opts.stop.value();
@@ -318,6 +320,12 @@ void OpenAIProvider::parse_sse_chunk(
 
     // Finish reason
     if (delta.contains("finish_reason") && !delta["finish_reason"].is_null()) {
+        StreamChunk reason_chunk;
+        reason_chunk.type = StreamChunk::Type::Content;
+        reason_chunk.data = "";
+        reason_chunk.finish_reason = delta["finish_reason"].get<std::string>();
+        on_chunk(reason_chunk);
+
         // Emit ToolCallEnd for any accumulated tool calls
         for (auto& tc : accumulating_calls) {
             // Try to parse accumulated arguments as JSON

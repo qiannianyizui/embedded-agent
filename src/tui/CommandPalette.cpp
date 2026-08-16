@@ -10,6 +10,8 @@ namespace ea::tui {
 
 CommandPalette::CommandPalette() {
     commands_ = {
+        {"/plan",   "Switch to plan mode (read-only planning)"},
+        {"/build",  "Switch to build mode (execute changes)"},
         {"/new",   "Start a new session", "⌃N"},
         {"/compress", "Compress older context"},
         {"/help",   "Show help and keybindings"},
@@ -17,8 +19,7 @@ CommandPalette::CommandPalette() {
         {"/cost",   "Show session cost"},
         {"/history","List conversations"},
         {"/resume", "Resume a conversation"},
-        {"/skills", "List available skills"},
-        {"/skill <name>", "Load a skill"},
+        {"/skills", "Manage skills (enable/disable)"},
         {"/plugin", "List or install plugins"},
         {"/export", "Export current conversation"},
         {"/import", "Import a conversation"},

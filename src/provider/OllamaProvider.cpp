@@ -107,7 +107,9 @@ json OllamaProvider::build_request_body(
     json options;
     options["temperature"] = opts.temperature;
     options["top_p"] = opts.top_p;
-    options["num_predict"] = opts.max_tokens;
+    if (opts.max_tokens > 0) {
+        options["num_predict"] = opts.max_tokens;
+    }
     body["options"] = options;
 
     return body;

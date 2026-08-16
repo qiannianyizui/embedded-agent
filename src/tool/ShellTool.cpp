@@ -26,7 +26,7 @@ Result<ToolResult> ShellTool::execute(const json& args) {
         timeout_sec = args["timeout"].get<int>();
     }
 
-    auto result = process::exec(command, "", std::chrono::seconds(timeout_sec));
+    auto result = process::exec(command, cwd_, std::chrono::seconds(timeout_sec));
     if (!result.ok()) {
         return ToolResult{"", result.error().message, true};
     }

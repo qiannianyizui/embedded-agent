@@ -19,6 +19,7 @@ void TuiEventListener::on_event(const ea::agent::AgentEvent& event) {
             post_fn_([this] {
                 status_bar_.set_busy(true);
                 top_bar_.set_busy(true);
+                if (on_turn_start_) on_turn_start_();
             });
             break;
 
@@ -60,6 +61,7 @@ void TuiEventListener::on_event(const ea::agent::AgentEvent& event) {
                 if (turn_cost.total() > 0.0) {
                     status_bar_.update_cost(turn_cost.total());
                 }
+                if (on_turn_end_) on_turn_end_();
             });
             break;
 
@@ -68,6 +70,7 @@ void TuiEventListener::on_event(const ea::agent::AgentEvent& event) {
                 chat_area_.append_error(msg);
                 status_bar_.set_busy(false);
                 top_bar_.set_busy(false);
+                if (on_turn_end_) on_turn_end_();
             });
             break;
 
@@ -76,6 +79,17 @@ void TuiEventListener::on_event(const ea::agent::AgentEvent& event) {
                 chat_area_.append_error("Interrupted");
                 status_bar_.set_busy(false);
                 top_bar_.set_busy(false);
+                if (on_turn_end_) on_turn_end_();
+            });
+            break;
+
+        case ea::agent::AgentEventType::ModeChanged:
+            post_fn_([this, mode = event.mode] {
+                status_bar_.set_mode(mode);
+                top_bar_.set_mode(mode);
+                chat_area_.append_system(mode == "plan"
+                    ? "Plan mode: read-only. Planning started."
+                    : "Plan approved — switched to build mode.");
             });
             break;
     }

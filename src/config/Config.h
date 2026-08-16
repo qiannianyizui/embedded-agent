@@ -44,6 +44,7 @@ struct MemoryStrategyConfig {
     int long_term_importance = 8;
     bool enable_fact_extraction = true;
     bool enable_auto_summarize = true;
+    std::string fact_extraction_prompt;     // Custom extraction prompt (empty = default)
 };
 
 struct MemoryFilesConfig {
@@ -73,7 +74,6 @@ struct OnboardingConfig {
 struct SecurityConfig {
     std::string autonomy = "supervised";
     std::vector<std::string> allowed_commands;
-    std::string workspace;
     int approval_timeout = 300;              // Approval timeout in seconds (pending approval mode)
     struct Approval {                        // corresponds to [security.approval]
         std::string mode = "auto";           // stdin / pending / auto
@@ -103,6 +103,8 @@ struct AgentConfig {
     std::vector<agent::SubagentConfig> subagents;
     // Streaming output
     bool stream = true;
+    // Max output tokens for provider calls (0 = don't send; model default)
+    int max_tokens = 0;
 };
 
 struct SkillConfig {

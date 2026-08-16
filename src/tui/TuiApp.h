@@ -12,9 +12,11 @@
 #include "Banner.h"
 #include "ApprovalDialog.h"
 #include "CommandPalette.h"
+#include "SkillsDialog.h"
 #include "SessionSidebar.h"
 #include "TuiEventListener.h"
 #include "TuiApprovalHandler.h"
+#include "memory/MemoryExtractor.h"
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <chrono>
@@ -39,6 +41,10 @@ public:
     void set_model(const std::string& model);
     void set_skills(ea::skill::SkillManager* skills) { skills_ = skills; }
     void set_plugins(ea::skill::PluginManager* plugins) { plugins_ = plugins; }
+    // Background memory extraction worker (optional; null in tests/headless).
+    void set_memory_extractor(ea::memory::MemoryExtractor* extractor) {
+        memory_extractor_ = extractor;
+    }
 
     // Global event routing used by the root CatchEvent (also testable).
     bool handle_global_event(ftxui::Event event);
@@ -60,12 +66,17 @@ private:
     TuiApprovalHandler approval_handler_;
     ApprovalDialog approval_dialog_{approval_handler_};
     CommandPalette command_palette_;
+    SkillsDialog skills_dialog_;
     SessionSidebar sidebar_{nullptr};
     std::shared_ptr<TuiEventListener> event_listener_;
     std::thread heartbeat_thread_;
     std::atomic<bool> heartbeat_stop_{false};
     std::mutex pending_mutex_;
-    std::deque<std::string> pending_inputs_;
+    struct PendingInput {
+        std::string text;
+        bool echoed;  // Already shown in chat (queued after turn output done)
+    };
+    std::deque<PendingInput> pending_inputs_;
 
     // AgentLoop thread management
     ea::agent::AgentLoop* loop_ = nullptr;
@@ -73,11 +84,16 @@ private:
     ea::conversation::IConversationStore* conv_store_ = nullptr;
     ea::skill::SkillManager* skills_ = nullptr;
     ea::skill::PluginManager* plugins_ = nullptr;
+    ea::memory::MemoryExtractor* memory_extractor_ = nullptr;
     std::thread agent_thread_;
     std::thread plugin_thread_;
     std::atomic<bool> agent_busy_{false};
     std::atomic<bool> plugin_busy_{false};
+    // True when the current turn's visible output has finished (TurnEnd
+    // fired) — the agent thread may still be doing post-turn memory work.
+    std::atomic<bool> turn_output_done_{true};
     std::string model_;
+    std::vector<CommandEntry> base_commands_;
 
     // Component tree
     ftxui::Component root_component_;
@@ -85,6 +101,7 @@ private:
     int sidebar_width_ = 0;  // 0 = hidden
     bool approval_showing_ = false;
     bool palette_showing_ = false;
+    bool skills_showing_ = false;
     std::chrono::steady_clock::time_point last_redraw_request_{};
 
     void build_component_tree();
@@ -95,7 +112,9 @@ private:
                           std::function<Result<std::string>()> op,
                           const std::string& success_prefix,
                           const std::string& success_suffix = "");
+    void rebuild_skill_commands();
     void start_new_session();
+    void notify_session_end();
     void push_banner();
     // Coalesced redraw request; must only be called from the UI thread.
     void request_redraw();

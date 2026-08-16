@@ -5,8 +5,8 @@
 #include "provider/IProvider.h"
 #include <string>
 #include <vector>
-
 namespace ea::agent {
+
 
 struct MemoryStrategyContext {
     std::vector<Message>& history;        // Current conversation (mutable — strategy may prune)

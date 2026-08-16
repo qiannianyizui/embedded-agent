@@ -7,6 +7,7 @@ add_library(ea-agent OBJECT
     ProgressiveMemoryStrategy.cpp
     Subagent.cpp
     SubagentOrchestrator.cpp
+    PlanExitTool.cpp
     steps/CallProviderStep.cpp
     steps/LoopDetectStep.cpp
     steps/ExecuteToolsStep.cpp

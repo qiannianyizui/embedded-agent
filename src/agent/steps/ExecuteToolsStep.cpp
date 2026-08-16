@@ -2,8 +2,41 @@
 #include "agent/AgentEvent.h"
 #include "tool/ToolOutputConfig.h"
 #include "log/Logger.h"
+#include <filesystem>
 
 namespace ea::agent {
+
+namespace {
+
+std::string normalize_path(const std::string& path) {
+    try {
+        return std::filesystem::weakly_canonical(path).string();
+    } catch (...) {
+        return path;
+    }
+}
+
+bool is_plan_file_write(const ToolCall& tc, const TurnContext& ctx) {
+    if (tc.name != "file" || ctx.plan_file.empty()) return false;
+    std::string action = tc.arguments.value("action", "");
+    if (action != "write" && action != "edit") return false;
+    std::string path = tc.arguments.value("path", "");
+    return normalize_path(path) == normalize_path(ctx.plan_file);
+}
+
+bool plan_mode_allows(const ToolCall& tc, const TurnContext& ctx, ITool* tool) {
+    if (tc.name == "plan_exit") return true;
+    if (!tool) return false;
+    if (!tool->is_mutating()) return true;
+    if (tc.name == "file") {
+        std::string action = tc.arguments.value("action", "");
+        if (action == "read") return true;
+        return is_plan_file_write(tc, ctx);
+    }
+    return false;
+}
+
+}  // namespace
 
 ExecuteToolsStep::ExecuteToolsStep(security::SecurityPolicy* policy,
                                    security::IApprovalHandler* approval)
@@ -37,9 +70,21 @@ Result<void> ExecuteToolsStep::execute(TurnContext& ctx) {
             }
         }
 
-        // 2. Approval soft check for dangerous tools
+        // Plan mode hard guard — mutating tools are blocked unless they target
+        // the plan file (or are plan_exit itself).
         ITool* tool = ctx.registry->find(tc.name);
-        if (tool && tool->is_dangerous() && approval_) {
+        if (ctx.plan_mode && !plan_mode_allows(tc, ctx, tool)) {
+            EA_WARN("Tool blocked by plan mode: {} ({})", tc.name,
+                    tc.arguments.dump());
+            ctx.tool_results.push_back(
+                ToolResult{tc.id, "Blocked in plan mode: read-only tools only "
+                                  "(plan file writes are allowed).", true});
+            continue;
+        }
+
+        // 2. Approval soft check for dangerous tools
+        bool skip_approval = ctx.plan_mode && is_plan_file_write(tc, ctx);
+        if (tool && tool->is_dangerous() && approval_ && !skip_approval) {
             security::ApprovalRequest req;
             req.tool_name = tc.name;
             req.arguments = tc.arguments;

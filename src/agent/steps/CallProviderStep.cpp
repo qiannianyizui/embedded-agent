@@ -95,15 +95,19 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
     emit_llm_request(ctx, messages);
 
     ChatOptions opts;
+    if (ctx.max_tokens > 0) {
+        opts.max_tokens = ctx.max_tokens;
+    }
 
     // Path 1: Streaming — provider supports it and callback is set
     if (ctx.stream_callback && ctx.provider->capabilities().streaming) {
         std::string accumulated_content;
         std::vector<ToolCall> accumulated_calls;
+        std::string finish_reason;
 
         try {
             auto result = ctx.provider->stream_chat(
-                messages, ctx.tool_specs, "",
+                messages, ctx.tool_specs, ctx.model,
                 [&](const StreamChunk& chunk) {
                     if (ctx.interrupted) throw StreamInterrupted{};
                     ctx.stream_callback(chunk);
@@ -113,6 +117,9 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
                     }
                     if (chunk.type == StreamChunk::Type::ToolCallEnd && chunk.tool_call) {
                         accumulated_calls.push_back(chunk.tool_call.value());
+                    }
+                    if (chunk.finish_reason && chunk.finish_reason->empty() == false) {
+                        finish_reason = *chunk.finish_reason;
                     }
                 },
                 opts
@@ -131,7 +138,20 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
         ctx.response.content = std::move(accumulated_content);
         bool has_tool_calls = !accumulated_calls.empty();
         ctx.response.tool_calls = std::move(accumulated_calls);
-        ctx.response.stop_reason = has_tool_calls ? "tool_calls" : "stop";
+        ctx.response.stop_reason = has_tool_calls
+            ? "tool_calls"
+            : (!finish_reason.empty() ? finish_reason : "stop");
+
+        if (finish_reason == "length") {
+            EA_WARN("LLM response truncated by max_tokens (finish_reason=length)");
+            if (ctx.stream_callback) {
+                StreamChunk warn;
+                warn.type = StreamChunk::Type::Error;
+                warn.data = "⚠ 回复达到 max_tokens 上限被截断（finish_reason=length），"
+                            "内容可能不完整";
+                ctx.stream_callback(warn);
+            }
+        }
 
         if (compressor_ && ctx.response.usage.input_tokens > 0) {
             compressor_->update_from_response(ctx.response.usage.input_tokens);
@@ -143,7 +163,7 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
 
     // Path 2: Degraded streaming — callback set but provider doesn't support streaming
     if (ctx.stream_callback) {
-        auto response = ctx.provider->chat(messages, ctx.tool_specs, "", opts);
+        auto response = ctx.provider->chat(messages, ctx.tool_specs, ctx.model, opts);
         if (!response.ok()) {
             EA_ERROR("LLM call failed: {}", response.error().message);
             return response.error();
@@ -179,7 +199,7 @@ Result<void> CallProviderStep::execute(TurnContext& ctx) {
     }
 
     // Path 3: Non-streaming — original behavior
-    auto response = ctx.provider->chat(messages, ctx.tool_specs, "", opts);
+    auto response = ctx.provider->chat(messages, ctx.tool_specs, ctx.model, opts);
     if (!response.ok()) {
         EA_ERROR("LLM call failed: {}", response.error().message);
         return response.error();

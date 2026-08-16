@@ -22,6 +22,11 @@ public:
     void show();
     void hide();
     void set_on_command(std::function<void(const std::string&)> fn);
+    const std::vector<CommandEntry>& commands() const { return commands_; }
+    void add_command(CommandEntry entry) { commands_.push_back(std::move(entry)); }
+    void set_commands(std::vector<CommandEntry> commands) {
+        commands_ = std::move(commands);
+    }
 
 private:
     ftxui::Component component_;

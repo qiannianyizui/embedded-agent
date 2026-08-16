@@ -8,9 +8,11 @@
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
 #include <ftxui/component/animation.hpp>
+#include <ftxui/screen/terminal.hpp>
 #include <sstream>
 #include <iomanip>
 #include <fstream>
+#include <iostream>
 #include <unistd.h>  // getcwd
 
 namespace ea::tui {
@@ -19,7 +21,13 @@ namespace ea::tui {
 // Construction / destruction
 // ---------------------------------------------------------------------------
 
-TuiApp::TuiApp() = default;
+TuiApp::TuiApp() {
+    base_commands_ = command_palette_.commands();
+    input_bar_.set_commands(base_commands_);
+    input_bar_.set_on_command([this](const std::string& cmd) {
+        execute_command(cmd);
+    });
+}
 
 TuiApp::~TuiApp() {
     heartbeat_stop_.store(true);
@@ -135,7 +143,25 @@ void TuiApp::build_component_tree() {
     });
 
     auto main_layout = Renderer(container, [this] {
+        using namespace ftxui;
         auto& theme = default_theme();
+
+        // Layout hints for ChatArea, refreshed every frame. The chat column
+        // width drives the (memoized) line wrapping; the viewport height
+        // bounds which messages are constructed per frame (virtualization).
+        const auto dims = Terminal::Size();
+        int chat_width = dims.dimx - 4;  // left/right margins
+        if (sidebar_.is_showing()) chat_width -= sidebar_width_ + 1;
+        int input_h = 1;
+        if (input_bar_.suggestions_visible()) {
+            input_h += input_bar_.command_area_height();
+        }
+        // Conservative wrap width: user bubbles are the narrowest message
+        // layout (2+2 padding + 2 border), so wrapping at this width never
+        // clips any message body.
+        chat_area_.set_layout_width(std::max(1, chat_width - 6));
+        chat_area_.set_viewport_hint(std::max(1, dims.dimy - 5 - input_h));
+
         return vbox({
                    top_bar_.component()->Render()
                        | size(HEIGHT, EQUAL, 1),
@@ -146,8 +172,7 @@ void TuiApp::build_component_tree() {
                    status_bar_.component()->Render()
                        | size(HEIGHT, EQUAL, 1),
                    separator() | color(theme.color.border_soft),
-                   input_bar_.component()->Render()
-                       | size(HEIGHT, EQUAL, 1),
+                   input_bar_.component()->Render(),
                })
             | bgcolor(theme.color.bg);
     });
@@ -186,6 +211,11 @@ void TuiApp::build_component_tree() {
     root_component_ = Modal(root_component_, command_palette_.component(),
                             &palette_showing_);
 
+    // Modal: skills manager
+    skills_showing_ = skills_dialog_.is_showing();
+    root_component_ = Modal(root_component_, skills_dialog_.component(),
+                            &skills_showing_);
+
     // Global key bindings
     root_component_ = CatchEvent(root_component_, [this](Event event) {
         return handle_global_event(event);
@@ -196,12 +226,19 @@ bool TuiApp::handle_global_event(ftxui::Event event) {
         using namespace ftxui;
         approval_showing_ = approval_handler_.is_showing();
         palette_showing_ = command_palette_.is_showing();
+        skills_showing_ = skills_dialog_.is_showing();
 
         // Mouse wheel scrolls the transcript. Leave events over the sidebar
         // to the sidebar when it is open.
         if (event.is_mouse() &&
             (event.mouse().button == ftxui::Mouse::WheelUp ||
              event.mouse().button == ftxui::Mouse::WheelDown)) {
+            if (input_bar_.suggestions_visible()) {
+                auto dims = ftxui::Terminal::Size();
+                if (event.mouse().y >= dims.dimy - input_bar_.command_area_height()) {
+                    return input_bar_.component()->OnEvent(event);
+                }
+            }
             if (!(sidebar_.is_showing() && event.mouse().x < sidebar_width_) &&
                 chat_area_.on_event(event)) {
                 return true;
@@ -215,6 +252,11 @@ bool TuiApp::handle_global_event(ftxui::Event event) {
             } else {
                 command_palette_.show();
             }
+            return true;
+        }
+        // Shift+Tab: toggle plan/build mode (Tab is command completion).
+        if (event == Event::TabReverse) {
+            execute_command(loop_ && loop_->plan_mode() ? "/build" : "/plan");
             return true;
         }
         // Ctrl+S: session sidebar
@@ -243,6 +285,7 @@ bool TuiApp::handle_global_event(ftxui::Event event) {
                 if (loop_) loop_->interrupt();
                 return true;
             }
+            notify_session_end();
             screen_.Exit();
             return true;
         }
@@ -260,13 +303,31 @@ void TuiApp::submit_input(const std::string& input) {
         return;
     }
     if (agent_busy_.load()) {
+        bool queued = false;
+        bool echo_now = false;
         {
             std::lock_guard<std::mutex> lock(pending_mutex_);
-            pending_inputs_.push_back(input);
+            // Re-check under the lock: the agent thread clears busy inside
+            // this mutex, so a false read here means it already drained.
+            if (agent_busy_.load()) {
+                echo_now = turn_output_done_.load();
+                pending_inputs_.push_back({input, echo_now});
+                queued = true;
+            }
         }
-        chat_area_.append_system("⏎ 已排队，将在当前回复结束后自动发送");
-        request_redraw();
-        return;
+        if (queued) {
+            if (echo_now) {
+                // The reply is fully visible; only post-turn work remains.
+                // Echo the message now so it doesn't look swallowed.
+                chat_area_.append_user(input);
+                chat_area_.append_system("⏎ 已接收，正在整理记忆，稍后自动发送");
+            } else {
+                chat_area_.append_system("⏎ 已排队，将在当前回复结束后自动发送");
+            }
+            request_redraw();
+            return;
+        }
+        // Agent freed up between the two checks — fall through and run now.
     }
     chat_area_.append_user(input);
     run_agent(input);
@@ -307,24 +368,34 @@ void TuiApp::run_agent(const std::string& input) {
                 EA_ERROR("Agent error: {}", err_msg);
             }
 
-            std::string next;
+            bool have_next = false;
+            PendingInput next;
             {
                 std::lock_guard<std::mutex> lock(pending_mutex_);
                 if (!pending_inputs_.empty()) {
                     next = std::move(pending_inputs_.front());
                     pending_inputs_.pop_front();
+                    have_next = true;
+                } else {
+                    // Clear busy inside the mutex so submit_input can
+                    // safely decide between queueing and running directly.
+                    agent_busy_.store(false);
+                    turn_output_done_.store(true);
                 }
             }
-            if (next.empty()) break;
+            if (!have_next) break;
 
-            current = std::move(next);
-            screen_.Post([this, current] {
-                chat_area_.append_user(current);
-                request_redraw();
-            });
+            current = std::move(next.text);
+            if (!next.echoed) {
+                screen_.Post([this, current] {
+                    chat_area_.append_user(current);
+                    request_redraw();
+                });
+            }
         }
 
         agent_busy_.store(false);
+        turn_output_done_.store(true);
         screen_.Post([this] {
             input_bar_.set_busy(false);
             status_bar_.set_busy(false);
@@ -370,8 +441,60 @@ void TuiApp::run_plugin_async(std::string status,
     });
 }
 
+void TuiApp::rebuild_skill_commands() {
+    std::vector<CommandEntry> commands = base_commands_;
+    if (skills_) {
+        auto list = skills_->list();
+        if (list.ok()) {
+            for (const auto& info : list.value()) {
+                std::string name = info.alias.empty() ? info.name : info.alias;
+                commands.push_back({"/" + name, info.description, ""});
+            }
+        }
+    }
+    command_palette_.set_commands(commands);
+    input_bar_.set_commands(commands);
+}
+
 void TuiApp::execute_command(const std::string& cmd) {
+    if (cmd == "/plan" || cmd == "/build") {
+        if (!loop_) {
+            chat_area_.append_error("Agent not ready");
+            request_redraw();
+            return;
+        }
+        if (agent_busy_.load()) {
+            chat_area_.append_error("Cannot switch mode while the agent is busy");
+            request_redraw();
+            return;
+        }
+        const bool plan = cmd == "/plan";
+        if (loop_->plan_mode() == plan) {
+            chat_area_.append_system(plan
+                ? "Already in plan mode"
+                : "Already in build mode");
+            request_redraw();
+            return;
+        }
+        auto result = loop_->set_plan_mode(plan);
+        if (!result.ok()) {
+            chat_area_.append_error(result.error().message);
+            request_redraw();
+            return;
+        }
+        status_bar_.set_mode(plan ? "plan" : "build");
+        top_bar_.set_mode(plan ? "plan" : "build");
+        if (plan) {
+            chat_area_.append_system(
+                "Plan mode: read-only. Write the plan to: " + loop_->plan_file());
+        } else {
+            chat_area_.append_system("Build mode: changes are allowed.");
+        }
+        request_redraw();
+        return;
+    }
     if (cmd == "/quit" || cmd == "/exit") {
+        notify_session_end();
         screen_.Exit();
         return;
     }
@@ -468,10 +591,14 @@ void TuiApp::execute_command(const std::string& cmd) {
                 cid.pop_back();
             auto msgs = conv_store_->load(cid);
             if (msgs.ok()) {
+                notify_session_end();
                 loop_->restore_conversation(cid, std::move(msgs.value()));
                 auto meta = conv_store_->get_meta(cid);
                 std::string title = meta.ok() ? meta.value().title : cid;
                 chat_area_.append_system("Resumed conversation: " + title);
+                std::string mode = loop_->plan_mode() ? "plan" : "build";
+                status_bar_.set_mode(mode);
+                top_bar_.set_mode(mode);
                 status_bar_.set_session_id(cid);
                 top_bar_.set_session_id(cid);
                 sidebar_.set_active(cid);
@@ -515,7 +642,18 @@ void TuiApp::execute_command(const std::string& cmd) {
         }
         return;
     }
-    if (cmd == "/skills" || cmd.substr(0, 8) == "/skills ") {
+    if (cmd == "/skills") {
+        if (!skills_) {
+            chat_area_.append_error("Skills system not available");
+            return;
+        }
+        skills_dialog_.set_manager(skills_);
+        skills_dialog_.show();
+        skills_showing_ = true;
+        request_redraw();
+        return;
+    }
+    if (cmd.substr(0, 8) == "/skills ") {
         if (!skills_) {
             chat_area_.append_error("Skills system not available");
             return;
@@ -552,27 +690,8 @@ void TuiApp::execute_command(const std::string& cmd) {
         } else {
             chat_area_.append_assistant(
                 "Available skills:\n" + oss.str() +
-                "\nLoad one with /skill <name> or let the agent use skill_view.");
+                "\nEvery skill is a command, e.g. /superpowers:brainstorming.");
         }
-        return;
-    }
-    if (cmd.substr(0, 7) == "/skill ") {
-        if (!skills_) {
-            chat_area_.append_error("Skills system not available");
-            return;
-        }
-        std::string name = cmd.substr(7);
-        while (!name.empty() && (name.back() == ' ' || name.back() == '\n')) {
-            name.pop_back();
-        }
-        auto content = skills_->view(name);
-        if (!content.ok()) {
-            chat_area_.append_error(content.error().message);
-            return;
-        }
-        chat_area_.append_user(cmd);
-        run_agent("[Skill loaded: " + name + "]\n\n" + content.value() +
-                  "\n\nFollow the skill instructions above.");
         return;
     }
     if (cmd == "/plugin" || cmd.substr(0, 8) == "/plugin ") {
@@ -683,6 +802,8 @@ void TuiApp::execute_command(const std::string& cmd) {
         chat_area_.append_assistant(
             "Commands:\n"
             "  /help         — Show this help\n"
+            "  /plan         — Switch to plan mode (read-only planning)\n"
+            "  /build        — Switch to build mode (execute changes)\n"
             "  /new          — Start a new session\n"
             "  /compress     — Compress older context (optionally: /compress <focus>)\n"
             "  /usage        — Show token usage\n"
@@ -691,20 +812,48 @@ void TuiApp::execute_command(const std::string& cmd) {
             "  /resume <id>  — Resume a conversation\n"
             "  /export       — Export current conversation as JSONL\n"
             "  /import <path>— Import conversation from JSONL file\n"
-            "  /skills       — List available skills\n"
-            "  /skill <name> — Load a skill and follow its instructions\n"
+            "  /skills       — Manage skills (enable/disable)\n"
+            "  /<skill>      — Invoke a skill as a command, e.g. /superpowers:brainstorming\n"
             "  /plugin       — List, install, or remove plugins\n"
             "  /plugin marketplace — Register plugin marketplaces\n"
             "  /clear        — Clear the chat view\n"
             "  /quit, /exit  — Exit the agent\n"
             "\n"
             "Keybindings:\n"
+            "  Shift+Tab — Toggle plan/build mode\n"
+            "  Tab       — Complete command from suggestions\n"
             "  Ctrl+P  — Command palette (type to filter)\n"
             "  Ctrl+S  — Session sidebar\n"
             "  Ctrl+N  — New session\n"
             "  Ctrl+L  — Clear chat\n"
             "  Ctrl+C  — Interrupt agent / exit");
         return;
+    }
+
+    // Any other "/name [topic...]" is treated as a skill command
+    // (e.g. /superpowers:brainstorming <idea>).
+    if (cmd.size() > 1 && cmd[0] == '/' && skills_) {
+        auto space = cmd.find(' ');
+        std::string name = space == std::string::npos
+                               ? cmd.substr(1)
+                               : cmd.substr(1, space - 1);
+        auto content = skills_->view(name);
+        if (content.ok()) {
+            std::string topic = space == std::string::npos ? "" : cmd.substr(space + 1);
+            while (!topic.empty() &&
+                   (topic.front() == ' ' || topic.front() == '\n')) {
+                topic.erase(topic.begin());
+            }
+            chat_area_.append_user(cmd);
+            std::string prompt = "[Skill loaded: " + name + "]\n\n" +
+                                 content.value() +
+                                 "\n\nFollow the skill instructions above.";
+            if (!topic.empty()) {
+                prompt += "\n\nUser's task:\n" + topic;
+            }
+            run_agent(prompt);
+            return;
+        }
     }
 
     chat_area_.append_error("Unknown command: " + cmd + " (type /help for commands)");
@@ -721,6 +870,13 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
     budget_tracker_ = bt;
     conv_store_ = cs;
 
+    // Match the terminal's default colors to the dark theme so empty cells
+    // (initial frame, resize, scroll redraws) don't flash white on
+    // light-background terminals.
+    std::cout << "\x1b]10;rgb:e8/ea/f2\x1b\\"
+              << "\x1b]11;rgb:0d/11/17\x1b\\"
+              << std::flush;
+
     sidebar_ = SessionSidebar(conv_store_);
     sidebar_.refresh();
 
@@ -733,6 +889,8 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
                 request_redraw();
             });
         });
+    event_listener_->set_on_turn_start([this] { turn_output_done_.store(false); });
+    event_listener_->set_on_turn_end([this] { turn_output_done_.store(true); });
     loop.add_listener(event_listener_);
 
     // Trace listener — captures structured events to runtime-trace.jsonl
@@ -751,6 +909,7 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
         if (conv_store_) {
             auto msgs = conv_store_->load(cid);
             if (msgs.ok()) {
+                notify_session_end();
                 loop_->restore_conversation(cid, std::move(msgs.value()));
                 auto meta = conv_store_->get_meta(cid);
                 std::string title = meta.ok() ? meta.value().title : cid;
@@ -763,6 +922,10 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
             }
         }
     });
+
+    skills_dialog_.set_manager(skills_);
+    skills_dialog_.set_on_changed([this] { rebuild_skill_commands(); });
+    rebuild_skill_commands();
 
     // Identity
     status_bar_.set_model(model_);
@@ -777,6 +940,9 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
         status_bar_.set_session_id(sid);
         top_bar_.set_session_id(sid);
         sidebar_.set_active(sid);
+        std::string mode = loop_->plan_mode() ? "plan" : "build";
+        status_bar_.set_mode(mode);
+        top_bar_.set_mode(mode);
     }
 
     push_banner();
@@ -808,6 +974,11 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
 
     screen_.Loop(root_component_);
 
+    // Restore the terminal's original default colors.
+    std::cout << "\x1b]110\x1b\\"
+              << "\x1b]111\x1b\\"
+              << std::flush;
+
     heartbeat_stop_.store(true);
     if (heartbeat_thread_.joinable()) {
         heartbeat_thread_.join();
@@ -818,6 +989,15 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
         if (loop_) loop_->interrupt();
         agent_thread_.join();
     }
+}
+
+// Fire-and-forget: hand the current session to the background memory
+// extractor (no-op when extraction is unavailable).
+void TuiApp::notify_session_end() {
+    if (!memory_extractor_ || !loop_) return;
+    const std::string& cid = loop_->conversation_id();
+    if (cid.empty()) return;
+    memory_extractor_->enqueue(cid);
 }
 
 void TuiApp::start_new_session() {
@@ -832,7 +1012,13 @@ void TuiApp::start_new_session() {
         return;
     }
 
+    notify_session_end();
     loop_->clear_history();
+    if (loop_->plan_mode()) {
+        loop_->set_plan_mode(false);
+    }
+    status_bar_.set_mode("build");
+    top_bar_.set_mode("build");
     chat_area_.clear();
     chat_area_.append_system(
         "New session started — your next message will create a new conversation");

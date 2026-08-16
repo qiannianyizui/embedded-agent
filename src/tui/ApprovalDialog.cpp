@@ -63,6 +63,7 @@ ftxui::Component ApprovalDialog::component() {
         auto buttons = ftxui::Container::Horizontal({
             btn_approve, btn_reject, btn_abort
         });
+        buttons_ = buttons;
 
         auto with_events = buttons
             | ftxui::CatchEvent(std::function<bool(ftxui::Event)>(
@@ -127,11 +128,13 @@ ftxui::Element ApprovalDialog::render() {
     body.push_back(text(""));
 
     // Actions
-    body.push_back(hbox({
-        filler(),
-        component_->Render(),
-        filler(),
-    }));
+    if (buttons_) {
+        body.push_back(hbox({
+            filler(),
+            buttons_->Render(),
+            filler(),
+        }));
+    }
 
     Element card = vbox(body) | bgcolor(theme.color.surface);
     if (dangerous) {

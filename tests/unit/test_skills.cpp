@@ -338,3 +338,47 @@ TEST_CASE("PluginManager validates URLs, lists and removes plugins", "[skill]") 
 
     fsys::remove_all(base);
 }
+
+TEST_CASE("SkillManager resolves plugin aliases and cross-skill references", "[skill]") {
+    auto base = fsys::temp_directory_path() / "ea_skill_plugin_alias";
+    fsys::remove_all(base);
+    auto skills_root = base / "plugins" / "superpowers" / "skills";
+    fsys::create_directories(skills_root / "foo");
+    fsys::create_directories(skills_root / "bar" / "references");
+
+    ea::fs::write_file(
+        (skills_root / "foo" / "SKILL.md").string(),
+        "---\nname: foo\ndescription: Foo skill\n---\n# Foo\n");
+    ea::fs::write_file(
+        (skills_root / "bar" / "SKILL.md").string(),
+        "---\nname: bar\ndescription: Bar skill\n---\n# Bar\n");
+    ea::fs::write_file(
+        (skills_root / "bar" / "references" / "notes.md").string(),
+        "# Shared notes\n");
+    ea::fs::write_file((base / "outside.txt").string(), "outside\n");
+
+    SkillManager manager({skills_root.string()});
+
+    auto skills = manager.list();
+    REQUIRE(skills.ok());
+    auto foo = std::find_if(skills.value().begin(), skills.value().end(),
+        [](const SkillInfo& s) { return s.name == "foo"; });
+    REQUIRE(foo != skills.value().end());
+    REQUIRE(foo->alias == "superpowers:foo");
+
+    auto viewed = manager.view("superpowers:foo");
+    REQUIRE(viewed.ok());
+    REQUIRE(viewed.value().find("# Foo") != std::string::npos);
+
+    auto ref = manager.view("foo", "../bar/references/notes.md");
+    REQUIRE(ref.ok());
+    REQUIRE(ref.value().find("Shared notes") != std::string::npos);
+
+    auto escaped = manager.view("foo", "../../outside.txt");
+    REQUIRE_FALSE(escaped.ok());
+
+    auto index = manager.build_index();
+    REQUIRE(index.find("superpowers:foo") != std::string::npos);
+
+    fsys::remove_all(base);
+}

@@ -13,9 +13,16 @@ public:
     std::string name() const override { return "delegate"; }
 
     std::string description() const override {
-        return "Delegate a subtask to a specialized sub-agent. "
-               "Use for tasks that benefit from a different perspective, "
-               "expertise, or independent execution.";
+        std::string desc =
+            "Delegate a subtask to a specialized sub-agent. Available agents: ";
+        auto names = orchestrator_->available_templates();
+        for (size_t i = 0; i < names.size(); ++i) {
+            if (i > 0) desc += ", ";
+            desc += names[i];
+        }
+        desc += ". Use for tasks that benefit from a different perspective, "
+                "expertise, or independent execution.";
+        return desc;
     }
 
     json parameters_schema() const override {

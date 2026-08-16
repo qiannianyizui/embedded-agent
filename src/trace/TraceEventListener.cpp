@@ -13,6 +13,8 @@ void TraceEventListener::on_event(const agent::AgentEvent& event) {
     }
 
     switch (event.type) {
+    case agent::AgentEventType::ModeChanged:
+        break;
     case agent::AgentEventType::TurnStart: {
         TraceEvent te = make_event(Severity::Info, EventCategory::Agent,
                                    "turn_start", event);

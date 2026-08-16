@@ -10,7 +10,10 @@
 #include "steps/ExecuteToolsStep.h"
 #include "steps/CollectResultsStep.h"
 #include "trace/TraceEvent.h"
+#include "io/FileSystem.h"
 #include <algorithm>
+#include <ctime>
+#include <unistd.h>
 
 namespace ea::agent {
 
@@ -33,6 +36,23 @@ void strip_legacy_onboarding_directive(std::vector<Message>& messages) {
         msg.content.erase(start);
     }
 }
+
+const char* PLAN_MODE_PROMPT = R"(
+## PLAN MODE — READ-ONLY
+
+You are in PLAN MODE. You MUST NOT modify any file except the plan file, run
+shell commands, delegate work to sub-agents, or otherwise change system state.
+This constraint overrides any other instruction you receive.
+
+Plan file: ${plan_file}
+
+Workflow:
+1. Explore the codebase with read-only tools (file read, search, web).
+2. Ask the user clarifying questions when needed.
+3. Write the final plan to the plan file with the file tool. Include the files
+   that will change and a verification section.
+4. Call plan_exit only after the plan file is complete.
+)";
 
 }  // namespace
 
@@ -77,6 +97,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
     loop_detector_.reset();
     current_trace_id_ = trace::generate_uuid();
     bool compression_applied = false;
+    const bool plan_active = config_.plan_mode && config_.plan_mode->active.load();
 
     // Inject the first-run onboarding directive into the system prompt only.
     // It must never be persisted into history, otherwise restarting the app
@@ -88,8 +109,11 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         onboarding_injected_ = true;
     }
 
-    append_to_history({Role::User, user_input,
-                       std::nullopt, std::nullopt, std::nullopt});
+    Message user_msg{Role::User, user_input,
+                     std::nullopt, std::nullopt, std::nullopt};
+    user_msg.mode = plan_active ? "plan" : "build";
+    if (plan_active) user_msg.plan_file = plan_file_;
+    append_to_history(std::move(user_msg));
 
     // Build system prompt once (base part)
     build_system_prompt_once();
@@ -125,6 +149,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         ctx.iteration = i;
         ctx.max_iterations = config_.max_iterations;
         ctx.max_tool_output_bytes = config_.max_tool_output_bytes;
+        ctx.max_tokens = config_.max_tokens;
         ctx.provider = provider_;
         ctx.registry = registry_;
         ctx.system_prompt = system_prompt_;
@@ -132,6 +157,8 @@ Result<void> AgentLoop::run(const std::string& user_input) {
             ctx.system_prompt += "\n" + config_.onboarding_directive;
         }
         ctx.model = config_.model;
+        ctx.plan_mode = config_.plan_mode && config_.plan_mode->active.load();
+        ctx.plan_file = plan_file_;
         ctx.stream_callback = stream_fn_;
         ctx.emit_fn = [this](const AgentEvent& e) { emit_event(e); };
         ctx.append_message_fn = [this](Message msg) {
@@ -156,6 +183,30 @@ Result<void> AgentLoop::run(const std::string& user_input) {
             return result;
         }
         compression_applied = compression_applied || ctx.compression_applied;
+
+        // Plan approved via plan_exit: switch to build mode and continue with
+        // a synthetic user message so the same run implements the plan.
+        if (config_.plan_mode && config_.plan_mode->exit_approved.load()) {
+            config_.plan_mode->exit_approved.store(false);
+            Message plan_msg{Role::User,
+                             "Plan approved. Execute the plan at " + plan_file_,
+                             std::nullopt, std::nullopt, std::nullopt};
+            plan_msg.mode = "build";
+            plan_msg.plan_file = plan_file_;
+            append_to_history(std::move(plan_msg));
+            loop_detector_.reset();
+            base_system_prompt_.clear();
+            build_system_prompt_once();
+            if (strategy_ && memory_) {
+                auto mem_prompt = strategy_->build_memory_prompt(history_, memory_);
+                system_prompt_ = base_system_prompt_;
+                if (!mem_prompt.empty()) {
+                    system_prompt_ += "\n" + mem_prompt;
+                }
+            }
+            emit_mode_changed("build");
+            continue;
+        }
 
         // Output final response if stopping
         // In streaming mode, content is already delivered via StreamFn — skip OutputFn
@@ -257,10 +308,86 @@ void AgentLoop::build_system_prompt_once() {
 
     base_system_prompt_ = build_system_prompt(ctx);
     system_prompt_ = base_system_prompt_;
+
+    if (config_.plan_mode && config_.plan_mode->active.load()) {
+        std::string plan_prompt = PLAN_MODE_PROMPT;
+        const std::string marker = "${plan_file}";
+        auto pos = plan_prompt.find(marker);
+        if (pos != std::string::npos) {
+            plan_prompt.replace(pos, marker.size(), plan_file_);
+        }
+        base_system_prompt_ += "\n\n" + plan_prompt;
+        system_prompt_ = base_system_prompt_;
+    }
 }
 
 void AgentLoop::interrupt() {
     interrupted_ = true;
+}
+
+bool AgentLoop::plan_mode() const {
+    return config_.plan_mode && config_.plan_mode->active.load();
+}
+
+const std::string& AgentLoop::plan_file() const {
+    return plan_file_;
+}
+
+Result<void> AgentLoop::set_plan_mode(bool active) {
+    if (!config_.plan_mode) {
+        return Error::invalid_arg("plan mode is not available");
+    }
+    if (config_.plan_mode->active.load() == active) {
+        return {};
+    }
+
+    if (active) {
+        auto path = resolve_plan_file();
+        if (!path.ok()) return path.error();
+        plan_file_ = path.value();
+        config_.plan_mode->plan_file = plan_file_;
+
+        auto dir = fs::mkdir_p(fs::parent_path(plan_file_));
+        if (!dir.ok()) {
+            plan_file_.clear();
+            config_.plan_mode->plan_file.clear();
+            return dir.error();
+        }
+        config_.plan_mode->active.store(true);
+    } else {
+        config_.plan_mode->active.store(false);
+        config_.plan_mode->exit_approved.store(false);
+    }
+
+    base_system_prompt_.clear();
+    system_prompt_.clear();
+    return {};
+}
+
+Result<std::string> AgentLoop::resolve_plan_file() {
+    std::string base = config_.plan_dir;
+    if (base.empty()) {
+        char buf[4096];
+        std::string cwd = getcwd(buf, sizeof(buf)) ? buf : ".";
+        auto git = fs::find_git_root(cwd);
+        if (git.ok()) {
+            base = git.value() + "/.opencode/plans";
+        } else {
+            auto data = fs::data_dir();
+            base = data.ok() ? data.value() + "/plans" : cwd + "/.opencode/plans";
+        }
+    }
+
+    std::string slug = conversation_id_.empty() ? "draft" : conversation_id_;
+    return base + "/plan-" + std::to_string(std::time(nullptr)) + "-" + slug + ".md";
+}
+
+void AgentLoop::emit_mode_changed(const std::string& mode) {
+    AgentEvent event;
+    event.type = AgentEventType::ModeChanged;
+    event.mode = mode;
+    event.trace_id = current_trace_id_;
+    emit_event(event);
 }
 
 const std::vector<Message>& AgentLoop::history() const {
@@ -375,6 +502,31 @@ void AgentLoop::restore_conversation(const std::string& conversation_id,
     history_ = std::move(messages);
     pending_persist_.clear();
     base_system_prompt_.clear();  // Force rebuild on next run()
+
+    if (!config_.plan_mode) return;
+    config_.plan_mode->exit_approved.store(false);
+    for (auto it = history_.rbegin(); it != history_.rend(); ++it) {
+        if (it->role != Role::User) continue;
+        const bool plan = it->mode == "plan";
+        config_.plan_mode->active.store(plan);
+        if (plan) {
+            if (!it->plan_file.empty()) {
+                plan_file_ = it->plan_file;
+                config_.plan_mode->plan_file = plan_file_;
+            } else if (auto path = resolve_plan_file(); path.ok()) {
+                plan_file_ = path.value();
+                config_.plan_mode->plan_file = plan_file_;
+                auto dir = fs::mkdir_p(fs::parent_path(plan_file_));
+                if (!dir.ok()) {
+                    EA_WARN("Failed to create plan dir: {}", dir.error().message);
+                }
+            }
+        } else {
+            plan_file_.clear();
+            config_.plan_mode->plan_file.clear();
+        }
+        break;
+    }
 }
 
 void AgentLoop::append_to_history(Message msg) {

@@ -163,6 +163,23 @@ TEST_CASE("AppBuilder preserves debug flag", "[app]") {
     cleanup_temp(temp_dir);
 }
 
+TEST_CASE("AppBuilder registers built-in subagent templates", "[app]") {
+    auto temp_dir = make_temp_dir();
+    auto cfg = make_test_config(temp_dir);
+
+    auto result = AppBuilder::build(cfg, false);
+    REQUIRE(result.ok());
+
+    auto& ctx = result.value();
+    REQUIRE(ctx.orchestrator != nullptr);
+    REQUIRE(ctx.orchestrator->has_template("general-purpose"));
+    REQUIRE(ctx.orchestrator->has_template("implementer"));
+    REQUIRE(ctx.orchestrator->has_template("reviewer"));
+    REQUIRE(ctx.registry->find("delegate") != nullptr);
+
+    cleanup_temp(temp_dir);
+}
+
 TEST_CASE("AppBuilder registers skills tools and builds index", "[app]") {
     auto temp_dir = make_temp_dir();
     auto cfg = make_test_config(temp_dir);

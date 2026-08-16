@@ -8,7 +8,24 @@ class BuildToolSpecsStep : public ITurnStep {
 public:
     Result<void> execute(TurnContext& ctx) override {
         if (ctx.registry) {
-            ctx.tool_specs = ctx.registry->active_specs();
+            auto specs = ctx.registry->active_specs();
+            if (!ctx.plan_mode) {
+                for (const auto& spec : specs) {
+                    if (spec.name != "plan_exit") {
+                        ctx.tool_specs.push_back(spec);
+                    }
+                }
+                return {};
+            }
+            for (const auto& spec : specs) {
+                ITool* tool = ctx.registry->find(spec.name);
+                if (!tool) continue;
+                // Plan mode: read-only tools, the file tool (plan file only,
+                // enforced in ExecuteToolsStep) and plan_exit stay visible.
+                if (!tool->is_mutating() || spec.name == "file" || spec.name == "plan_exit") {
+                    ctx.tool_specs.push_back(spec);
+                }
+            }
         }
         return {};
     }

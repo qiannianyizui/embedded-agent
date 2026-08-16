@@ -26,7 +26,6 @@ TEST_CASE("build_config_from_wizard maps fields correctly", "[tui]") {
     state.base_url = "https://api.anthropic.com";
     state.api_key = "sk-ant-test";
     state.default_model = "claude-sonnet-4-6";
-    state.workspace = "/home/user/project";
     state.autonomy = "autonomous";
 
     auto cfg = build_config_from_wizard(state);
@@ -35,7 +34,6 @@ TEST_CASE("build_config_from_wizard maps fields correctly", "[tui]") {
     REQUIRE(cfg.provider.api_key == "sk-ant-test");
     REQUIRE(cfg.provider.default_model == "claude-sonnet-4-6");
     REQUIRE(cfg.agent.model == "claude-sonnet-4-6");
-    REQUIRE(cfg.security.workspace == "/home/user/project");
     REQUIRE(cfg.security.autonomy == "autonomous");
 }
 
@@ -61,8 +59,7 @@ TEST_CASE("WizardStep enum values are sequential", "[tui]") {
     REQUIRE(static_cast<int>(WizardStep::Provider) == 1);
     REQUIRE(static_cast<int>(WizardStep::ApiKey) == 2);
     REQUIRE(static_cast<int>(WizardStep::Model) == 3);
-    REQUIRE(static_cast<int>(WizardStep::Workspace) == 4);
-    REQUIRE(static_cast<int>(WizardStep::Security) == 5);
-    REQUIRE(static_cast<int>(WizardStep::Review) == 6);
-    REQUIRE(static_cast<int>(WizardStep::Count) == 7);
+    REQUIRE(static_cast<int>(WizardStep::Security) == 4);
+    REQUIRE(static_cast<int>(WizardStep::Review) == 5);
+    REQUIRE(static_cast<int>(WizardStep::Count) == 6);
 }

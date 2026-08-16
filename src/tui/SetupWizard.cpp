@@ -7,7 +7,6 @@
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
 #include <cstdlib>
-#include <unistd.h>
 
 namespace ea::tui {
 
@@ -41,7 +40,6 @@ const char* STEP_TITLES[] = {
     "Provider",
     "API Key",
     "Model",
-    "Workspace",
     "Security",
     "Review",
 };
@@ -114,9 +112,6 @@ ea::config::AppConfig build_config_from_wizard(const WizardState& state) {
     cfg.provider.default_model = state.default_model;
     cfg.agent.model = state.default_model;
     cfg.security.autonomy = state.autonomy;
-    if (!state.workspace.empty()) {
-        cfg.security.workspace = state.workspace;
-    }
 
     auto cfg_dir = ea::fs::config_dir();
     if (cfg_dir.ok()) {
@@ -131,7 +126,7 @@ ea::config::AppConfig build_config_from_wizard(const WizardState& state) {
 //
 // Focus routing:
 //   - The content area holds either a selection list (Provider/Security) or
-//     an Input field (ApiKey/Model/Workspace) or static text (Welcome/Review).
+//     an Input field (ApiKey/Model) or static text (Welcome/Review).
 //   - The footer holds navigation buttons (Back/Next/Finish + Cancel) as real
 //     FTXUI Button components so they receive focus and can be activated with
 //     Enter or a mouse click.
@@ -154,13 +149,11 @@ struct WizardImpl : ftxui::ComponentBase {
     std::string input_url;
     std::string input_key;
     std::string input_model;
-    std::string input_workspace;
 
     // Input components
     ftxui::Component url_input_;
     ftxui::Component key_input_;
     ftxui::Component model_input_;
-    ftxui::Component workspace_input_;
 
     // Navigation buttons
     ftxui::Component back_btn_;
@@ -180,13 +173,6 @@ struct WizardImpl : ftxui::ComponentBase {
         input_url = state.base_url;
         input_key = state.api_key;
         input_model = state.default_model;
-
-        char cwd_buf[4096];
-        if (getcwd(cwd_buf, sizeof(cwd_buf))) {
-            input_workspace = state.workspace.empty() ? cwd_buf : state.workspace;
-        } else if (!state.workspace.empty()) {
-            input_workspace = state.workspace;
-        }
 
         if (state.autonomy == "autonomous") selected_autonomy = 1;
         else if (state.autonomy == "full") selected_autonomy = 2;
@@ -211,12 +197,6 @@ struct WizardImpl : ftxui::ComponentBase {
         model_opt.multiline = false;
         model_opt.on_enter = [this] { go_next(); };
         model_input_ = Input(&input_model, model_opt);
-
-        InputOption ws_opt;
-        ws_opt.placeholder = "/home/user/project";
-        ws_opt.multiline = false;
-        ws_opt.on_enter = [this] { go_next(); };
-        workspace_input_ = Input(&input_workspace, ws_opt);
 
         // Navigation buttons — custom transform: focused button gets white
         // background with dark text for clear visual feedback.
@@ -280,10 +260,6 @@ struct WizardImpl : ftxui::ComponentBase {
                 content_area_->Add(model_input_);
                 has_input = true;
                 break;
-            case WizardStep::Workspace:
-                content_area_->Add(workspace_input_);
-                has_input = true;
-                break;
             default:
                 // Welcome / Provider / Security / Review have no text input.
                 // Add a non-focusable placeholder.
@@ -326,7 +302,6 @@ struct WizardImpl : ftxui::ComponentBase {
             switch (state.current_step) {
                 case WizardStep::ApiKey:    field_has_value = !input_key.empty() && !input_url.empty(); break;
                 case WizardStep::Model:     field_has_value = !input_model.empty(); break;
-                case WizardStep::Workspace: field_has_value = !input_workspace.empty(); break;
                 default: break;
             }
             container_selector_ = field_has_value ? 1 : 0;
@@ -377,8 +352,7 @@ struct WizardImpl : ftxui::ComponentBase {
         // forward keyboard events directly to the button row so the user
         // doesn't need to press Tab/↓ first to reach the buttons.
         bool has_input = (state.current_step == WizardStep::ApiKey ||
-                          state.current_step == WizardStep::Model ||
-                          state.current_step == WizardStep::Workspace);
+                          state.current_step == WizardStep::Model);
         if (!has_input) {
             if (button_row_->OnEvent(event)) return true;
         }
@@ -426,7 +400,6 @@ struct WizardImpl : ftxui::ComponentBase {
         state.base_url = input_url;
         state.api_key = input_key;
         state.default_model = input_model;
-        state.workspace = input_workspace;
         const char* autonomy_levels[] = {"supervised", "autonomous", "full"};
         state.autonomy = autonomy_levels[selected_autonomy];
     }
@@ -443,7 +416,6 @@ struct WizardImpl : ftxui::ComponentBase {
             case WizardStep::Provider:  body = render_provider(); break;
             case WizardStep::ApiKey:    body = render_api_key(); break;
             case WizardStep::Model:     body = render_model(); break;
-            case WizardStep::Workspace: body = render_workspace(); break;
             case WizardStep::Security:  body = render_security(); break;
             case WizardStep::Review:    body = render_review(); break;
             default: body = text(""); break;
@@ -555,22 +527,6 @@ struct WizardImpl : ftxui::ComponentBase {
         });
     }
 
-    ftxui::Element render_workspace() {
-        using namespace ftxui;
-        auto& theme = default_theme();
-        return vbox({
-            text("  Set workspace directory") | color(theme.color.primary) | bold,
-            text("  The agent will operate within this directory") | color(theme.color.muted),
-            text(""),
-            hbox({
-                text("  ❯ ") | color(theme.color.label) | bold,
-                workspace_input_->Render() | flex,
-            }),
-            text(""),
-            text("  Leave empty to use current directory") | color(theme.color.muted) | dim,
-        });
-    }
-
     ftxui::Element render_security() {
         using namespace ftxui;
         auto& theme = default_theme();
@@ -629,9 +585,6 @@ struct WizardImpl : ftxui::ComponentBase {
         lines.push_back(text("  Security") | color(theme.color.label) | bold);
         lines.push_back(hbox({ text("    autonomy:   ") | color(theme.color.muted),
                                text(config.security.autonomy) | color(theme.color.text) }));
-        if (!config.security.workspace.empty())
-            lines.push_back(hbox({ text("    workspace:  ") | color(theme.color.muted),
-                                   text(config.security.workspace) | color(theme.color.text) }));
         lines.push_back(text(""));
         lines.push_back(text("  Tab to Finish and press Enter to save") | color(theme.color.accent));
         return vbox(std::move(lines));

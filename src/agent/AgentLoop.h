@@ -15,6 +15,7 @@
 #include "conversation/IConversationStore.h"
 #include "budget/BudgetTracker.h"
 #include "memory/CuratedMemoryStore.h"
+#include "agent/PlanMode.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -38,6 +39,9 @@ public:
         std::string context_files;  // Project context file content
         std::string skills_index;   // Rendered <available_skills> block
         std::string onboarding_directive;  // First-run profile-build directive
+        std::shared_ptr<PlanModeState> plan_mode;  // nullptr = plan mode disabled
+        std::string plan_dir;  // override for plan file directory (default: worktree/.opencode/plans)
+        int max_tokens = 0;  // 0 = don't send max_tokens (model default)
     };
 
     using OutputFn = std::function<void(const std::string&)>;
@@ -70,6 +74,11 @@ public:
     void restore_conversation(const std::string& conversation_id,
                               std::vector<Message> messages);
     const std::string& conversation_id() const { return conversation_id_; }
+
+    // Plan mode
+    bool plan_mode() const;
+    const std::string& plan_file() const;
+    Result<void> set_plan_mode(bool active);
 
     struct CompressionResult {
         int before = 0;
@@ -116,6 +125,7 @@ private:
     std::string base_system_prompt_;
     std::string system_prompt_;
     std::string conversation_id_;
+    std::string plan_file_;
     std::vector<Message> pending_persist_;
     std::atomic<bool> interrupted_{false};
     bool onboarding_injected_ = false;
@@ -125,6 +135,9 @@ private:
     LoopDetector loop_detector_;
     std::vector<std::shared_ptr<IEventListener>> listeners_;
     std::string current_trace_id_;   // trace_id for the current run()
+
+    Result<std::string> resolve_plan_file();
+    void emit_mode_changed(const std::string& mode);
 };
 
 }  // namespace ea::agent

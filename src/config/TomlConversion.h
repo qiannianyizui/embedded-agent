@@ -10,10 +10,6 @@
 // Order matters: leaf types must be defined before types that nest them.
 // ============================================================================
 
-TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::config::MemoryStrategyConfig,
-    type, working_turns, short_term_max, long_term_importance,
-    enable_fact_extraction, enable_auto_summarize)
-
 TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::config::MemoryFilesConfig,
     enable, dir, memory_char_limit, user_char_limit)
 
@@ -55,6 +51,40 @@ TOML11_DEFINE_CONVERSION_NON_INTRUSIVE(ea::config::WebConfig,
 // ============================================================================
 
 namespace toml {
+
+// --- MemoryStrategyConfig (manual: all keys optional, defaults from struct) ---
+template<>
+struct from<ea::config::MemoryStrategyConfig> {
+    template<typename TC>
+    static ea::config::MemoryStrategyConfig from_toml(const basic_value<TC>& v) {
+        ea::config::MemoryStrategyConfig cfg;
+        cfg.type                   = toml::find_or<std::string>(v, "type", cfg.type);
+        cfg.working_turns          = toml::find_or<int>(v, "working_turns", cfg.working_turns);
+        cfg.short_term_max         = toml::find_or<int>(v, "short_term_max", cfg.short_term_max);
+        cfg.long_term_importance   = toml::find_or<int>(v, "long_term_importance", cfg.long_term_importance);
+        cfg.enable_fact_extraction = toml::find_or<bool>(v, "enable_fact_extraction", cfg.enable_fact_extraction);
+        cfg.enable_auto_summarize  = toml::find_or<bool>(v, "enable_auto_summarize", cfg.enable_auto_summarize);
+        cfg.fact_extraction_prompt = toml::find_or<std::string>(
+            v, "fact_extraction_prompt", cfg.fact_extraction_prompt);
+        return cfg;
+    }
+};
+
+template<>
+struct into<ea::config::MemoryStrategyConfig> {
+    template<typename TC>
+    static basic_value<TC> into_toml(const ea::config::MemoryStrategyConfig& cfg) {
+        basic_value<TC> v;
+        v["type"]                   = cfg.type;
+        v["working_turns"]          = cfg.working_turns;
+        v["short_term_max"]         = cfg.short_term_max;
+        v["long_term_importance"]   = cfg.long_term_importance;
+        v["enable_fact_extraction"] = cfg.enable_fact_extraction;
+        v["enable_auto_summarize"]  = cfg.enable_auto_summarize;
+        v["fact_extraction_prompt"] = cfg.fact_extraction_prompt;
+        return v;
+    }
+};
 
 // --- AgentConfig::Compression (manual: legacy max_tokens/keep_recent_turns tolerated) ---
 template<>
@@ -211,6 +241,7 @@ struct from<ea::config::AgentConfig> {
         cfg.soul           = toml::find_or<std::string>(v, "soul", cfg.soul);
         cfg.context_file_max_chars = toml::find_or<int>(v, "context_file_max_chars", cfg.context_file_max_chars);
         cfg.stream         = toml::find_or<bool>(v, "stream", cfg.stream);
+        cfg.max_tokens     = toml::find_or<int>(v, "max_tokens", cfg.max_tokens);
         if (v.contains("compression")) {
             cfg.compression = toml::find<ea::config::AgentConfig::Compression>(v, "compression");
         }
@@ -232,6 +263,7 @@ struct into<ea::config::AgentConfig> {
         if (!cfg.soul.empty()) v["soul"] = cfg.soul;
         v["context_file_max_chars"] = cfg.context_file_max_chars;
         v["stream"]         = cfg.stream;
+        if (cfg.max_tokens > 0) v["max_tokens"] = cfg.max_tokens;
         v["compression"]    = into<ea::config::AgentConfig::Compression>::into_toml<TC>(cfg.compression);
         if (!cfg.subagents.empty()) {
             typename basic_value<TC>::array_type arr;
@@ -251,7 +283,6 @@ struct from<ea::config::SecurityConfig> {
     static ea::config::SecurityConfig from_toml(const basic_value<TC>& v) {
         ea::config::SecurityConfig cfg;
         cfg.autonomy         = toml::find_or<std::string>(v, "autonomy", cfg.autonomy);
-        cfg.workspace        = toml::find_or<std::string>(v, "workspace", cfg.workspace);
         cfg.approval_timeout = toml::find_or<int>(v, "approval_timeout", cfg.approval_timeout);
         if (v.contains("allowed_commands")) {
             cfg.allowed_commands = toml::find<std::vector<std::string>>(v, "allowed_commands");
@@ -269,7 +300,6 @@ struct into<ea::config::SecurityConfig> {
     static basic_value<TC> into_toml(const ea::config::SecurityConfig& cfg) {
         basic_value<TC> v;
         v["autonomy"] = cfg.autonomy;
-        if (!cfg.workspace.empty()) v["workspace"] = cfg.workspace;
         if (!cfg.allowed_commands.empty()) {
             v["allowed_commands"] = cfg.allowed_commands;
         }

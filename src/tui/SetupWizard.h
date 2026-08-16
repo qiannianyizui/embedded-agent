@@ -14,10 +14,9 @@ enum class WizardStep {
     Provider = 1,
     ApiKey = 2,
     Model = 3,
-    Workspace = 4,
-    Security = 5,
-    Review = 6,
-    Count = 7,
+    Security = 4,
+    Review = 5,
+    Count = 6,
 };
 
 // Wizard state — accumulates user input across steps
@@ -27,9 +26,6 @@ struct WizardState {
     std::string base_url;
     std::string api_key;
     std::string default_model;
-
-    // Workspace
-    std::string workspace;
 
     // Security
     std::string autonomy = "supervised";

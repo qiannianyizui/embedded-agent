@@ -7,6 +7,7 @@ namespace ea::skill {
 
 struct SkillInfo {
     std::string name;            // Frontmatter name, or directory name fallback
+    std::string alias;           // Plugin-prefixed name, e.g. "superpowers:brainstorming"
     std::string description;
     std::string version;
     std::string category;        // "general" for top-level skills
@@ -14,6 +15,7 @@ struct SkillInfo {
     std::string relative_dir;    // e.g. "research/arxiv"
     std::vector<std::string> tags;
     std::vector<std::string> platforms;
+    bool enabled = true;
 };
 
 struct PluginInfo {
@@ -43,6 +45,8 @@ public:
                  std::string user_dir = "");
 
     Result<std::vector<SkillInfo>> list() const;
+    // All skills, including disabled ones (for management UI).
+    Result<std::vector<SkillInfo>> list_all() const;
 
     // Load the full SKILL.md content (or a file inside the skill dir when
     // file_path is set, e.g. "references/api.md").
@@ -65,9 +69,12 @@ public:
     bool enabled() const { return !roots_.empty(); }
 
 private:
+    std::string root_for(const SkillInfo& info) const;
     Result<std::vector<SkillInfo>> scan_impl(bool filter_disabled = true) const;
     Result<std::vector<SkillInfo>> scan_cached() const;
     Result<SkillInfo> find_skill(const std::string& name) const;
+    Result<SkillInfo> find_skill_unfiltered(const std::string& name) const;
+    bool matches(const SkillInfo& info, const std::string& name) const;
     std::string build_cache_key() const;
     void invalidate_cache() const;
     std::string primary_dir() const;

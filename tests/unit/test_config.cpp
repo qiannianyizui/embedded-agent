@@ -17,6 +17,7 @@ TEST_CASE("Config reads TOML file", "[config]") {
 [agent]
 model = "test-model"
 max_iterations = 42
+max_tokens = 8192
 
 [provider]
 type = "ollama"
@@ -27,6 +28,7 @@ base_url = "http://localhost:11434"
     REQUIRE(cfg.ok());
     REQUIRE(cfg.value().agent.model == "test-model");
     REQUIRE(cfg.value().agent.max_iterations == 42);
+    REQUIRE(cfg.value().agent.max_tokens == 8192);
     REQUIRE(cfg.value().provider.type == "ollama");
     REQUIRE(cfg.value().provider.base_url == "http://localhost:11434");
 

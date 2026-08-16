@@ -10,9 +10,11 @@ class AppBuilder {
 public:
     // Build a fully-constructed AppContext from the given config.
     // debug flag controls debug logging and listener attachment.
+    // cwd is the workspace (startup directory); empty = current directory.
     // Returns the AppContext on success, or an Error on failure
     // (e.g., unknown provider type).
-    static Result<AppContext> build(const config::AppConfig& cfg, bool debug = false);
+    static Result<AppContext> build(const config::AppConfig& cfg, bool debug = false,
+                                    const std::string& cwd = {});
 };
 
 }  // namespace ea::app

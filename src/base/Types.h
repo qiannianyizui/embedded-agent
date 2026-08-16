@@ -18,11 +18,29 @@ struct ToolCall {
 };
 
 struct Message {
+    Message() = default;
+    Message(Role role,
+            std::string content,
+            std::optional<std::string> name = std::nullopt,
+            std::optional<std::vector<ToolCall>> tool_calls = std::nullopt,
+            std::optional<std::string> tool_call_id = std::nullopt,
+            std::string mode = {},
+            std::string plan_file = {})
+        : role(role)
+        , content(std::move(content))
+        , name(std::move(name))
+        , tool_calls(std::move(tool_calls))
+        , tool_call_id(std::move(tool_call_id))
+        , mode(std::move(mode))
+        , plan_file(std::move(plan_file)) {}
+
     Role role;
     std::string content;
     std::optional<std::string> name;
     std::optional<std::vector<ToolCall>> tool_calls;
     std::optional<std::string> tool_call_id;
+    std::string mode;       // "plan" / "build" (empty for legacy messages)
+    std::string plan_file;  // plan file active when this message was sent
 };
 
 struct Usage {
@@ -48,6 +66,7 @@ struct StreamChunk {
     std::string data;
     std::optional<ToolCall> tool_call;
     std::optional<Usage> usage;
+    std::optional<std::string> finish_reason;
 };
 
 struct ToolSpec {
@@ -73,7 +92,7 @@ struct MemoryEntry {
 
 struct ChatOptions {
     float temperature = 0.7f;
-    int max_tokens = 4096;
+    int max_tokens = 0;  // 0 = don't send; use the model's default
     std::optional<std::string> stop;
     float top_p = 1.0f;
     bool stream = false;

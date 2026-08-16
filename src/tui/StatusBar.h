@@ -17,6 +17,7 @@ public:
     void update_cost(double cost_usd);
     void reset_stats();
     void set_model(const std::string& model);
+    void set_mode(const std::string& mode);
     void set_session_id(const std::string& id);
     void set_cwd(const std::string& cwd);
     void set_context_pct(int pct);  // 0-100 context usage percentage
@@ -32,6 +33,7 @@ private:
     int output_tokens_ = 0;
     double cost_usd_ = 0.0;
     std::string model_;
+    std::string mode_ = "build";
     std::string session_id_;
     std::string cwd_;
     int context_pct_ = -1;  // -1 = unknown

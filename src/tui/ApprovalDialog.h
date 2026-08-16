@@ -19,6 +19,7 @@ public:
 private:
     TuiApprovalHandler& handler_;
     ftxui::Component component_;
+    ftxui::Component buttons_;
 
     bool on_event(ftxui::Event event);
 };

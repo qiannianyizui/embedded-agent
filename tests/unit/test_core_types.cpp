@@ -50,7 +50,7 @@ TEST_CASE("Usage default values", "[types]") {
 TEST_CASE("ChatOptions default values", "[types]") {
     ChatOptions opts;
     REQUIRE(opts.temperature == 0.7f);
-    REQUIRE(opts.max_tokens == 4096);
+    REQUIRE(opts.max_tokens == 0);  // 0 = don't send; model default
     REQUIRE(opts.top_p == 1);
     REQUIRE(opts.stream == false);
     REQUIRE_FALSE(opts.stop.has_value());

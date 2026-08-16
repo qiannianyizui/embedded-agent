@@ -246,6 +246,23 @@ std::string replace_all(std::string text,
     return text;
 }
 
+std::string plugin_prefix_from_root(const std::string& root) {
+    std::error_code ec;
+    auto p = fs::weakly_canonical(root, ec);
+    if (ec) return "";
+
+    std::vector<std::string> parts;
+    for (const auto& part : p) {
+        parts.push_back(part.string());
+    }
+    for (size_t i = 0; i + 2 < parts.size(); ++i) {
+        if (parts[i] == "plugins" && parts[i + 2] == "skills") {
+            return parts[i + 1];
+        }
+    }
+    return "";
+}
+
 std::string expand_inline_shell(const std::string& content,
                                 const std::string& skill_dir,
                                 int timeout_seconds) {
@@ -773,6 +790,7 @@ Result<std::vector<SkillInfo>> SkillManager::scan_impl(bool filter_disabled) con
 
             SkillInfo info;
             info.name = skill_name;
+            info.alias = skill_name;
             info.description = fm.description;
             info.version = fm.version;
             info.category = category;
@@ -781,15 +799,23 @@ Result<std::vector<SkillInfo>> SkillManager::scan_impl(bool filter_disabled) con
             info.tags = fm.tags;
             info.platforms = fm.platforms;
 
-            if (!platform_matches(fm.platforms)) continue;
-            if (filter_disabled) {
-                if (std::find(disabled_.begin(), disabled_.end(), skill_name) !=
-                        disabled_.end() ||
-                    std::find(disabled_.begin(), disabled_.end(), rel_dir) !=
-                        disabled_.end()) {
-                    continue;
+            auto root = root_for(info);
+            if (!root.empty()) {
+                auto prefix = plugin_prefix_from_root(root);
+                if (!prefix.empty()) {
+                    info.alias = prefix + ":" + skill_name;
                 }
             }
+
+            bool is_disabled =
+                std::find(disabled_.begin(), disabled_.end(), skill_name) !=
+                    disabled_.end() ||
+                std::find(disabled_.begin(), disabled_.end(), rel_dir) !=
+                    disabled_.end();
+            info.enabled = !is_disabled;
+
+            if (!platform_matches(fm.platforms)) continue;
+            if (filter_disabled && is_disabled) continue;
             if (!seen_names.insert(skill_name).second ||
                 !seen_dirs.insert(rel_dir).second) {
                 continue;  // Earlier root wins
@@ -805,6 +831,17 @@ Result<std::vector<SkillInfo>> SkillManager::scan_impl(bool filter_disabled) con
                   return a.name < b.name;
               });
     return result;
+}
+
+std::string SkillManager::root_for(const SkillInfo& info) const {
+    for (const auto& raw_root : roots_) {
+        auto root = efs::expand_tilde(raw_root);
+        std::error_code ec;
+        auto rel = fs::relative(fs::path(info.directory), fs::path(root), ec);
+        if (ec || rel.empty() || rel.native()[0] == '.') continue;
+        return root;
+    }
+    return "";
 }
 
 Result<std::vector<SkillInfo>> SkillManager::scan_cached() const {
@@ -824,14 +861,41 @@ Result<std::vector<SkillInfo>> SkillManager::list() const {
     return scan_cached();
 }
 
+Result<std::vector<SkillInfo>> SkillManager::list_all() const {
+    return scan_impl(false);
+}
+
+bool SkillManager::matches(const SkillInfo& info,
+                           const std::string& name) const {
+    if (info.name == name || info.relative_dir == name ||
+        info.directory.substr(info.directory.rfind('/') + 1) == name ||
+        info.alias == name) {
+        return true;
+    }
+    auto colon = name.rfind(':');
+    if (colon == std::string::npos) return false;
+    std::string prefix = name.substr(0, colon);
+    std::string bare = name.substr(colon + 1);
+    if (info.name != bare) return false;
+    auto root = root_for(info);
+    return !root.empty() && plugin_prefix_from_root(root) == prefix;
+}
+
 Result<SkillInfo> SkillManager::find_skill(const std::string& name) const {
     auto skills = scan_cached();
     if (!skills.ok()) return skills.error();
     for (const auto& info : skills.value()) {
-        if (info.name == name || info.relative_dir == name ||
-            info.directory.substr(info.directory.rfind('/') + 1) == name) {
-            return info;
-        }
+        if (matches(info, name)) return info;
+    }
+    return Error::not_found("Skill not found: " + name);
+}
+
+Result<SkillInfo> SkillManager::find_skill_unfiltered(
+    const std::string& name) const {
+    auto skills = scan_impl(false);
+    if (!skills.ok()) return skills.error();
+    for (const auto& info : skills.value()) {
+        if (matches(info, name)) return info;
     }
     return Error::not_found("Skill not found: " + name);
 }
@@ -842,9 +906,10 @@ Result<std::string> SkillManager::view(const std::string& name,
         return Error::invalid_arg(
             "Skill name must be a relative path without '..' or absolute segments");
     }
-    if (!file_path.empty() && !safe_relative(file_path)) {
-        return Error::invalid_arg(
-            "file_path must be a relative path without '..' or absolute segments");
+    if (!file_path.empty() &&
+        (file_path.front() == '/' ||
+         (file_path.size() > 1 && file_path[1] == ':'))) {
+        return Error::invalid_arg("file_path must be a relative path");
     }
 
     auto found = find_skill(name);
@@ -852,8 +917,21 @@ Result<std::string> SkillManager::view(const std::string& name,
 
     std::string path = join_path(found.value().directory, "SKILL.md");
     if (!file_path.empty()) {
-        path = join_path(found.value().directory, file_path);
-        return efs::read_file(path);
+        std::error_code ec;
+        auto resolved = fs::weakly_canonical(
+            fs::path(found.value().directory) / file_path, ec);
+        if (ec) {
+            return Error::invalid_arg("file_path cannot be resolved");
+        }
+        auto root = root_for(found.value());
+        if (root.empty()) {
+            return Error::invalid_arg("skill root cannot be resolved");
+        }
+        auto rel = fs::relative(resolved, fs::path(root), ec);
+        if (ec || rel.empty() || rel.native()[0] == '.') {
+            return Error::invalid_arg("file_path escapes the skill root");
+        }
+        return efs::read_file(resolved.string());
     }
 
     auto content = efs::read_file(path);
@@ -880,7 +958,7 @@ std::string SkillManager::build_index() const {
     for (const auto& [category, skills_in_cat] : by_category) {
         oss << "  " << category << ":\n";
         for (const auto* info : skills_in_cat) {
-            oss << "    - " << info->name;
+            oss << "    - " << (info->alias.empty() ? info->name : info->alias);
             if (!info->description.empty()) {
                 oss << ": " << info->description;
             }
@@ -978,21 +1056,10 @@ Result<void> SkillManager::disable(const std::string& name) {
 }
 
 Result<void> SkillManager::enable(const std::string& name) {
-    // Disabled skills are filtered out of the cached list, so search the
-    // unfiltered scan to find them again.
-    auto skills = scan_impl(false);
-    if (!skills.ok()) return skills.error();
-    const SkillInfo* found = nullptr;
-    for (const auto& info : skills.value()) {
-        if (info.name == name || info.relative_dir == name ||
-            info.directory.substr(info.directory.rfind('/') + 1) == name) {
-            found = &info;
-            break;
-        }
-    }
-    if (!found) return Error::not_found("Skill not found: " + name);
+    auto found = find_skill_unfiltered(name);
+    if (!found.ok()) return found.error();
     disabled_.erase(
-        std::remove(disabled_.begin(), disabled_.end(), found->name),
+        std::remove(disabled_.begin(), disabled_.end(), found.value().name),
         disabled_.end());
     invalidate_cache();
     return {};

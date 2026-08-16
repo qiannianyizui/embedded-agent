@@ -13,6 +13,7 @@ public:
     ftxui::Component component();
     void set_busy(bool busy, const std::string& activity = "");
     void set_model(const std::string& model);
+    void set_mode(const std::string& mode);
     void set_session_id(const std::string& id);
 
 private:
@@ -20,6 +21,7 @@ private:
     ftxui::Component component_;
     bool busy_ = false;
     std::string model_;
+    std::string mode_ = "build";
     std::string session_id_;
 
     ftxui::Element render();

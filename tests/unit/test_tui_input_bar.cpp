@@ -3,6 +3,7 @@
 #include "tui/InputBar.h"
 #include "tui/ChatArea.h"
 #include "tui/StatusBar.h"
+#include <ftxui/component/mouse.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/dom/elements.hpp>
@@ -106,7 +107,18 @@ TEST_CASE("InputBar has no right-side hint", "[tui]") {
     std::string out = screen.ToString();
 
     REQUIRE(out.find("Enter to send") == std::string::npos);
-    REQUIRE(out.find("/help") == std::string::npos);
+}
+
+TEST_CASE("InputBar row uses the light theme background", "[tui]") {
+    InputBar bar;
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                        ftxui::Dimension::Fixed(3));
+    ftxui::Render(screen,
+        ftxui::vbox({bar.component()->Render()})
+            | ftxui::bgcolor(ftxui::Color::RGB(13, 17, 23)));
+    auto bg = screen.CellAt(1, 0).background_color;
+    REQUIRE_FALSE(bg == ftxui::Color::Default);
+    REQUIRE(bg == ftxui::Color::RGB(232, 234, 242));
 }
 
 TEST_CASE("Container::Vertical routes focus to InputBar", "[tui]") {
@@ -154,4 +166,102 @@ TEST_CASE("Container::Vertical with Renderer wrapper preserves focus", "[tui]") 
 
     auto inner_active = container->ActiveChild();
     REQUIRE(inner_active == input_comp);
+}
+
+TEST_CASE("InputBar shows command suggestions when typing /", "[tui]") {
+    InputBar bar;
+    bar.set_commands({
+        {"/skills", "List available skills", ""},
+        {"/resume", "Resume a conversation", ""},
+        {"/clear", "Clear the chat view", ""},
+    });
+
+    bar.component()->OnEvent(ftxui::Event::Character('/'));
+    bar.component()->OnEvent(ftxui::Event::Character('s'));
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                        ftxui::Dimension::Fixed(10));
+    ftxui::Render(screen, bar.component()->Render());
+    std::string out = screen.ToString();
+    REQUIRE(out.find("/skills") != std::string::npos);
+    REQUIRE(out.find("/resume") != std::string::npos);
+}
+
+TEST_CASE("InputBar executes selected command with Enter", "[tui]") {
+    InputBar bar;
+    bar.set_commands({
+        {"/skills", "List available skills", ""},
+        {"/resume", "Resume a conversation", ""},
+    });
+
+    std::string executed;
+    bar.set_on_command([&](const std::string& cmd) { executed = cmd; });
+
+    bar.component()->OnEvent(ftxui::Event::Character('/'));
+    bar.component()->OnEvent(ftxui::Event::Character('s'));
+    bar.component()->OnEvent(ftxui::Event::ArrowDown);
+    bar.component()->OnEvent(ftxui::Event::Return);
+
+    REQUIRE(executed == "/resume");
+}
+
+TEST_CASE("InputBar Tab completes the selected command", "[tui]") {
+    InputBar bar;
+    bar.set_commands({{"/skills", "List skills", ""}, {"/clear", "Clear view", ""}});
+
+    bar.component()->OnEvent(ftxui::Event::Character('/'));
+    bar.component()->OnEvent(ftxui::Event::Character('s'));
+    bar.component()->OnEvent(ftxui::Event::Tab);
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                        ftxui::Dimension::Fixed(10));
+    ftxui::Render(screen, bar.component()->Render());
+    REQUIRE(screen.ToString().find("/skills ") != std::string::npos);
+}
+
+TEST_CASE("InputBar Tab puts cursor after the trailing space", "[tui]") {
+    InputBar bar;
+    bar.set_commands({{"/skills", "List skills", ""}, {"/clear", "Clear view", ""}});
+
+    std::string submitted;
+    bar.set_on_submit([&](const std::string& s) { submitted = s; });
+
+    bar.component()->OnEvent(ftxui::Event::Character('/'));
+    bar.component()->OnEvent(ftxui::Event::Character('s'));
+    bar.component()->OnEvent(ftxui::Event::Tab);
+    bar.component()->OnEvent(ftxui::Event::Character('x'));
+    bar.component()->OnEvent(ftxui::Event::Return);
+
+    REQUIRE(submitted == "/skills x");
+}
+
+TEST_CASE("InputBar command suggestions scroll with mouse wheel", "[tui]") {
+    InputBar bar;
+    std::vector<CommandEntry> commands;
+    for (int i = 0; i < 10; ++i) {
+        commands.push_back({"/cmd" + std::to_string(i),
+                            "Command " + std::to_string(i), ""});
+    }
+    bar.set_commands(commands);
+    bar.component()->OnEvent(ftxui::Event::Character('/'));
+
+    auto render = [&] {
+        auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                            ftxui::Dimension::Fixed(12));
+        ftxui::Render(screen, bar.component()->Render());
+        return screen.ToString();
+    };
+
+    REQUIRE(render().find("/cmd0") != std::string::npos);
+    REQUIRE(render().find("/cmd8") == std::string::npos);
+
+    ftxui::Mouse mouse;
+    mouse.button = ftxui::Mouse::WheelDown;
+    mouse.x = 40;
+    mouse.y = 10;
+    bar.component()->OnEvent(ftxui::Event::Mouse("", mouse));
+
+    auto out = render();
+    REQUIRE(out.find("/cmd8") != std::string::npos);
+    REQUIRE(out.find("/cmd0") == std::string::npos);
 }

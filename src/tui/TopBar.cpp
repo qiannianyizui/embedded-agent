@@ -30,6 +30,10 @@ void TopBar::set_model(const std::string& model) {
     model_ = model;
 }
 
+void TopBar::set_mode(const std::string& mode) {
+    mode_ = mode;
+}
+
 void TopBar::set_session_id(const std::string& id) {
     session_id_ = id;
 }
@@ -51,6 +55,9 @@ ftxui::Element TopBar::render() {
     } else {
         parts.push_back(text("●") | color(theme.color.ok) | bold);
     }
+    if (mode_ == "plan") {
+        parts.push_back(text("  PLAN") | color(theme.color.accent) | bold);
+    }
 
     // Model / session
     if (!model_.empty()) {
@@ -64,6 +71,8 @@ ftxui::Element TopBar::render() {
     parts.push_back(filler());
 
     // Key hints (right-aligned, low emphasis)
+    parts.push_back(text("S-TAB mode") | color(theme.color.dim) | dim);
+    parts.push_back(text("  ") | color(theme.color.dim) | dim);
     parts.push_back(text("⌃P cmds") | color(theme.color.dim) | dim);
     parts.push_back(text("  ") | color(theme.color.dim) | dim);
     parts.push_back(text("⌃S sess") | color(theme.color.dim) | dim);

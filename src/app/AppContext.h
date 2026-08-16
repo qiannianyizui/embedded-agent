@@ -4,12 +4,14 @@
 #include "provider/IProvider.h"
 #include "memory/HolographicMemory.h"
 #include "memory/CuratedMemoryStore.h"
+#include "memory/MemoryExtractor.h"
 #include "tool/ToolRegistry.h"
 #include "security/SecurityPolicy.h"
 #include "security/IApprovalHandler.h"
 #include "agent/ContextCompressor.h"
 #include "agent/IMemoryStrategy.h"
 #include "agent/SubagentOrchestrator.h"
+#include "agent/PlanMode.h"
 #include "budget/BudgetTracker.h"
 #include "budget/SqliteUsageStore.h"
 #include "conversation/SqliteConversationStore.h"
@@ -45,6 +47,7 @@ struct AppContext {
     std::unique_ptr<ea::agent::ContextCompressor> compressor;
     std::unique_ptr<ea::agent::IMemoryStrategy> memory_strategy;
     std::unique_ptr<ea::agent::SubagentOrchestrator> orchestrator;
+    std::shared_ptr<ea::agent::PlanModeState> plan_mode;
 
     // Tools
     std::unique_ptr<ea::tool::ToolRegistry> registry;
@@ -60,6 +63,11 @@ struct AppContext {
 
     // MCP
     std::vector<std::shared_ptr<ea::mcp::McpClient>> mcp_clients;
+
+    // Background memory extraction. Declared last so it is destroyed first:
+    // its destructor joins the worker thread while provider/memory/store are
+    // still alive.
+    std::unique_ptr<ea::memory::MemoryExtractor> memory_extractor;
 
     // Debug
     bool debug = false;

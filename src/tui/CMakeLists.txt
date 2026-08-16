@@ -5,11 +5,13 @@ add_library(ea-tui OBJECT
     SetupWizard.cpp
     TuiApp.cpp
     ChatArea.cpp
+    TextWrap.cpp
     InputBar.cpp
     StatusBar.cpp
     TopBar.cpp
     ApprovalDialog.cpp
     CommandPalette.cpp
+    SkillsDialog.cpp
     SessionSidebar.cpp
     TuiEventListener.cpp
     TuiApprovalHandler.cpp
