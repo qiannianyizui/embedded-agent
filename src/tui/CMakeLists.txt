@@ -12,7 +12,7 @@ add_library(ea-tui OBJECT
     ApprovalDialog.cpp
     CommandPalette.cpp
     SkillsDialog.cpp
-    SessionSidebar.cpp
+    SessionsDialog.cpp
     TuiEventListener.cpp
     TuiApprovalHandler.cpp
 )

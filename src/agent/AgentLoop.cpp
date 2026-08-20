@@ -97,7 +97,9 @@ Result<void> AgentLoop::run(const std::string& user_input) {
     loop_detector_.reset();
     current_trace_id_ = trace::generate_uuid();
     bool compression_applied = false;
-    const bool plan_active = config_.plan_mode && config_.plan_mode->active.load();
+    const PermissionMode mode = config_.permission
+        ? config_.permission->mode.load() : PermissionMode::Default;
+    const bool plan_active = mode == PermissionMode::Plan;
 
     // Inject the first-run onboarding directive into the system prompt only.
     // It must never be persisted into history, otherwise restarting the app
@@ -111,7 +113,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
 
     Message user_msg{Role::User, user_input,
                      std::nullopt, std::nullopt, std::nullopt};
-    user_msg.mode = plan_active ? "plan" : "build";
+    user_msg.mode = permission_mode_name(mode);
     if (plan_active) user_msg.plan_file = plan_file_;
     append_to_history(std::move(user_msg));
 
@@ -157,7 +159,8 @@ Result<void> AgentLoop::run(const std::string& user_input) {
             ctx.system_prompt += "\n" + config_.onboarding_directive;
         }
         ctx.model = config_.model;
-        ctx.plan_mode = config_.plan_mode && config_.plan_mode->active.load();
+        ctx.permission_mode = config_.permission
+            ? config_.permission->mode.load() : PermissionMode::Default;
         ctx.plan_file = plan_file_;
         ctx.stream_callback = stream_fn_;
         ctx.emit_fn = [this](const AgentEvent& e) { emit_event(e); };
@@ -184,14 +187,18 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         }
         compression_applied = compression_applied || ctx.compression_applied;
 
-        // Plan approved via plan_exit: switch to build mode and continue with
-        // a synthetic user message so the same run implements the plan.
-        if (config_.plan_mode && config_.plan_mode->exit_approved.load()) {
-            config_.plan_mode->exit_approved.store(false);
+        // Plan approved via plan_exit: switch to the non-plan mode saved when
+        // planning started and continue with a synthetic user message so the
+        // same run implements the plan.
+        if (config_.permission && config_.permission->exit_approved.load()) {
+            config_.permission->exit_approved.store(false);
+            PermissionMode restored = config_.permission->previous.load();
+            if (restored == PermissionMode::Plan) restored = PermissionMode::Default;
+            config_.permission->mode.store(restored);
             Message plan_msg{Role::User,
                              "Plan approved. Execute the plan at " + plan_file_,
                              std::nullopt, std::nullopt, std::nullopt};
-            plan_msg.mode = "build";
+            plan_msg.mode = permission_mode_name(restored);
             plan_msg.plan_file = plan_file_;
             append_to_history(std::move(plan_msg));
             loop_detector_.reset();
@@ -204,7 +211,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
                     system_prompt_ += "\n" + mem_prompt;
                 }
             }
-            emit_mode_changed("build");
+            emit_mode_changed(permission_mode_name(restored));
             continue;
         }
 
@@ -309,7 +316,8 @@ void AgentLoop::build_system_prompt_once() {
     base_system_prompt_ = build_system_prompt(ctx);
     system_prompt_ = base_system_prompt_;
 
-    if (config_.plan_mode && config_.plan_mode->active.load()) {
+    if (config_.permission &&
+        config_.permission->mode.load() == PermissionMode::Plan) {
         std::string plan_prompt = PLAN_MODE_PROMPT;
         const std::string marker = "${plan_file}";
         auto pos = plan_prompt.find(marker);
@@ -325,19 +333,48 @@ void AgentLoop::interrupt() {
     interrupted_ = true;
 }
 
+PermissionMode AgentLoop::permission_mode() const {
+    return config_.permission ? config_.permission->mode.load()
+                              : PermissionMode::Default;
+}
+
 bool AgentLoop::plan_mode() const {
-    return config_.plan_mode && config_.plan_mode->active.load();
+    return permission_mode() == PermissionMode::Plan;
 }
 
 const std::string& AgentLoop::plan_file() const {
     return plan_file_;
 }
 
+Result<void> AgentLoop::set_permission_mode(PermissionMode m) {
+    if (!config_.permission) {
+        return Error::invalid_arg("permission modes are not available");
+    }
+    if (config_.permission->mode.load() == m) {
+        return {};
+    }
+    if (m == PermissionMode::Plan) {
+        return set_plan_mode(true);
+    }
+    if (config_.permission->mode.load() == PermissionMode::Plan) {
+        // Leaving plan mode — clear the pending plan_exit handoff.
+        config_.permission->exit_approved.store(false);
+    }
+    config_.permission->mode.store(m);
+    // Remember the last non-plan mode so leaving plan mode (Shift+Tab)
+    // restores it.
+    config_.permission->previous.store(m);
+    base_system_prompt_.clear();
+    system_prompt_.clear();
+    return {};
+}
+
 Result<void> AgentLoop::set_plan_mode(bool active) {
-    if (!config_.plan_mode) {
+    if (!config_.permission) {
         return Error::invalid_arg("plan mode is not available");
     }
-    if (config_.plan_mode->active.load() == active) {
+    const PermissionMode cur = config_.permission->mode.load();
+    if (active == (cur == PermissionMode::Plan)) {
         return {};
     }
 
@@ -345,18 +382,20 @@ Result<void> AgentLoop::set_plan_mode(bool active) {
         auto path = resolve_plan_file();
         if (!path.ok()) return path.error();
         plan_file_ = path.value();
-        config_.plan_mode->plan_file = plan_file_;
+        config_.permission->plan_file = plan_file_;
 
         auto dir = fs::mkdir_p(fs::parent_path(plan_file_));
         if (!dir.ok()) {
             plan_file_.clear();
-            config_.plan_mode->plan_file.clear();
+            config_.permission->plan_file.clear();
             return dir.error();
         }
-        config_.plan_mode->active.store(true);
+        config_.permission->mode.store(PermissionMode::Plan);
     } else {
-        config_.plan_mode->active.store(false);
-        config_.plan_mode->exit_approved.store(false);
+        config_.permission->exit_approved.store(false);
+        PermissionMode restored = config_.permission->previous.load();
+        if (restored == PermissionMode::Plan) restored = PermissionMode::Default;
+        config_.permission->mode.store(restored);
     }
 
     base_system_prompt_.clear();
@@ -503,19 +542,22 @@ void AgentLoop::restore_conversation(const std::string& conversation_id,
     pending_persist_.clear();
     base_system_prompt_.clear();  // Force rebuild on next run()
 
-    if (!config_.plan_mode) return;
-    config_.plan_mode->exit_approved.store(false);
+    if (!config_.permission) return;
+    config_.permission->exit_approved.store(false);
     for (auto it = history_.rbegin(); it != history_.rend(); ++it) {
         if (it->role != Role::User) continue;
-        const bool plan = it->mode == "plan";
-        config_.plan_mode->active.store(plan);
-        if (plan) {
+        const PermissionMode pm = permission_mode_from_name(it->mode);
+        config_.permission->mode.store(pm);
+        if (pm != PermissionMode::Plan) {
+            config_.permission->previous.store(pm);
+        }
+        if (pm == PermissionMode::Plan) {
             if (!it->plan_file.empty()) {
                 plan_file_ = it->plan_file;
-                config_.plan_mode->plan_file = plan_file_;
+                config_.permission->plan_file = plan_file_;
             } else if (auto path = resolve_plan_file(); path.ok()) {
                 plan_file_ = path.value();
-                config_.plan_mode->plan_file = plan_file_;
+                config_.permission->plan_file = plan_file_;
                 auto dir = fs::mkdir_p(fs::parent_path(plan_file_));
                 if (!dir.ok()) {
                     EA_WARN("Failed to create plan dir: {}", dir.error().message);
@@ -523,7 +565,7 @@ void AgentLoop::restore_conversation(const std::string& conversation_id,
             }
         } else {
             plan_file_.clear();
-            config_.plan_mode->plan_file.clear();
+            config_.permission->plan_file.clear();
         }
         break;
     }

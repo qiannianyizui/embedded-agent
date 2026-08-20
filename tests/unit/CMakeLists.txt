@@ -86,7 +86,7 @@ add_executable(ea-tui-tests
         test_tui_command_palette.cpp
         test_tui_skills_dialog.cpp
         test_tui_input_bar.cpp
-        test_tui_session_sidebar.cpp
+        test_tui_sessions_dialog.cpp
         test_tui_app.cpp
         test_tui_theme.cpp
         test_tui_spinner.cpp

@@ -4,6 +4,7 @@
 #include "provider/IProvider.h"
 #include "tool/ToolRegistry.h"
 #include "AgentEvent.h"
+#include "PermissionMode.h"
 #include <vector>
 #include <string>
 #include <atomic>
@@ -58,8 +59,8 @@ struct TurnContext {
     // Resolved model name for this turn (for trace attribution)
     std::string model;
 
-    // Plan mode state for this turn
-    bool plan_mode = false;
+    // Permission mode for this turn
+    PermissionMode permission_mode = PermissionMode::Default;
     std::string plan_file;
 
     // Streaming callback — when set, CallProviderStep uses stream_chat

@@ -13,7 +13,7 @@
 #include "ApprovalDialog.h"
 #include "CommandPalette.h"
 #include "SkillsDialog.h"
-#include "SessionSidebar.h"
+#include "SessionsDialog.h"
 #include "TuiEventListener.h"
 #include "TuiApprovalHandler.h"
 #include "memory/MemoryExtractor.h"
@@ -67,7 +67,7 @@ private:
     ApprovalDialog approval_dialog_{approval_handler_};
     CommandPalette command_palette_;
     SkillsDialog skills_dialog_;
-    SessionSidebar sidebar_{nullptr};
+    SessionsDialog sessions_dialog_;
     std::shared_ptr<TuiEventListener> event_listener_;
     std::thread heartbeat_thread_;
     std::atomic<bool> heartbeat_stop_{false};
@@ -98,10 +98,10 @@ private:
     // Component tree
     ftxui::Component root_component_;
     ftxui::Component spinner_component_;
-    int sidebar_width_ = 0;  // 0 = hidden
     bool approval_showing_ = false;
     bool palette_showing_ = false;
     bool skills_showing_ = false;
+    bool sessions_showing_ = false;
     std::chrono::steady_clock::time_point last_redraw_request_{};
 
     void build_component_tree();
@@ -114,6 +114,7 @@ private:
                           const std::string& success_suffix = "");
     void rebuild_skill_commands();
     void start_new_session();
+    void resume_session(const std::string& cid);
     void notify_session_end();
     void push_banner();
     // Coalesced redraw request; must only be called from the UI thread.

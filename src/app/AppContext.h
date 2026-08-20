@@ -11,7 +11,7 @@
 #include "agent/ContextCompressor.h"
 #include "agent/IMemoryStrategy.h"
 #include "agent/SubagentOrchestrator.h"
-#include "agent/PlanMode.h"
+#include "agent/PermissionMode.h"
 #include "budget/BudgetTracker.h"
 #include "budget/SqliteUsageStore.h"
 #include "conversation/SqliteConversationStore.h"
@@ -47,7 +47,7 @@ struct AppContext {
     std::unique_ptr<ea::agent::ContextCompressor> compressor;
     std::unique_ptr<ea::agent::IMemoryStrategy> memory_strategy;
     std::unique_ptr<ea::agent::SubagentOrchestrator> orchestrator;
-    std::shared_ptr<ea::agent::PlanModeState> plan_mode;
+    std::shared_ptr<ea::agent::PermissionState> permission;
 
     // Tools
     std::unique_ptr<ea::tool::ToolRegistry> registry;

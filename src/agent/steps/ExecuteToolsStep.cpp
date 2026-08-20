@@ -16,6 +16,12 @@ std::string normalize_path(const std::string& path) {
     }
 }
 
+bool is_file_write(const ToolCall& tc) {
+    if (tc.name != "file") return false;
+    std::string action = tc.arguments.value("action", "");
+    return action == "write" || action == "edit";
+}
+
 bool is_plan_file_write(const ToolCall& tc, const TurnContext& ctx) {
     if (tc.name != "file" || ctx.plan_file.empty()) return false;
     std::string action = tc.arguments.value("action", "");
@@ -32,6 +38,34 @@ bool plan_mode_allows(const ToolCall& tc, const TurnContext& ctx, ITool* tool) {
         std::string action = tc.arguments.value("action", "");
         if (action == "read") return true;
         return is_plan_file_write(tc, ctx);
+    }
+    return false;
+}
+
+// Does this tool call mutate state (write files, run commands, ...)?
+bool call_is_mutating(const ToolCall& tc, ITool* tool) {
+    if (!tool) return true;
+    if (tc.name == "file") {
+        // FileTool is_mutating() covers write/edit; read actions are safe.
+        return is_file_write(tc);
+    }
+    return tool->is_mutating();
+}
+
+// Should this tool call go through the approval handler, per permission mode?
+bool needs_approval(const ToolCall& tc, const TurnContext& ctx, ITool* tool) {
+    switch (ctx.permission_mode) {
+        case PermissionMode::Default:
+            return call_is_mutating(tc, tool);
+        case PermissionMode::AcceptEdits:
+            // File write/edit is auto-accepted; everything else mutating asks.
+            return is_file_write(tc) ? false : call_is_mutating(tc, tool);
+        case PermissionMode::Plan:
+            // The plan hard guard below blocks mutating calls; plan_exit has
+            // its own approval inside the tool.
+            return false;
+        case PermissionMode::BypassPermissions:
+            return false;
     }
     return false;
 }
@@ -73,7 +107,8 @@ Result<void> ExecuteToolsStep::execute(TurnContext& ctx) {
         // Plan mode hard guard — mutating tools are blocked unless they target
         // the plan file (or are plan_exit itself).
         ITool* tool = ctx.registry->find(tc.name);
-        if (ctx.plan_mode && !plan_mode_allows(tc, ctx, tool)) {
+        if (ctx.permission_mode == PermissionMode::Plan &&
+            !plan_mode_allows(tc, ctx, tool)) {
             EA_WARN("Tool blocked by plan mode: {} ({})", tc.name,
                     tc.arguments.dump());
             ctx.tool_results.push_back(
@@ -82,13 +117,13 @@ Result<void> ExecuteToolsStep::execute(TurnContext& ctx) {
             continue;
         }
 
-        // 2. Approval soft check for dangerous tools
-        bool skip_approval = ctx.plan_mode && is_plan_file_write(tc, ctx);
-        if (tool && tool->is_dangerous() && approval_ && !skip_approval) {
+        // 2. Approval soft check — policy depends on the permission mode.
+        if (needs_approval(tc, ctx, tool) && approval_) {
             security::ApprovalRequest req;
             req.tool_name = tc.name;
             req.arguments = tc.arguments;
-            req.description = "Tool '" + tc.name + "' is marked as dangerous";
+            req.description = "Tool '" + tc.name + "' requires approval in mode "
+                + permission_mode_name(ctx.permission_mode);
 
             auto decision = approval_->request_approval(req);
             if (decision == security::ApprovalDecision::Rejected) {

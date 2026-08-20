@@ -13,7 +13,7 @@
 #include "tui/InputBar.h"
 #include "tui/StatusBar.h"
 #include "tui/TopBar.h"
-#include "tui/SessionSidebar.h"
+#include "tui/SessionsDialog.h"
 #include "tui/CommandPalette.h"
 #include "tui/ApprovalDialog.h"
 #include "tui/TuiApprovalHandler.h"
@@ -108,16 +108,14 @@ struct MainScreen {
     InputBar input;
     StatusBar status;
     TopBar top{status.spinner_state()};
-    SessionSidebar sidebar;
     ftxui::Component root;
 
-    explicit MainScreen(FakeStore* store)
-        : sidebar(store) {
+    explicit MainScreen(FakeStore*) {
         using namespace ftxui;
         auto& theme = default_theme();
 
         auto container = Container::Vertical({input.component()});
-        auto layout = Renderer(container, [&] {
+        root = Renderer(container, [&] {
             return vbox({
                        top.component()->Render() | size(HEIGHT, EQUAL, 1),
                        separator() | color(theme.color.border_soft),
@@ -129,18 +127,6 @@ struct MainScreen {
                        input.component()->Render() | size(HEIGHT, EQUAL, 1),
                    })
                 | bgcolor(theme.color.bg);
-        });
-
-        sidebar.toggle();
-        sidebar.set_active("conv_a1b2c3d4");
-
-        root = Renderer(layout, [this, layout] {
-            using namespace ftxui;
-            return hbox({
-                sidebar.component()->Render() | size(WIDTH, EQUAL, 34),
-                separator() | color(default_theme().color.border_soft),
-                layout->Render() | xflex,
-            });
         });
     }
 
@@ -158,7 +144,7 @@ void populate_idle_chat(ChatArea& chat) {
         "  workspace  /home/lsy/embedded-agent\n"
         "  session    (new)\n"
         "\nWhat would you like to do?\n"
-        "\n  Ctrl+P commands · Ctrl+S sessions · Ctrl+C interrupt/exit",
+        "\n  /help commands · Ctrl+C interrupt/exit",
         /*plain=*/true);
 }
 
@@ -281,7 +267,27 @@ int main(int argc, char** argv) {
     }
 
     // ------------------------------------------------------------------
-    // View 4: approval dialog (high-risk tool)
+    // View 4: sessions dialog (/sessions)
+    // ------------------------------------------------------------------
+    {
+        using namespace ftxui;
+        FakeStore store;
+        SessionsDialog dialog;
+        dialog.set_store(&store);
+        dialog.set_active("conv_a1b2c3d4");
+        dialog.show();
+        auto& theme = default_theme();
+        auto overlay = vbox({
+            filler(),
+            dialog.component()->Render() | center,
+            filler(),
+        }) | bgcolor(theme.color.bg);
+        write_file(outdir + "/tui_sessions.ans",
+                   render_element(overlay, 110, 26));
+    }
+
+    // ------------------------------------------------------------------
+    // View 5: approval dialog (high-risk tool)
     // ------------------------------------------------------------------
     {
         using namespace ftxui;

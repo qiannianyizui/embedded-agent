@@ -9,7 +9,7 @@ public:
     Result<void> execute(TurnContext& ctx) override {
         if (ctx.registry) {
             auto specs = ctx.registry->active_specs();
-            if (!ctx.plan_mode) {
+            if (ctx.permission_mode != PermissionMode::Plan) {
                 for (const auto& spec : specs) {
                     if (spec.name != "plan_exit") {
                         ctx.tool_specs.push_back(spec);

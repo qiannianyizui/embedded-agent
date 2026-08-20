@@ -4,7 +4,7 @@
 namespace ea::agent {
 
 Result<ToolResult> PlanExitTool::execute(const json&) {
-    if (!state_ || !state_->active.load()) {
+    if (!state_ || state_->mode.load() != PermissionMode::Plan) {
         return ToolResult{"", "Not in plan mode — plan_exit is only available while planning.", true};
     }
 
@@ -17,7 +17,10 @@ Result<ToolResult> PlanExitTool::execute(const json&) {
         : security::ApprovalDecision::Approved;
 
     if (decision == security::ApprovalDecision::Approved) {
-        state_->active.store(false);
+        // Restore the non-plan mode saved when planning started.
+        PermissionMode restored = state_->previous.load();
+        if (restored == PermissionMode::Plan) restored = PermissionMode::Default;
+        state_->mode.store(restored);
         state_->exit_approved.store(true);
         return ToolResult{"", "Plan approved. Switching to build mode to implement the plan.", false};
     }

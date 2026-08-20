@@ -214,12 +214,12 @@ Result<AppContext> AppBuilder::build(const config::AppConfig& cfg, bool debug,
 
     // 7. Register tools
     ctx.registry = std::make_unique<tool::ToolRegistry>();
-    ctx.plan_mode = std::make_shared<agent::PlanModeState>();
+    ctx.permission = std::make_shared<agent::PermissionState>();
     ctx.registry->register_tool(
         std::make_unique<tool::ShellTool>(workspace));
     ctx.registry->register_tool(std::make_unique<tool::FileTool>());
     ctx.registry->register_tool(
-        std::make_unique<agent::PlanExitTool>(ctx.approval.get(), ctx.plan_mode));
+        std::make_unique<agent::PlanExitTool>(ctx.approval.get(), ctx.permission));
     ctx.registry->register_tool(std::make_unique<tool::SearchTool>());
     tool::WebSearchBackendConfig web_search_cfg;
     web_search_cfg.backend = cfg.web.search_backend;

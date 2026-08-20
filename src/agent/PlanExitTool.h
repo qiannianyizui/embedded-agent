@@ -2,7 +2,7 @@
 #pragma once
 #include "tool/ITool.h"
 #include "security/IApprovalHandler.h"
-#include "PlanMode.h"
+#include "PermissionMode.h"
 #include <memory>
 
 namespace ea::agent {
@@ -10,7 +10,7 @@ namespace ea::agent {
 class PlanExitTool : public ITool {
 public:
     PlanExitTool(security::IApprovalHandler* approval,
-                 std::shared_ptr<PlanModeState> state)
+                 std::shared_ptr<PermissionState> state)
         : approval_(approval), state_(std::move(state)) {}
 
     std::string name() const override { return "plan_exit"; }
@@ -29,7 +29,7 @@ public:
 
 private:
     security::IApprovalHandler* approval_;
-    std::shared_ptr<PlanModeState> state_;
+    std::shared_ptr<PermissionState> state_;
 };
 
 }  // namespace ea::agent

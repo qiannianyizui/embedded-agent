@@ -97,6 +97,12 @@ ftxui::Element StatusBar::render() {
     if (mode_ == "plan") {
         segments.push_back(sep());
         segments.push_back(text("PLAN") | color(theme.color.accent) | bold);
+    } else if (mode_ == "acceptEdits") {
+        segments.push_back(sep());
+        segments.push_back(text("ACCEPT EDITS") | color(theme.color.warn) | bold);
+    } else if (mode_ == "bypassPermissions") {
+        segments.push_back(sep());
+        segments.push_back(text("BYPASS") | color(theme.color.error) | bold);
     }
 
     // Tokens

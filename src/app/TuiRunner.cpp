@@ -1,6 +1,5 @@
 #include "app/TuiRunner.h"
 #include "app/AppContext.h"
-#include "app/auto_resume.h"
 #include "app/onboarding.h"
 #include "agent/AgentLoop.h"
 #include "agent/LoggingEventListener.h"
@@ -33,7 +32,7 @@ int TuiRunner::run(AppContext& ctx) {
             ctx.context_files,
             ctx.skills_index,
             "",
-            ctx.plan_mode,
+            ctx.permission,
             "",
             ctx.config.agent.max_tokens
         },
@@ -55,9 +54,10 @@ int TuiRunner::run(AppContext& ctx) {
     // status bar, so BudgetEventListener is intentionally NOT added here
     // (it would print raw [Usage: ...] lines to stdout and corrupt the FTXUI render).
 
-    auto_resume(ctx, tui_loop, true);
+    // Every launch starts a fresh session; resume previous conversations
+// explicitly via /resume.
 
-    // First-run profile-build onboarding (Hermes-style, one-time latch).
+// First-run profile-build onboarding (Hermes-style, one-time latch).
     std::string onboarding_directive;
     if (ea::app::should_offer_profile(ctx.config)) {
         bool has_sessions = false;

@@ -15,7 +15,7 @@
 #include "conversation/IConversationStore.h"
 #include "budget/BudgetTracker.h"
 #include "memory/CuratedMemoryStore.h"
-#include "agent/PlanMode.h"
+#include "agent/PermissionMode.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -39,7 +39,7 @@ public:
         std::string context_files;  // Project context file content
         std::string skills_index;   // Rendered <available_skills> block
         std::string onboarding_directive;  // First-run profile-build directive
-        std::shared_ptr<PlanModeState> plan_mode;  // nullptr = plan mode disabled
+        std::shared_ptr<PermissionState> permission;  // nullptr = modes disabled
         std::string plan_dir;  // override for plan file directory (default: worktree/.opencode/plans)
         int max_tokens = 0;  // 0 = don't send max_tokens (model default)
     };
@@ -75,9 +75,11 @@ public:
                               std::vector<Message> messages);
     const std::string& conversation_id() const { return conversation_id_; }
 
-    // Plan mode
-    bool plan_mode() const;
+    // Permission modes (Claude Code style)
+    PermissionMode permission_mode() const;
+    bool plan_mode() const;  // convenience: permission_mode() == Plan
     const std::string& plan_file() const;
+    Result<void> set_permission_mode(PermissionMode mode);
     Result<void> set_plan_mode(bool active);
 
     struct CompressionResult {

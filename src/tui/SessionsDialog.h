@@ -1,4 +1,4 @@
-// SessionSidebar — collapsible panel listing conversations
+// SessionsDialog — modal session picker: list conversations, Enter resumes one
 #pragma once
 #include <ftxui/component/component.hpp>
 #include "conversation/IConversationStore.h"
@@ -8,26 +8,28 @@
 
 namespace ea::tui {
 
-class SessionSidebar {
+class SessionsDialog {
 public:
-    explicit SessionSidebar(ea::conversation::IConversationStore* store = nullptr);
+    SessionsDialog();
 
     ftxui::Component component();
-    bool is_showing() const;
-    void toggle();
-    void refresh();
+    void set_store(ea::conversation::IConversationStore* store);
     void set_active(const std::string& id);
-    void set_on_resume(std::function<void(std::string)> fn);
+    void set_on_resume(std::function<void(const std::string&)> fn);
+    bool is_showing() const;
+    void show();
+    void hide();
 
 private:
-    ea::conversation::IConversationStore* store_;
+    ea::conversation::IConversationStore* store_ = nullptr;
     ftxui::Component component_;
     std::vector<ea::conversation::ConversationMeta> sessions_;
     std::string active_id_;
+    std::function<void(const std::string&)> on_resume_;
     int selected_ = 0;
     bool showing_ = false;
-    std::function<void(std::string)> on_resume_;
 
+    void refresh();
     ftxui::Element render();
     bool on_event(ftxui::Event event);
 };
