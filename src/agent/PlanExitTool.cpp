@@ -10,7 +10,7 @@ Result<ToolResult> PlanExitTool::execute(const json&) {
 
     security::ApprovalRequest req;
     req.tool_name = "plan_exit";
-    req.description = "Planning is complete. Switch to build mode and start implementing the plan?";
+    req.description = "Planning is complete. Leave plan mode and start implementing the plan?";
 
     auto decision = approval_
         ? approval_->request_approval(req)
@@ -19,10 +19,10 @@ Result<ToolResult> PlanExitTool::execute(const json&) {
     if (decision == security::ApprovalDecision::Approved) {
         // Restore the non-plan mode saved when planning started.
         PermissionMode restored = state_->previous.load();
-        if (restored == PermissionMode::Plan) restored = PermissionMode::Default;
+        if (restored == PermissionMode::Plan) restored = PermissionMode::Manual;
         state_->mode.store(restored);
         state_->exit_approved.store(true);
-        return ToolResult{"", "Plan approved. Switching to build mode to implement the plan.", false};
+        return ToolResult{"", "Plan approved. Left plan mode to implement the plan.", false};
     }
     if (decision == security::ApprovalDecision::Aborted) {
         return ToolResult{"", "Plan approval aborted.", true};

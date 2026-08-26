@@ -49,7 +49,7 @@ std::string unique_plan_dir() {
 TEST_CASE("PlanExitTool requests approval and switches to previous mode", "[plan_mode]") {
     auto state = std::make_shared<PermissionState>();
     state->mode.store(PermissionMode::Plan);
-    state->previous.store(PermissionMode::Default);
+    state->previous.store(PermissionMode::Manual);
     MockApproval approval;
     approval.decision = security::ApprovalDecision::Approved;
     PlanExitTool tool(&approval, state);
@@ -57,7 +57,7 @@ TEST_CASE("PlanExitTool requests approval and switches to previous mode", "[plan
     auto result = tool.execute(json::object());
     REQUIRE(result.ok());
     REQUIRE_FALSE(result.value().is_error);
-    REQUIRE(state->mode.load() == PermissionMode::Default);
+    REQUIRE(state->mode.load() == PermissionMode::Manual);
     REQUIRE(state->exit_approved.load());
     REQUIRE(approval.calls == 1);
 
@@ -169,7 +169,7 @@ TEST_CASE("Default mode asks for every mutating tool", "[plan_mode]") {
     std::atomic<bool> interrupted{false};
     TurnContext ctx(history, interrupted);
     ctx.registry = &registry;
-    ctx.permission_mode = PermissionMode::Default;
+    ctx.permission_mode = PermissionMode::Manual;
 
     ExecuteToolsStep step(nullptr, &approval);
 
@@ -281,7 +281,7 @@ TEST_CASE("AgentLoop switches plan -> previous mode after plan_exit approval", "
     REQUIRE(saw_handoff);
     REQUIRE(provider->call_count() >= 2);
 
-    // Build-mode specs after the switch include mutating tools again.
+    // Tool specs after the switch include mutating tools again.
     bool saw_shell = false;
     for (const auto& spec : provider->last_specs()) {
         if (spec.name == "shell") saw_shell = true;
@@ -313,8 +313,8 @@ TEST_CASE("set_permission_mode round-trips through plan", "[plan_mode]") {
     REQUIRE(loop.plan_mode());
 
     // Leaving plan mode restores the last non-plan mode.
-    REQUIRE(loop.set_permission_mode(PermissionMode::Default).ok());
-    REQUIRE(loop.permission_mode() == PermissionMode::Default);
+    REQUIRE(loop.set_permission_mode(PermissionMode::Manual).ok());
+    REQUIRE(loop.permission_mode() == PermissionMode::Manual);
 
     REQUIRE(loop.set_permission_mode(PermissionMode::BypassPermissions).ok());
     REQUIRE(loop.permission_mode() == PermissionMode::BypassPermissions);
@@ -322,6 +322,23 @@ TEST_CASE("set_permission_mode round-trips through plan", "[plan_mode]") {
     REQUIRE(loop.plan_mode());
     REQUIRE(loop.set_plan_mode(false).ok());
     REQUIRE(loop.permission_mode() == PermissionMode::BypassPermissions);
+}
+
+TEST_CASE("Permission mode names round-trip with legacy aliases", "[plan_mode]") {
+    REQUIRE(std::string(permission_mode_name(PermissionMode::Manual)) == "manual");
+    REQUIRE(std::string(permission_mode_name(PermissionMode::AcceptEdits))
+            == "acceptEdits");
+    REQUIRE(std::string(permission_mode_name(PermissionMode::Plan)) == "plan");
+    REQUIRE(std::string(permission_mode_name(PermissionMode::BypassPermissions))
+            == "auto");
+
+    REQUIRE(permission_mode_from_name("manual") == PermissionMode::Manual);
+    REQUIRE(permission_mode_from_name("default") == PermissionMode::Manual);
+    REQUIRE(permission_mode_from_name("acceptEdits") == PermissionMode::AcceptEdits);
+    REQUIRE(permission_mode_from_name("plan") == PermissionMode::Plan);
+    REQUIRE(permission_mode_from_name("auto") == PermissionMode::BypassPermissions);
+    REQUIRE(permission_mode_from_name("bypassPermissions")
+            == PermissionMode::BypassPermissions);
 }
 
 TEST_CASE("Conversation store round-trips permission mode fields", "[plan_mode]") {

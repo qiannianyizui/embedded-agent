@@ -98,7 +98,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
     current_trace_id_ = trace::generate_uuid();
     bool compression_applied = false;
     const PermissionMode mode = config_.permission
-        ? config_.permission->mode.load() : PermissionMode::Default;
+        ? config_.permission->mode.load() : PermissionMode::Manual;
     const bool plan_active = mode == PermissionMode::Plan;
 
     // Inject the first-run onboarding directive into the system prompt only.
@@ -160,7 +160,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         }
         ctx.model = config_.model;
         ctx.permission_mode = config_.permission
-            ? config_.permission->mode.load() : PermissionMode::Default;
+            ? config_.permission->mode.load() : PermissionMode::Manual;
         ctx.plan_file = plan_file_;
         ctx.stream_callback = stream_fn_;
         ctx.emit_fn = [this](const AgentEvent& e) { emit_event(e); };
@@ -193,7 +193,7 @@ Result<void> AgentLoop::run(const std::string& user_input) {
         if (config_.permission && config_.permission->exit_approved.load()) {
             config_.permission->exit_approved.store(false);
             PermissionMode restored = config_.permission->previous.load();
-            if (restored == PermissionMode::Plan) restored = PermissionMode::Default;
+            if (restored == PermissionMode::Plan) restored = PermissionMode::Manual;
             config_.permission->mode.store(restored);
             Message plan_msg{Role::User,
                              "Plan approved. Execute the plan at " + plan_file_,
@@ -335,7 +335,7 @@ void AgentLoop::interrupt() {
 
 PermissionMode AgentLoop::permission_mode() const {
     return config_.permission ? config_.permission->mode.load()
-                              : PermissionMode::Default;
+                              : PermissionMode::Manual;
 }
 
 bool AgentLoop::plan_mode() const {
@@ -394,7 +394,7 @@ Result<void> AgentLoop::set_plan_mode(bool active) {
     } else {
         config_.permission->exit_approved.store(false);
         PermissionMode restored = config_.permission->previous.load();
-        if (restored == PermissionMode::Plan) restored = PermissionMode::Default;
+        if (restored == PermissionMode::Plan) restored = PermissionMode::Manual;
         config_.permission->mode.store(restored);
     }
 

@@ -109,6 +109,103 @@ TEST_CASE("InputBar has no right-side hint", "[tui]") {
     REQUIRE(out.find("Enter to send") == std::string::npos);
 }
 
+TEST_CASE("InputBar shows the manual-mode hint below the input", "[tui]") {
+    InputBar bar;
+    REQUIRE(bar.mode() == "manual");
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                        ftxui::Dimension::Fixed(3));
+    ftxui::Render(screen, bar.component()->Render());
+    std::string out = screen.ToString();
+
+    REQUIRE(out.find("manual mode") != std::string::npos);
+    REQUIRE(out.find("accept edits on") == std::string::npos);
+}
+
+TEST_CASE("InputBar shows the plan-mode hint below the input", "[tui]") {
+    InputBar bar;
+    bar.set_mode("plan");
+    REQUIRE(bar.mode() == "plan");
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                        ftxui::Dimension::Fixed(3));
+    ftxui::Render(screen, bar.component()->Render());
+    std::string out = screen.ToString();
+
+    REQUIRE(out.find("plan mode on") != std::string::npos);
+    REQUIRE(out.find("manual mode") == std::string::npos);
+}
+
+TEST_CASE("InputBar shows the accept-edits hint", "[tui]") {
+    InputBar bar;
+    bar.set_mode("acceptEdits");
+    REQUIRE(bar.mode() == "acceptEdits");
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                        ftxui::Dimension::Fixed(3));
+    ftxui::Render(screen, bar.component()->Render());
+    std::string out = screen.ToString();
+
+    REQUIRE(out.find("accept edits on") != std::string::npos);
+}
+
+TEST_CASE("InputBar shows the auto-mode hint", "[tui]") {
+    InputBar bar;
+    bar.set_mode("auto");
+    REQUIRE(bar.mode() == "auto");
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                        ftxui::Dimension::Fixed(3));
+    ftxui::Render(screen, bar.component()->Render());
+    std::string out = screen.ToString();
+
+    REQUIRE(out.find("auto mode") != std::string::npos);
+    REQUIRE(out.find("manual mode") == std::string::npos);
+}
+
+TEST_CASE("InputBar mode hint coexists with command suggestions", "[tui]") {
+    InputBar bar;
+    bar.set_mode("plan");
+    bar.set_commands({{"/clear", "Clear view", ""}});
+
+    bar.component()->OnEvent(ftxui::Event::Character('/'));
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                        ftxui::Dimension::Fixed(8));
+    ftxui::Render(screen, bar.component()->Render());
+    std::string out = screen.ToString();
+
+    REQUIRE(out.find("plan mode on") != std::string::npos);
+    REQUIRE(out.find("/clear") != std::string::npos);
+}
+
+TEST_CASE("InputBar mode hint shows the workspace path before the mode", "[tui]") {
+    InputBar bar;
+    bar.set_cwd("/home/lsy/embedded-agent");
+    bar.set_mode("plan");
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                        ftxui::Dimension::Fixed(3));
+    ftxui::Render(screen, bar.component()->Render());
+    std::string out = screen.ToString();
+
+    REQUIRE(out.find("/home/lsy/embedded-agent") != std::string::npos);
+    REQUIRE(out.find("plan mode on") != std::string::npos);
+}
+
+TEST_CASE("InputBar mode hint omits the path separator when cwd is unset", "[tui]") {
+    InputBar bar;
+    bar.set_mode("manual");
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                        ftxui::Dimension::Fixed(3));
+    ftxui::Render(screen, bar.component()->Render());
+    std::string out = screen.ToString();
+
+    REQUIRE(out.find("·") == std::string::npos);
+    REQUIRE(out.find("manual mode") != std::string::npos);
+}
+
 TEST_CASE("InputBar row uses the light theme background", "[tui]") {
     InputBar bar;
     auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
@@ -233,6 +330,23 @@ TEST_CASE("InputBar Tab puts cursor after the trailing space", "[tui]") {
     bar.component()->OnEvent(ftxui::Event::Return);
 
     REQUIRE(submitted == "/skills x");
+}
+
+TEST_CASE("InputBar suggestions never clip long command names", "[tui]") {
+    InputBar bar;
+    bar.set_commands({
+        {"/superpowers:brainstorming",
+         "Use when the user wants to brainstorm ideas and refine a plan", ""},
+        {"/clear", "Clear view", ""},
+    });
+
+    bar.component()->OnEvent(ftxui::Event::Character('/'));
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                        ftxui::Dimension::Fixed(12));
+    ftxui::Render(screen, bar.component()->Render());
+    std::string out = screen.ToString();
+    REQUIRE(out.find("/superpowers:brainstorming") != std::string::npos);
 }
 
 TEST_CASE("InputBar command suggestions scroll with mouse wheel", "[tui]") {

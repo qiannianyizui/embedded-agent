@@ -4,6 +4,7 @@
 #include "tui/ChatArea.h"
 #include "tui/StatusBar.h"
 #include "tui/TopBar.h"
+#include "tui/InputBar.h"
 #include <vector>
 #include <mutex>
 
@@ -13,10 +14,11 @@ TEST_CASE("TuiEventListener dispatches TurnStart", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
     TopBar top_bar(status_bar.spinner_state());
+    InputBar input_bar;
     std::vector<std::function<void()>> posted;
     std::mutex mtx;
 
-    TuiEventListener listener(chat_area, status_bar, top_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar, input_bar,
         [&](std::function<void()> fn) {
             std::lock_guard<std::mutex> lock(mtx);
             posted.push_back(std::move(fn));
@@ -37,9 +39,10 @@ TEST_CASE("TuiEventListener dispatches TurnEnd", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
     TopBar top_bar(status_bar.spinner_state());
+    InputBar input_bar;
     std::vector<std::function<void()>> posted;
 
-    TuiEventListener listener(chat_area, status_bar, top_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar, input_bar,
         [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
 
     ea::agent::AgentEvent event;
@@ -54,9 +57,10 @@ TEST_CASE("TuiEventListener dispatches LLMResponse with usage", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
     TopBar top_bar(status_bar.spinner_state());
+    InputBar input_bar;
     std::vector<std::function<void()>> posted;
 
-    TuiEventListener listener(chat_area, status_bar, top_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar, input_bar,
         [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
 
     ea::agent::AgentEvent event;
@@ -72,9 +76,10 @@ TEST_CASE("TuiEventListener dispatches ToolCallStart", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
     TopBar top_bar(status_bar.spinner_state());
+    InputBar input_bar;
     std::vector<std::function<void()>> posted;
 
-    TuiEventListener listener(chat_area, status_bar, top_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar, input_bar,
         [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
 
     ea::agent::AgentEvent event;
@@ -95,9 +100,10 @@ TEST_CASE("TuiEventListener dispatches ToolCallEnd", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
     TopBar top_bar(status_bar.spinner_state());
+    InputBar input_bar;
     std::vector<std::function<void()>> posted;
 
-    TuiEventListener listener(chat_area, status_bar, top_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar, input_bar,
         [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
 
     ea::agent::AgentEvent event;
@@ -118,9 +124,10 @@ TEST_CASE("TuiEventListener dispatches ToolCallEnd with error", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
     TopBar top_bar(status_bar.spinner_state());
+    InputBar input_bar;
     std::vector<std::function<void()>> posted;
 
-    TuiEventListener listener(chat_area, status_bar, top_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar, input_bar,
         [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
 
     ea::agent::AgentEvent event;
@@ -140,9 +147,10 @@ TEST_CASE("TuiEventListener dispatches Error", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
     TopBar top_bar(status_bar.spinner_state());
+    InputBar input_bar;
     std::vector<std::function<void()>> posted;
 
-    TuiEventListener listener(chat_area, status_bar, top_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar, input_bar,
         [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
 
     ea::agent::AgentEvent event;
@@ -161,9 +169,10 @@ TEST_CASE("TuiEventListener dispatches Interrupt", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
     TopBar top_bar(status_bar.spinner_state());
+    InputBar input_bar;
     std::vector<std::function<void()>> posted;
 
-    TuiEventListener listener(chat_area, status_bar, top_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar, input_bar,
         [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
 
     ea::agent::AgentEvent event;
@@ -181,9 +190,10 @@ TEST_CASE("TuiEventListener multiple events accumulate posted tasks", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
     TopBar top_bar(status_bar.spinner_state());
+    InputBar input_bar;
     std::vector<std::function<void()>> posted;
 
-    TuiEventListener listener(chat_area, status_bar, top_bar,
+    TuiEventListener listener(chat_area, status_bar, top_bar, input_bar,
         [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
 
     ea::agent::AgentEvent event;
@@ -219,9 +229,38 @@ TEST_CASE("TuiEventListener is an IEventListener", "[tui]") {
     ChatArea chat_area;
     StatusBar status_bar;
     TopBar top_bar(status_bar.spinner_state());
-    TuiEventListener listener(chat_area, status_bar, top_bar,
+    InputBar input_bar;
+    TuiEventListener listener(chat_area, status_bar, top_bar, input_bar,
         [](std::function<void()>) {});
 
     ea::agent::IEventListener* iface = &listener;
     REQUIRE(iface != nullptr);
+}
+
+TEST_CASE("TuiEventListener ModeChanged updates the input-bar mode silently", "[tui]") {
+    ChatArea chat_area;
+    StatusBar status_bar;
+    TopBar top_bar(status_bar.spinner_state());
+    InputBar input_bar;
+    std::vector<std::function<void()>> posted;
+
+    TuiEventListener listener(chat_area, status_bar, top_bar, input_bar,
+        [&](std::function<void()> fn) { posted.push_back(std::move(fn)); });
+
+    ea::agent::AgentEvent event;
+    event.type = ea::agent::AgentEventType::ModeChanged;
+
+    // Leaving plan mode via plan_exit: input-bar mode must update.
+    event.mode = "manual";
+    listener.on_event(event);
+    REQUIRE(posted.size() == 1);
+    posted[0]();
+    REQUIRE(input_bar.mode() == "manual");
+
+    // Entering plan mode: hint switches below the input box.
+    event.mode = "plan";
+    listener.on_event(event);
+    REQUIRE(posted.size() == 2);
+    posted[1]();
+    REQUIRE(input_bar.mode() == "plan");
 }

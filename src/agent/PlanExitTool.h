@@ -1,4 +1,4 @@
-// PlanExitTool — model-callable handoff from plan mode back to build mode
+// PlanExitTool — model-callable handoff from plan mode back to execution
 #pragma once
 #include "tool/ITool.h"
 #include "security/IApprovalHandler.h"
@@ -15,8 +15,8 @@ public:
 
     std::string name() const override { return "plan_exit"; }
     std::string description() const override {
-        return "Signal that planning is complete and request approval to switch "
-               "to build mode and start implementing. Only call this after the "
+        return "Signal that planning is complete and request approval to leave "
+               "plan mode and start implementing. Only call this after the "
                "final plan has been written to the plan file.";
     }
     json parameters_schema() const override {

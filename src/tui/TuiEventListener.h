@@ -8,11 +8,13 @@ namespace ea::tui {
 class ChatArea;
 class StatusBar;
 class TopBar;
+class InputBar;
 
 class TuiEventListener : public ea::agent::IEventListener {
 public:
     // post_fn wraps ScreenInteractive::Post() — all UI updates must go through it
     TuiEventListener(ChatArea& chat_area, StatusBar& status_bar, TopBar& top_bar,
+                     InputBar& input_bar,
                      std::function<void(std::function<void()>)> post_fn);
 
     void on_event(const ea::agent::AgentEvent& event) override;
@@ -27,6 +29,7 @@ private:
     ChatArea& chat_area_;
     StatusBar& status_bar_;
     TopBar& top_bar_;
+    InputBar& input_bar_;
     std::function<void(std::function<void()>)> post_fn_;
     std::function<void()> on_turn_start_;
     std::function<void()> on_turn_end_;

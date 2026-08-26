@@ -3,15 +3,16 @@
 #include "ChatArea.h"
 #include "StatusBar.h"
 #include "TopBar.h"
+#include "InputBar.h"
 #include "FormatUtils.h"
 
 namespace ea::tui {
 
 TuiEventListener::TuiEventListener(ChatArea& chat_area, StatusBar& status_bar,
-                                   TopBar& top_bar,
+                                   TopBar& top_bar, InputBar& input_bar,
                                    std::function<void(std::function<void()>)> post_fn)
     : chat_area_(chat_area), status_bar_(status_bar), top_bar_(top_bar),
-      post_fn_(std::move(post_fn)) {}
+      input_bar_(input_bar), post_fn_(std::move(post_fn)) {}
 
 void TuiEventListener::on_event(const ea::agent::AgentEvent& event) {
     switch (event.type) {
@@ -85,11 +86,9 @@ void TuiEventListener::on_event(const ea::agent::AgentEvent& event) {
 
         case ea::agent::AgentEventType::ModeChanged:
             post_fn_([this, mode = event.mode] {
-                status_bar_.set_mode(mode);
-                top_bar_.set_mode(mode);
-                chat_area_.append_system(mode == "plan"
-                    ? "Plan mode: read-only. Planning started."
-                    : "Plan approved — switched to build mode.");
+                // The permission mode is only surfaced on the input-bar line;
+                // mode switches write nothing to the transcript.
+                input_bar_.set_mode(mode);
             });
             break;
     }

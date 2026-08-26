@@ -17,6 +17,9 @@ public:
     void set_on_submit(std::function<void(const std::string&)> fn);
     void set_on_command(std::function<void(const std::string&)> fn);
     void set_commands(std::vector<CommandEntry> commands);
+    void set_mode(const std::string& mode);
+    const std::string& mode() const { return mode_; }
+    void set_cwd(const std::string& cwd);
     void clear();
     bool suggestions_visible() const;
     int command_area_height() const;
@@ -35,8 +38,11 @@ private:
     int selected_ = 0;
     int scroll_ = 0;
     std::string placeholder_;
+    std::string mode_ = "manual";  // permission mode name (always shown)
+    std::string cwd_;              // workspace path, shown before the mode hint
 
     ftxui::Element render();
+    ftxui::Element mode_hint() const;
     std::vector<int> filtered_commands() const;
     bool on_event(ftxui::Event event);
 };

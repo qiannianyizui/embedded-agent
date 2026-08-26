@@ -55,7 +55,7 @@ bool call_is_mutating(const ToolCall& tc, ITool* tool) {
 // Should this tool call go through the approval handler, per permission mode?
 bool needs_approval(const ToolCall& tc, const TurnContext& ctx, ITool* tool) {
     switch (ctx.permission_mode) {
-        case PermissionMode::Default:
+        case PermissionMode::Manual:
             return call_is_mutating(tc, tool);
         case PermissionMode::AcceptEdits:
             // File write/edit is auto-accepted; everything else mutating asks.

@@ -156,6 +156,7 @@ void TuiApp::build_component_tree() {
         if (input_bar_.suggestions_visible()) {
             input_h += input_bar_.command_area_height();
         }
+        input_h += 1;  // mode hint line below the input row
         // Conservative wrap width: user bubbles are the narrowest message
         // layout (2+2 padding + 2 border), so wrapping at this width never
         // clips any message body.
@@ -229,9 +230,10 @@ bool TuiApp::handle_global_event(ftxui::Event event) {
             }
         }
 
-        // Shift+Tab: toggle plan/build mode (Tab is command completion).
+        // Shift+Tab: cycle permission mode (default → acceptEdits → plan).
+        // Tab is command completion.
         if (event == Event::TabReverse) {
-            execute_command(loop_ && loop_->plan_mode() ? "/build" : "/plan");
+            cycle_permission_mode();
             return true;
         }
         // Ctrl+C: interrupt agent or exit
@@ -415,102 +417,6 @@ void TuiApp::rebuild_skill_commands() {
 }
 
 void TuiApp::execute_command(const std::string& cmd) {
-    if (cmd == "/plan" || cmd == "/build") {
-        if (!loop_) {
-            chat_area_.append_error("Agent not ready");
-            request_redraw();
-            return;
-        }
-        if (agent_busy_.load()) {
-            chat_area_.append_error("Cannot switch mode while the agent is busy");
-            request_redraw();
-            return;
-        }
-        const bool plan = cmd == "/plan";
-        if (loop_->plan_mode() == plan) {
-            chat_area_.append_system(plan
-                ? "Already in plan mode"
-                : "Already in build mode");
-            request_redraw();
-            return;
-        }
-        auto result = loop_->set_plan_mode(plan);
-        if (!result.ok()) {
-            chat_area_.append_error(result.error().message);
-            request_redraw();
-            return;
-        }
-        std::string mode_name = permission_mode_name(loop_->permission_mode());
-        status_bar_.set_mode(mode_name);
-        top_bar_.set_mode(mode_name);
-        if (plan) {
-            chat_area_.append_system(
-                "Plan mode: read-only. Write the plan to: " + loop_->plan_file());
-        } else {
-            chat_area_.append_system("Mode: " + mode_name + " — changes are allowed.");
-        }
-        request_redraw();
-        return;
-    }
-    if (cmd == "/mode" || cmd.substr(0, 6) == "/mode ") {
-        if (!loop_) {
-            chat_area_.append_error("Agent not ready");
-            request_redraw();
-            return;
-        }
-        if (agent_busy_.load()) {
-            chat_area_.append_error("Cannot switch mode while the agent is busy");
-            request_redraw();
-            return;
-        }
-        std::string arg = cmd == "/mode" ? "" : cmd.substr(6);
-        while (!arg.empty() && (arg.front() == ' ' || arg.front() == '\n')) {
-            arg.erase(arg.begin());
-        }
-        while (!arg.empty() && (arg.back() == ' ' || arg.back() == '\n')) {
-            arg.pop_back();
-        }
-        if (arg.empty()) {
-            chat_area_.append_assistant(
-                std::string("Current mode: ")
-                + permission_mode_name(loop_->permission_mode())
-                + "\nUsage: /mode <default|acceptEdits|plan|bypassPermissions>"
-                "\n  default           — ask before every mutating action"
-                "\n  acceptEdits       — auto-accept file edits, ask for the rest"
-                "\n  plan              — read-only planning (plan_exit handoff)"
-                "\n  bypassPermissions — no approval (dangerous)");
-            request_redraw();
-            return;
-        }
-        ea::agent::PermissionMode m;
-        if (arg == "default" || arg == "manual") {
-            m = ea::agent::PermissionMode::Default;
-        } else if (arg == "acceptEdits") {
-            m = ea::agent::PermissionMode::AcceptEdits;
-        } else if (arg == "plan") {
-            m = ea::agent::PermissionMode::Plan;
-        } else if (arg == "bypassPermissions" || arg == "bypass" || arg == "auto") {
-            m = ea::agent::PermissionMode::BypassPermissions;
-        } else {
-            chat_area_.append_error(
-                "Unknown mode: " + arg
-                + " (default|acceptEdits|plan|bypassPermissions)");
-            request_redraw();
-            return;
-        }
-        auto result = loop_->set_permission_mode(m);
-        if (!result.ok()) {
-            chat_area_.append_error(result.error().message);
-            request_redraw();
-            return;
-        }
-        std::string mode_name = permission_mode_name(loop_->permission_mode());
-        status_bar_.set_mode(mode_name);
-        top_bar_.set_mode(mode_name);
-        chat_area_.append_system("Mode: " + mode_name);
-        request_redraw();
-        return;
-    }
     if (cmd == "/quit" || cmd == "/exit") {
         notify_session_end();
         screen_.Exit();
@@ -794,9 +700,6 @@ void TuiApp::execute_command(const std::string& cmd) {
         chat_area_.append_assistant(
             "Commands:\n"
             "  /help         — Show this help\n"
-            "  /plan         — Switch to plan mode (read-only planning)\n"
-            "  /build        — Leave plan mode and execute changes\n"
-            "  /mode         — Set permission mode (default|acceptEdits|plan|bypassPermissions)\n"
             "  /new          — Start a new session\n"
             "  /compact      — Compact older context (optionally: /compact <focus>)\n"
             "  /usage        — Show token usage\n"
@@ -811,8 +714,12 @@ void TuiApp::execute_command(const std::string& cmd) {
             "  /clear        — Clear the chat view\n"
             "  /quit, /exit  — Exit the agent\n"
             "\n"
+            "Modes:\n"
+            "  Shift+Tab cycles permission mode: manual → acceptEdits → plan → auto.\n"
+            "  The active mode is always shown below the input box.\n"
+            "\n"
             "Keybindings:\n"
-            "  Shift+Tab — Toggle plan/build mode\n"
+            "  Shift+Tab — Cycle permission mode (manual/acceptEdits/plan/auto)\n"
             "  Tab       — Complete command from suggestions\n"
             "  Ctrl+C    — Interrupt agent / exit");
         return;
@@ -867,7 +774,7 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
 
     // Event listener — bridges AgentEvent to UI updates
     event_listener_ = std::make_shared<TuiEventListener>(
-        chat_area_, status_bar_, top_bar_,
+        chat_area_, status_bar_, top_bar_, input_bar_,
         [this](std::function<void()> fn) {
             screen_.Post([this, fn = std::move(fn)] {
                 fn();
@@ -905,6 +812,7 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
     char cwd_buf[4096];
     if (getcwd(cwd_buf, sizeof(cwd_buf))) {
         status_bar_.set_cwd(cwd_buf);
+        input_bar_.set_cwd(cwd_buf);
     }
 
     if (loop_) {
@@ -912,9 +820,7 @@ void TuiApp::run(ea::agent::AgentLoop& loop,
         status_bar_.set_session_id(sid);
         top_bar_.set_session_id(sid);
         sessions_dialog_.set_active(sid);
-        std::string mode = permission_mode_name(loop_->permission_mode());
-        status_bar_.set_mode(mode);
-        top_bar_.set_mode(mode);
+        sync_mode_ui();
     }
 
     push_banner();
@@ -994,9 +900,7 @@ void TuiApp::resume_session(const std::string& cid) {
     auto meta = conv_store_->get_meta(cid);
     std::string title = meta.ok() ? meta.value().title : cid;
     chat_area_.append_system("Resumed conversation: " + title);
-    std::string mode = permission_mode_name(loop_->permission_mode());
-    status_bar_.set_mode(mode);
-    top_bar_.set_mode(mode);
+    sync_mode_ui();
     status_bar_.set_session_id(cid);
     top_bar_.set_session_id(cid);
     request_redraw();
@@ -1019,9 +923,7 @@ void TuiApp::start_new_session() {
     if (loop_->plan_mode()) {
         loop_->set_plan_mode(false);
     }
-    std::string mode = permission_mode_name(loop_->permission_mode());
-    status_bar_.set_mode(mode);
-    top_bar_.set_mode(mode);
+    sync_mode_ui();
     chat_area_.clear();
     chat_area_.append_system(
         "New session started — your next message will create a new conversation");
@@ -1033,6 +935,50 @@ void TuiApp::start_new_session() {
         budget_tracker_->reset_session();
         budget_tracker_->set_session_id("");
     }
+    request_redraw();
+}
+
+// ---------------------------------------------------------------------------
+// Permission-mode cycling (Shift+Tab)
+// ---------------------------------------------------------------------------
+
+void TuiApp::sync_mode_ui() {
+    if (!loop_) return;
+    const std::string mode_name = permission_mode_name(loop_->permission_mode());
+    // The permission mode is only surfaced on the bottom input-bar line.
+    input_bar_.set_mode(mode_name);
+}
+
+void TuiApp::cycle_permission_mode() {
+    using ea::agent::PermissionMode;
+    if (!loop_) return;
+    if (agent_busy_.load()) {
+        chat_area_.append_error("Cannot switch mode while the agent is busy");
+        request_redraw();
+        return;
+    }
+
+    // Shift+Tab cycle order: manual → acceptEdits → plan → auto.
+    static constexpr PermissionMode kCycle[] = {
+        PermissionMode::Manual, PermissionMode::AcceptEdits,
+        PermissionMode::Plan, PermissionMode::BypassPermissions};
+    constexpr size_t kCycleSize = sizeof(kCycle) / sizeof(kCycle[0]);
+
+    const PermissionMode cur = loop_->permission_mode();
+    PermissionMode next = kCycle[0];
+    for (size_t i = 0; i < kCycleSize; ++i) {
+        if (kCycle[i] == cur) next = kCycle[(i + 1) % kCycleSize];
+    }
+
+    auto result = loop_->set_permission_mode(next);
+    if (!result.ok()) {
+        chat_area_.append_error(result.error().message);
+        request_redraw();
+        return;
+    }
+    // Mode switches are silent: the new mode is already visible on the
+    // input-bar mode line, so nothing is written to the transcript.
+    sync_mode_ui();
     request_redraw();
 }
 

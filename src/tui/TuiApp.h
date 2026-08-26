@@ -108,6 +108,10 @@ private:
     void submit_input(const std::string& input);
     void execute_command(const std::string& command);
     void run_agent(const std::string& input);
+    // Push the loop's current permission mode to all mode-aware UI parts.
+    void sync_mode_ui();
+    // Shift+Tab: default → acceptEdits → plan → default.
+    void cycle_permission_mode();
     void run_plugin_async(std::string status,
                           std::function<Result<std::string>()> op,
                           const std::string& success_prefix,

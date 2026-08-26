@@ -11,7 +11,11 @@ SessionsDialog::SessionsDialog() = default;
 
 ftxui::Component SessionsDialog::component() {
     if (!component_) {
-        auto renderer = ftxui::Renderer([this] { return render(); });
+        // The Renderer(bool) overload is Focusable(). Without it the dialog is
+        // not focusable, so when it is shown the Modal's internal Container::Tab
+        // fails its Focused() check and drops every keyboard event before it
+        // reaches on_event — ↑/↓/⏎/Esc would be dead.
+        auto renderer = ftxui::Renderer([this](bool) { return render(); });
         component_ = ftxui::CatchEvent(renderer,
             [this](ftxui::Event event) { return on_event(std::move(event)); }
         );

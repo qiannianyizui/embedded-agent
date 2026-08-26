@@ -4,6 +4,7 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
+#include <ftxui/screen/string.hpp>
 #include <ftxui/screen/terminal.hpp>
 #include <algorithm>
 #include <cctype>
@@ -31,6 +32,33 @@ std::string pick_placeholder() {
         seeded = true;
     }
     return PLACEHOLDERS[std::rand() % PLACEHOLDERS.size()];
+}
+
+// Cut s to at most max_width display cells, breaking on a UTF-8 glyph
+// boundary and appending an ellipsis when content was removed.
+std::string fit_to_width(const std::string& s, int max_width) {
+    if (max_width <= 0) return "";
+    if (ftxui::string_width(s) <= max_width) return s;
+
+    const int body = std::max(0, max_width - 1);
+    std::string out;
+    int w = 0;
+    size_t i = 0;
+    while (i < s.size()) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        size_t len = 1;
+        if ((c & 0xE0) == 0xC0) len = 2;
+        else if ((c & 0xF0) == 0xE0) len = 3;
+        else if ((c & 0xF8) == 0xF0) len = 4;
+        std::string glyph = s.substr(i, len);
+        int gw = ftxui::string_width(glyph);
+        if (w + gw > body) break;
+        out += glyph;
+        w += gw;
+        i += len;
+    }
+    while (!out.empty() && out.back() == ' ') out.pop_back();
+    return out + "…";
 }
 
 }  // anonymous namespace
@@ -85,6 +113,14 @@ void InputBar::set_commands(std::vector<CommandEntry> commands) {
     selected_ = 0;
 }
 
+void InputBar::set_mode(const std::string& mode) {
+    mode_ = mode;
+}
+
+void InputBar::set_cwd(const std::string& cwd) {
+    cwd_ = cwd;
+}
+
 void InputBar::clear() {
     input_.clear();
     history_index_ = -1;
@@ -120,6 +156,35 @@ int InputBar::command_area_height() const {
     return std::min(kMaxShown, static_cast<int>(indices.size())) + 2;
 }
 
+ftxui::Element InputBar::mode_hint() const {
+    using namespace ftxui;
+    auto& theme = default_theme();
+
+    Element mode;
+    if (mode_ == "manual") {
+        mode = text("⏵ manual mode") | color(theme.color.text) | bold;
+    } else if (mode_ == "acceptEdits") {
+        mode = text("⏵⏵ accept edits on") | color(theme.color.warn) | bold;
+    } else if (mode_ == "plan") {
+        mode = text("⏸ plan mode on") | color(theme.color.accent) | bold;
+    } else if (mode_ == "auto" || mode_ == "bypassPermissions") {
+        mode = text("⏵⏵⏵ auto mode") | color(theme.color.error) | bold;
+    } else {
+        return {};
+    }
+
+    // The mode is only shown on this bottom line; prefix it with the workspace
+    // path so the active project is always visible.
+    std::vector<Element> row;
+    row.push_back(text("  "));
+    if (!cwd_.empty()) {
+        row.push_back(text(cwd_) | color(theme.color.muted) | dim);
+        row.push_back(text("  ·  ") | color(theme.color.muted) | dim);
+    }
+    row.push_back(mode);
+    return hbox(std::move(row));
+}
+
 ftxui::Element InputBar::render() {
     using namespace ftxui;
     auto& theme = default_theme();
@@ -144,7 +209,7 @@ ftxui::Element InputBar::render() {
 
     auto indices = filtered_commands();
     if (input_.empty() || input_[0] != '/' || indices.empty()) {
-        return row;
+        return vbox({row, mode_hint()});
     }
     if (selected_ >= static_cast<int>(indices.size())) selected_ = 0;
     if (scroll_ < 0) scroll_ = 0;
@@ -152,19 +217,32 @@ ftxui::Element InputBar::render() {
         scroll_ = std::max(0, static_cast<int>(indices.size()) - kMaxShown);
     }
 
+    // FTXUI squeezes hbox children proportionally when their combined width
+    // overflows, which clips long command names mid-string. Clamp the
+    // description ourselves so name + description always fit the terminal.
+    const auto dims = ftxui::Terminal::Size();
+    const int row_budget = dims.dimx > 5 ? dims.dimx - 5 : 0;
+
     std::vector<Element> entries;
     int shown = std::min(kMaxShown, static_cast<int>(indices.size()) - scroll_);
     for (int pos = scroll_; pos < scroll_ + shown; ++pos) {
         const auto& entry = commands_[indices[pos]];
         bool selected = pos == selected_;
+        std::string desc_str =
+            entry.description.empty() ? "" : "  " + entry.description;
+        if (ftxui::string_width(entry.name) +
+                ftxui::string_width(desc_str) >
+            row_budget) {
+            desc_str = fit_to_width(
+                desc_str, row_budget - static_cast<int>(ftxui::string_width(entry.name)));
+        }
         Element left = text("  ");
         Element name = text(entry.name) | color(theme.color.text);
-        Element desc = text("  " + entry.description)
-                           | color(theme.color.muted) | dim;
+        Element desc = text(desc_str) | color(theme.color.muted) | dim;
         if (selected) {
             left = text("▍") | color(theme.color.primary);
             name = text(entry.name) | color(theme.color.primary) | bold;
-            desc = text("  " + entry.description) | color(theme.color.muted);
+            desc = text(desc_str) | color(theme.color.muted);
         }
         entries.push_back(hbox({
             left,
@@ -175,13 +253,15 @@ ftxui::Element InputBar::render() {
                        : bgcolor(theme.color.surface)));
     }
 
-    return vbox({
-        row,
+    std::vector<Element> below;
+    below.push_back(mode_hint());
+    below.push_back(
         vbox(std::move(entries))
             | borderRounded
             | bgcolor(theme.color.surface)
-            | color(theme.color.border),
-    });
+            | color(theme.color.border));
+
+    return vbox({row, vbox(std::move(below))});
 }
 
 bool InputBar::on_event(ftxui::Event event) {

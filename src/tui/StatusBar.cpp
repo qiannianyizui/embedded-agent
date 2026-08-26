@@ -51,10 +51,6 @@ void StatusBar::set_model(const std::string& model) {
     model_ = model;
 }
 
-void StatusBar::set_mode(const std::string& mode) {
-    mode_ = mode;
-}
-
 void StatusBar::set_session_id(const std::string& id) {
     session_id_ = id;
 }
@@ -92,17 +88,6 @@ ftxui::Element StatusBar::render() {
                                | color(theme.color.accent));
     } else {
         segments.push_back(text("● ready") | color(theme.color.ok) | bold);
-    }
-
-    if (mode_ == "plan") {
-        segments.push_back(sep());
-        segments.push_back(text("PLAN") | color(theme.color.accent) | bold);
-    } else if (mode_ == "acceptEdits") {
-        segments.push_back(sep());
-        segments.push_back(text("ACCEPT EDITS") | color(theme.color.warn) | bold);
-    } else if (mode_ == "bypassPermissions") {
-        segments.push_back(sep());
-        segments.push_back(text("BYPASS") | color(theme.color.error) | bold);
     }
 
     // Tokens

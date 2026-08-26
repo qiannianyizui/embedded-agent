@@ -60,7 +60,7 @@ struct TurnContext {
     std::string model;
 
     // Permission mode for this turn
-    PermissionMode permission_mode = PermissionMode::Default;
+    PermissionMode permission_mode = PermissionMode::Manual;
     std::string plan_file;
 
     // Streaming callback — when set, CallProviderStep uses stream_chat

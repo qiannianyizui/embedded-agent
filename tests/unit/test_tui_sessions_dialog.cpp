@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "tui/SessionsDialog.h"
 #include "base/Types.h"
+#include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/screen.hpp>
@@ -112,4 +113,55 @@ TEST_CASE("SessionsDialog Escape closes without resuming", "[tui]") {
     REQUIRE(dialog.component()->OnEvent(ftxui::Event::Escape));
     REQUIRE_FALSE(resumed);
     REQUIRE_FALSE(dialog.is_showing());
+}
+
+TEST_CASE("SessionsDialog arrows move selection when mounted via Modal", "[tui]") {
+    // Regression test. In the real app the dialog is mounted as a Modal, and
+    // Modal routes events through its internal Container::Tab, which refuses to
+    // dispatch unless the active tab child is Focusable(). A plain
+    // Renderer(lambda) is not Focusable(), so every keypress was dropped before
+    // reaching on_event and ↑/↓ never moved the selection. The tests that call
+    // OnEvent() directly on the dialog bypass the Modal and miss this, so this
+    // test exercises the exact build_component_tree wiring.
+    FakeStore store;
+    for (int i = 0; i < 5; ++i) {
+        ConversationMeta meta;
+        meta.id = "conv_" + std::to_string(i);
+        meta.title = "Session " + std::to_string(i);
+        meta.message_count = i;
+        store.sessions.push_back(meta);
+    }
+
+    SessionsDialog dialog;
+    dialog.set_store(&store);
+    dialog.show();
+
+    // Mirror TuiApp::build_component_tree: a focusable main component with the
+    // dialog mounted on top via Modal.
+    std::string input_content;
+    std::string placeholder;
+    auto main = ftxui::Container::Vertical({
+        ftxui::Input(&input_content, &placeholder),
+    });
+    bool modal_showing = dialog.is_showing();
+    auto root = ftxui::Modal(main, dialog.component(), &modal_showing);
+
+    std::string resumed;
+    dialog.set_on_resume([&](const std::string& id) { resumed = id; });
+
+    // Arrow keys must be handled by the dialog (through the Modal) and move the
+    // selection: 0 -> 1 -> 2, then resume the third entry.
+    REQUIRE(root->OnEvent(ftxui::Event::ArrowDown));
+    REQUIRE(root->OnEvent(ftxui::Event::ArrowDown));
+    REQUIRE(root->OnEvent(ftxui::Event::Return));
+    REQUIRE(resumed == "conv_2");
+
+    // And back: 1 -> 0 (ArrowUp), then 0 -> 1 (ArrowDown), resume the second.
+    dialog.show();
+    resumed.clear();
+    REQUIRE(root->OnEvent(ftxui::Event::ArrowDown));  // 0 -> 1
+    REQUIRE(root->OnEvent(ftxui::Event::ArrowUp));    // 1 -> 0
+    REQUIRE(root->OnEvent(ftxui::Event::ArrowDown));  // 0 -> 1
+    REQUIRE(root->OnEvent(ftxui::Event::Return));
+    REQUIRE(resumed == "conv_1");
 }

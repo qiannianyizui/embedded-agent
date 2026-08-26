@@ -10,9 +10,6 @@ namespace ea::tui {
 
 CommandPalette::CommandPalette() {
     commands_ = {
-        {"/plan",   "Switch to plan mode (read-only planning)"},
-        {"/build",  "Leave plan mode and execute changes"},
-        {"/mode",   "Set permission mode (default|acceptEdits|plan|bypass)"},
         {"/new",   "Start a new session"},
         {"/compact", "Compact older context"},
         {"/help",   "Show help and keybindings"},
@@ -30,7 +27,11 @@ CommandPalette::CommandPalette() {
 
 ftxui::Component CommandPalette::component() {
     if (!component_) {
-        auto renderer = ftxui::Renderer([this] { return render(); });
+        // The Renderer(bool) overload is Focusable(). Without it the palette is
+        // not focusable, so when shown via Modal its internal Container::Tab
+        // fails its Focused() check and drops every keyboard event before it
+        // reaches on_event.
+        auto renderer = ftxui::Renderer([this](bool) { return render(); });
         component_ = ftxui::CatchEvent(renderer,
             [this](ftxui::Event event) { return on_event(std::move(event)); }
         );

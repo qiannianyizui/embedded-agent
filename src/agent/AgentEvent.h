@@ -13,7 +13,7 @@ enum class AgentEventType {
     ToolCallStart,   // Tool execution begins
     ToolCallEnd,     // Tool execution completes (with result)
     LLMResponse,     // LLM returns a response
-    ModeChanged,     // Plan <-> build mode switched
+    ModeChanged,     // Permission mode switched (plan_exit handoff)
     Error,           // An error occurred
     Interrupt        // Agent was interrupted
 };
@@ -40,7 +40,7 @@ struct AgentEvent {
     int messages_count = 0;         // LLMRequest
     std::string model;              // LLMRequest, LLMResponse
     int tool_calls_count = 0;       // LLMResponse
-    std::string mode;               // ModeChanged ("plan" / "build")
+    std::string mode;               // ModeChanged (permission mode name)
 
     // Trace correlation — groups events from one agent run()
     std::string trace_id;
