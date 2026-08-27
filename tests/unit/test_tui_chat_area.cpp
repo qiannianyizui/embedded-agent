@@ -211,8 +211,86 @@ TEST_CASE("ChatArea total_lines counts rendered message chrome", "[tui]") {
     ChatArea area;
     area.append_user("msg");        // chip + bubble borders + 1 line = 4
     area.append_assistant("reply"); // chip + 1 line = 2
-    area.append_tool_start("sh", R"({"cmd":"ls"})");  // fixed 4 rows
-    REQUIRE(area.total_lines() == 10);
+    area.append_tool_start("sh", R"({"cmd":"ls"})");  // collapsed: 1 row
+    REQUIRE(area.total_lines() == 7);
+}
+
+TEST_CASE("ChatArea tool messages collapse to a single status line", "[tui]") {
+    ChatArea area;
+    area.set_layout_width(60);
+    area.append_tool_start("search_files", R"({"pattern":"auth"})");
+    area.append_tool_end("search_files", "12 matches", false, 380);
+    REQUIRE(area.total_lines() == 2);  // one row per tool message
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(64),
+                                        ftxui::Dimension::Fixed(4));
+    ftxui::Render(screen, area.component()->Render());
+    std::string out = screen.ToString();
+
+    REQUIRE(out.find("search_files") != std::string::npos);
+    // Args and result previews stay hidden in the collapsed view.
+    REQUIRE(out.find("pattern") == std::string::npos);
+    REQUIRE(out.find("12 matches") == std::string::npos);
+}
+
+TEST_CASE("ChatArea verbose mode expands tool cards with previews", "[tui]") {
+    ChatArea area;
+    area.set_layout_width(60);
+    area.set_verbose(true);
+    area.append_tool_start("search_files", R"({"pattern":"auth"})");
+    area.append_tool_end("search_files", "12 matches", false, 380);
+    REQUIRE(area.total_lines() == 8);  // title + preview + borders, per message
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(64),
+                                        ftxui::Dimension::Fixed(10));
+    ftxui::Render(screen, area.component()->Render());
+    std::string out = screen.ToString();
+
+    REQUIRE(out.find("search_files") != std::string::npos);
+    REQUIRE(out.find("12 matches") != std::string::npos);
+}
+
+TEST_CASE("ChatArea verbose toggle flips between collapsed and expanded", "[tui]") {
+    ChatArea area;
+    area.append_tool_start("sh", R"({"cmd":"ls"})");
+    area.append_tool_end("sh", "out", false, 0);
+    REQUIRE(area.total_lines() == 2);
+
+    area.set_verbose(true);
+    REQUIRE(area.verbose());
+    REQUIRE(area.total_lines() == 8);
+
+    area.set_verbose(false);
+    REQUIRE(area.total_lines() == 2);
+}
+
+TEST_CASE("ChatArea hides streaming tool args preview when collapsed", "[tui]") {
+    ChatArea area;
+    area.set_layout_width(60);
+    ea::StreamChunk chunk;
+    chunk.type = ea::StreamChunk::Type::ToolCallBegin;
+    chunk.tool_call = ea::ToolCall{"1", "patch", R"({"file":"a.cpp"})"};
+    area.append_stream_chunk(chunk);
+    chunk.data = R"({"file":"a.cpp","edits":[)";
+    chunk.type = ea::StreamChunk::Type::ToolCallDelta;
+    area.append_stream_chunk(chunk);
+
+    REQUIRE(area.total_lines() == 1);
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(64),
+                                        ftxui::Dimension::Fixed(4));
+    ftxui::Render(screen, area.component()->Render());
+    std::string out = screen.ToString();
+
+    REQUIRE(out.find("patch") != std::string::npos);
+    REQUIRE(out.find("edits") == std::string::npos);
+
+    // Expanded, the accumulating preview becomes visible again.
+    area.set_verbose(true);
+    auto wide = ftxui::Screen::Create(ftxui::Dimension::Fixed(64),
+                                      ftxui::Dimension::Fixed(6));
+    ftxui::Render(wide, area.component()->Render());
+    REQUIRE(wide.ToString().find("edits") != std::string::npos);
 }
 
 TEST_CASE("ChatArea wheel scrolls transcript by lines", "[tui]") {

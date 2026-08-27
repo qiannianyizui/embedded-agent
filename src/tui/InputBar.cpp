@@ -34,6 +34,10 @@ std::string pick_placeholder() {
     return PLACEHOLDERS[std::rand() % PLACEHOLDERS.size()];
 }
 
+// Alt+Enter: terminals transmit ESC+CR and FTXUI surfaces it as one special
+// event, distinct from Event::Return (a lone CR, uniformized to "\n").
+const ftxui::Event kAltEnter = ftxui::Event::Special("\x1b\r");
+
 // Cut s to at most max_width display cells, breaking on a UTF-8 glyph
 // boundary and appending an ellipsis when content was removed.
 std::string fit_to_width(const std::string& s, int max_width) {
@@ -67,7 +71,8 @@ InputBar::InputBar()
     : placeholder_(pick_placeholder()) {
     ftxui::InputOption option;
     option.placeholder = placeholder_;
-    option.multiline = false;
+    option.multiline = true;
+    option.cursor_position = &cursor_pos_;
     // The input row has an explicit light background; keep the inner text dark.
     option.transform = [](ftxui::InputState state) {
         state.element = state.element
@@ -123,6 +128,7 @@ void InputBar::set_cwd(const std::string& cwd) {
 
 void InputBar::clear() {
     input_.clear();
+    cursor_pos_ = 0;
     history_index_ = -1;
     selected_ = 0;
     scroll_ = 0;
@@ -131,6 +137,7 @@ void InputBar::clear() {
 std::vector<int> InputBar::filtered_commands() const {
     std::vector<int> indices;
     if (input_.empty() || input_[0] != '/') return indices;
+    if (input_.find('\n') != std::string::npos) return indices;
 
     std::string query = input_.substr(1);
     std::transform(query.begin(), query.end(), query.begin(),
@@ -313,6 +320,7 @@ bool InputBar::on_event(ftxui::Event event) {
     }
     if (show && event == ftxui::Event::Escape) {
         input_.clear();
+        cursor_pos_ = 0;
         selected_ = 0;
         scroll_ = 0;
         return true;
@@ -321,10 +329,21 @@ bool InputBar::on_event(ftxui::Event event) {
         if (on_command_) {
             auto cmd = commands_[indices[selected_]].name;
             input_.clear();
+            cursor_pos_ = 0;
             selected_ = 0;
             scroll_ = 0;
             on_command_(cmd);
         }
+        return true;
+    }
+
+    // Alt+Enter: insert a hard newline at the cursor instead of submitting.
+    if (event == kAltEnter) {
+        cursor_pos_ = std::clamp(cursor_pos_, 0, static_cast<int>(input_.size()));
+        input_.insert(static_cast<size_t>(cursor_pos_), "\n");
+        ++cursor_pos_;
+        selected_ = 0;
+        scroll_ = 0;
         return true;
     }
 
@@ -338,6 +357,7 @@ bool InputBar::on_event(ftxui::Event event) {
             }
             auto submitted = input_;
             input_.clear();
+            cursor_pos_ = 0;
             history_index_ = -1;
             on_submit_(submitted);
         }
@@ -355,6 +375,7 @@ bool InputBar::on_event(ftxui::Event event) {
             if (history_index_ < static_cast<int>(history_.size()) - 1) {
                 history_index_++;
                 input_ = history_[history_.size() - 1 - history_index_];
+                cursor_pos_ = static_cast<int>(input_.size());
             }
             return true;
         }
@@ -365,9 +386,11 @@ bool InputBar::on_event(ftxui::Event event) {
             if (history_index_ > 0) {
                 history_index_--;
                 input_ = history_[history_.size() - 1 - history_index_];
+                cursor_pos_ = static_cast<int>(input_.size());
             } else if (history_index_ == 0) {
                 history_index_ = -1;
                 input_.clear();
+                cursor_pos_ = 0;
             }
             return true;
         }

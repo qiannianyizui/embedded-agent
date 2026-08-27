@@ -213,6 +213,10 @@ void ChatArea::set_viewport_hint(int height) {
     viewport_hint_ = height > 0 ? height : 0;
 }
 
+void ChatArea::set_verbose(bool verbose) {
+    verbose_ = verbose;
+}
+
 bool ChatArea::on_event(ftxui::Event event) {
     if (!event.is_mouse()) return false;
     if (event.mouse().button == ftxui::Mouse::WheelUp) {
@@ -269,7 +273,7 @@ int ChatArea::scroll_top() {
 // The virtual line space mirrors the rendered rows exactly:
 //   user:      chip(1) + bubble borders(2) + wrapped lines
 //   assistant: chip(1) + wrapped lines
-//   tool:      title(1) + body(1) + borders(2)
+//   tool:      verbose: title(1) + body(1) + borders(2); collapsed: 1
 //   system:    wrapped lines (no chrome)
 //   streaming: chip(1) + wrapped lines
 // Keeping these in lockstep with render_*() guarantees window slicing never
@@ -278,7 +282,8 @@ int ChatArea::scroll_top() {
 namespace {
 
 int message_height(const ChatMessage& msg,
-                   const std::vector<std::string>& lines) {
+                   const std::vector<std::string>& lines,
+                   bool verbose) {
     const int n = static_cast<int>(lines.size());
     switch (msg.role) {
         case ea::Role::User:
@@ -286,7 +291,7 @@ int message_height(const ChatMessage& msg,
         case ea::Role::Assistant:
             return msg.is_error ? n : n + 1;
         case ea::Role::Tool:
-            return 4;
+            return verbose ? 4 : 1;
         case ea::Role::System:
         default:
             return n;
@@ -357,7 +362,7 @@ void ChatArea::ensure_wrapped() {
 
     int total = 0;
     for (size_t i = 0; i < messages_.size(); ++i) {
-        total += message_height(messages_[i], wrapped_lines_[i]);
+        total += message_height(messages_[i], wrapped_lines_[i], verbose_);
     }
     total += streaming_height(streaming_final_, streaming_provisional_);
     total_lines_ = total;
@@ -481,7 +486,10 @@ ftxui::Element ChatArea::render_assistant(const ChatMessage& msg,
     });
 }
 
-// Tool message — bordered card with status icon and elapsed time
+// Tool message — bordered card with status icon and elapsed time. Collapsed
+// (default) it shrinks to a single status line that hides the args/result
+// preview: tool chatter is the agent's internal monologue, expanded on demand
+// via Ctrl+O (set_verbose).
 ftxui::Element ChatArea::render_tool(const ChatMessage& msg) {
     using namespace ftxui;
     auto& theme = default_theme();
@@ -503,9 +511,19 @@ ftxui::Element ChatArea::render_tool(const ChatMessage& msg) {
         status_label = "error";
     }
 
-    std::string preview = truncate(first_line(msg.content), 96);
     std::string elapsed =
         msg.tool_elapsed_ms > 0 ? fmtElapsed(msg.tool_elapsed_ms) + " · " : "";
+
+    if (!verbose_) {
+        return hbox({
+            text("  " + status_glyph + " " + msg.tool_name + " ")
+                | color(status_color) | (msg.is_error ? bold : dim),
+            filler(),
+            text(" " + elapsed + status_label + "  ") | color(status_color) | dim,
+        });
+    }
+
+    std::string preview = truncate(first_line(msg.content), 96);
 
     auto title_row = hbox({
         text("  " + status_glyph + " " + msg.tool_name + " ") | color(status_color) | bold,
@@ -622,7 +640,7 @@ ftxui::Element ChatArea::render() {
     bool built_any = false;
     for (size_t i = 0; i < messages_.size() && line < window_bottom; ++i) {
         const auto& lines = wrapped_lines_[i];
-        const int count = message_height(messages_[i], lines);
+        const int count = message_height(messages_[i], lines, verbose_);
         if (line + count > window_top) {
             if (!built_any) {
                 first_row = line;

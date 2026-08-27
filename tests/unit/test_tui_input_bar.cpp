@@ -379,3 +379,71 @@ TEST_CASE("InputBar command suggestions scroll with mouse wheel", "[tui]") {
     REQUIRE(out.find("/cmd8") != std::string::npos);
     REQUIRE(out.find("/cmd0") == std::string::npos);
 }
+
+TEST_CASE("InputBar Alt+Enter inserts a newline instead of submitting", "[tui]") {
+    InputBar bar;
+    std::string submitted;
+    int calls = 0;
+    bar.set_on_submit([&](const std::string& s) {
+        submitted = s;
+        calls++;
+    });
+
+    const auto alt_enter = ftxui::Event::Special("\x1b\r");
+    bar.component()->OnEvent(ftxui::Event::Character('h'));
+    bar.component()->OnEvent(ftxui::Event::Character('i'));
+    bar.component()->OnEvent(alt_enter);
+    bar.component()->OnEvent(ftxui::Event::Character('!'));
+    REQUIRE(calls == 0);
+
+    bar.component()->OnEvent(ftxui::Event::Return);
+    REQUIRE(calls == 1);
+    REQUIRE(submitted == "hi\n!");
+}
+
+TEST_CASE("InputBar Alt+Enter inserts at the cursor position", "[tui]") {
+    InputBar bar;
+    std::string submitted;
+    bar.set_on_submit([&](const std::string& s) { submitted = s; });
+
+    const auto alt_enter = ftxui::Event::Special("\x1b\r");
+    bar.component()->OnEvent(ftxui::Event::Character('a'));
+    bar.component()->OnEvent(ftxui::Event::Character('c'));
+    bar.component()->OnEvent(ftxui::Event::ArrowLeft);
+    bar.component()->OnEvent(alt_enter);
+    bar.component()->OnEvent(ftxui::Event::Character('b'));
+    bar.component()->OnEvent(ftxui::Event::Return);
+    REQUIRE(submitted == "a\nbc");
+}
+
+TEST_CASE("InputBar multiline input hides slash suggestions", "[tui]") {
+    InputBar bar;
+    bar.set_commands({{"/skills", "List available skills", ""}});
+
+    bar.component()->OnEvent(ftxui::Event::Character('/'));
+    bar.component()->OnEvent(ftxui::Event::Character('s'));
+    REQUIRE(bar.suggestions_visible());
+
+    bar.component()->OnEvent(ftxui::Event::Special("\x1b\r"));
+    REQUIRE_FALSE(bar.suggestions_visible());
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                        ftxui::Dimension::Fixed(10));
+    ftxui::Render(screen, bar.component()->Render());
+    REQUIRE(screen.ToString().find("/skills") == std::string::npos);
+}
+
+TEST_CASE("InputBar renders multiline input across multiple lines", "[tui]") {
+    InputBar bar;
+    bar.component()->OnEvent(ftxui::Event::Character('a'));
+    bar.component()->OnEvent(ftxui::Event::Special("\x1b\r"));
+    bar.component()->OnEvent(ftxui::Event::Character('b'));
+
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80),
+                                        ftxui::Dimension::Fixed(5));
+    ftxui::Render(screen, bar.component()->Render());
+    const auto out = screen.ToString();
+
+    REQUIRE(out.find('a') != std::string::npos);
+    REQUIRE(out.find('b') != std::string::npos);
+}

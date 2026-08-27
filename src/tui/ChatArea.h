@@ -52,6 +52,11 @@ public:
     void set_layout_width(int width);
     void set_viewport_hint(int height);
 
+    // Verbose mode expands tool messages into full cards (args/result
+    // preview); collapsed (default) they render as a single status line.
+    void set_verbose(bool verbose);
+    bool verbose() const { return verbose_; }
+
     // FTXUI component
     ftxui::Component component();
 
@@ -83,6 +88,7 @@ private:
     int layout_width_ = 0;           // 0 = no width constraint
     int viewport_hint_ = 0;          // 0 = no virtualization
     int total_lines_ = 0;            // Wrapped lines (messages + streaming)
+    bool verbose_ = false;           // Expanded tool cards vs. one-line status
 
     // Memoized wrapped lines: wrapped_lines_[i] corresponds to messages_[i].
     // Only rebuilt when the layout width changes or new messages arrive.

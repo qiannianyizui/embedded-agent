@@ -236,6 +236,12 @@ bool TuiApp::handle_global_event(ftxui::Event event) {
             cycle_permission_mode();
             return true;
         }
+        // Ctrl+O: toggle verbose transcript (expanded tool cards).
+        if (event == Event::CtrlO) {
+            chat_area_.set_verbose(!chat_area_.verbose());
+            request_redraw();
+            return true;
+        }
         // Ctrl+C: interrupt agent or exit
         if (event == Event::CtrlC) {
             if (agent_busy_.load()) {
@@ -259,7 +265,9 @@ bool TuiApp::handle_global_event(ftxui::Event event) {
 
 void TuiApp::submit_input(const std::string& input) {
     if (input.empty()) return;
-    if (input[0] == '/') {
+    // Slash commands are single-line; a multi-line input starting with '/'
+    // is sent to the agent as a normal message.
+    if (input[0] == '/' && input.find('\n') == std::string::npos) {
         execute_command(input);
         return;
     }
@@ -721,6 +729,7 @@ void TuiApp::execute_command(const std::string& cmd) {
             "Keybindings:\n"
             "  Shift+Tab — Cycle permission mode (manual/acceptEdits/plan/auto)\n"
             "  Tab       — Complete command from suggestions\n"
+            "  Ctrl+O    — Expand/collapse tool call details\n"
             "  Ctrl+C    — Interrupt agent / exit");
         return;
     }

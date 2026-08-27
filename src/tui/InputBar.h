@@ -29,6 +29,7 @@ private:
     ftxui::Component input_component_;
     ftxui::Component component_;
     std::string input_;
+    int cursor_pos_ = 0;  // input cursor, shared with the ftxui::Input
     std::vector<std::string> history_;
     int history_index_ = -1;
     bool busy_ = false;
